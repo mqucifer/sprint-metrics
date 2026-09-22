@@ -312,32 +312,83 @@ def calculate_escalation_rate(
     return round(escalations / completed * 100)
 
 
+def _summary_counts(cards: Sequence[Card]) -> tuple[int, int, int]:
+    """Count the cards standing in each state the standup summary reports.
+
+    The three states are exclusive, so every card is counted once: completing a
+    card settles it whatever else happened to it on the way, and a card held up
+    is reported as blocked rather than as still in progress.
+    """
+    completed = in_progress = blocked = 0
+    for card in cards:
+        if card.is_completed:
+            completed += 1
+        elif card.blocked_since is not None:
+            blocked += 1
+        elif card.started is not None:
+            in_progress += 1
+    return completed, in_progress, blocked
+
+
+def _summary_section(cards: Sequence[Card]) -> list[str]:
+    """The standup-ready summary of how much work stands in each state."""
+    completed, in_progress, blocked = _summary_counts(cards)
+    return [
+        "## Crew Performance Summary",
+        "",
+        f"- **Completed**: {completed}",
+        f"- **In progress**: {in_progress}",
+        f"- **Blocked**: {blocked}",
+    ]
+
+
+def _sprint_section(
+    cards: Sequence[Card],
+    wip_limits: Mapping[str, int] | None,
+    escalations: int,
+) -> list[str]:
+    """The current sprint's delivery metrics.
+
+    Only rendered when there are cards: with none, the metrics are all zero for
+    want of data rather than because the sprint went that way.
+    """
+    if not cards:
+        return ["No performance data available"]
+    cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+    return [
+        "## Current Sprint",
+        "",
+        f"- **Cycle time**: {cycle_time} days",
+        f"- **Lead time**: {lead_time} days",
+        f"- **Throughput**: {calculate_throughput(cards)} cards",
+        f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
+        f"- **Blocked aging**: {calculate_blocked_aging(cards)} days",
+        f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
+    ]
+
+
 def format_markdown_report(
     cards: Iterable[Card | Mapping[str, object]],
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
 ) -> str:
-    """Render the crew performance metrics as a markdown report for the standup issue."""
+    """Render the crew performance metrics as a markdown report for the standup issue.
+
+    The report is written to be pasted straight into the standup issue, so it
+    always opens with its heading and the date it covers, and always closes with
+    the summary of work in each state — an empty sprint reports zeros rather
+    than leaving the Scrum Master to explain a missing section.
+    """
     parsed = _as_cards(cards)
-    if not parsed:
-        return "No performance data available"
-    cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
-    throughput = calculate_throughput(parsed)
-    wip_violations = calculate_wip_violations(parsed, wip_limits)
-    blocked_aging = calculate_blocked_aging(parsed)
-    escalation_rate = calculate_escalation_rate(parsed, escalations)
     return "\n".join(
         [
             "# Crew Performance Report",
             "",
-            "## Current Sprint",
+            f"Report date: {date.today().isoformat()}",
             "",
-            f"- **Cycle time**: {cycle_time} days",
-            f"- **Lead time**: {lead_time} days",
-            f"- **Throughput**: {throughput} cards",
-            f"- **WIP violations**: {wip_violations}",
-            f"- **Blocked aging**: {blocked_aging} days",
-            f"- **Escalation rate**: {escalation_rate}%",
+            *_sprint_section(parsed, wip_limits, escalations),
+            "",
+            *_summary_section(parsed),
         ]
     )
 
