@@ -4,8 +4,11 @@ WIP-limit violations for the current sprint."""
 from __future__ import annotations
 
 import argparse
+import contextlib
+import http.server
 import json
 import sys
+import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -252,7 +255,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Output the report as a JSON object.",
     )
+    parser.add_argument(
+        "--scrape",
+        action="store_true",
+        help="Start an HTTP server that serves the metrics at /metrics for scraping.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=9100,
+        metavar="PORT",
+        help="Port for the scrape server (default: 9100). Use 0 for an ephemeral port.",
+    )
     args = parser.parse_args(argv)
+
+    if args.scrape:
+        cards_path = args.cards.name if hasattr(args.cards, "name") else ""
+        wip_limits_path = args.wip_limits.name if args.wip_limits is not None else None
+        port = serve_metrics(cards_path, wip_limits_path, args.escalations, args.port)
+        print(f"sprint-metrics: serving metrics at http://127.0.0.1:{port}/metrics", flush=True)
+        with contextlib.suppress(KeyboardInterrupt):
+            threading.Event().wait()
+        return 0
 
     source = _read(args.cards)
     wip_source = _read(args.wip_limits) if args.wip_limits is not None else None
@@ -439,3 +463,51 @@ def format_json_report(
             "escalation_rate_percent": escalation_rate,
         }
     )
+
+
+def serve_metrics(
+    cards_path: str,
+    wip_limits_path: str | None = None,
+    escalations: int = 0,
+    port: int = 9100,
+) -> int:
+    """Start an HTTP server that serves the current sprint metrics at /metrics.
+
+    The cards file is re-read on every request so that changes to the board are
+    reflected without a restart. Returns the port the server is listening on.
+    """
+
+    class MetricsHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path != "/metrics":
+                self.send_response(404)
+                self.end_headers()
+                return
+
+            try:
+                with open(cards_path) as f:
+                    cards = _load_cards(f.read())
+                wip_limits = None
+                if wip_limits_path is not None:
+                    with open(wip_limits_path) as f:
+                        wip_limits = _load_wip_limits(f.read())
+            except (TypeError, ValueError, OSError):
+                self.send_response(500)
+                self.end_headers()
+                return
+
+            body = format_prometheus_report(cards, wip_limits, escalations)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body.encode())
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", port), MetricsHandler)
+    actual_port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return actual_port
