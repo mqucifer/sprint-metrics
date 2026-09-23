@@ -4,6 +4,7 @@ WIP-limit violations for the current sprint."""
 from __future__ import annotations
 
 import argparse
+import contextlib
 import http.server
 import json
 import sys
@@ -272,8 +273,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         cards_path = args.cards.name if hasattr(args.cards, "name") else ""
         wip_limits_path = args.wip_limits.name if args.wip_limits is not None else None
         port = serve_metrics(cards_path, wip_limits_path, args.escalations, args.port)
-        print(f"sprint-metrics: serving metrics at http://127.0.0.1:{port}/metrics")
-        return port
+        print(f"sprint-metrics: serving metrics at http://127.0.0.1:{port}/metrics", flush=True)
+        with contextlib.suppress(KeyboardInterrupt):
+            threading.Event().wait()
+        return 0
 
     source = _read(args.cards)
     wip_source = _read(args.wip_limits) if args.wip_limits is not None else None
@@ -473,11 +476,6 @@ def serve_metrics(
     The cards file is re-read on every request so that changes to the board are
     reflected without a restart. Returns the port the server is listening on.
     """
-    from sprint_metrics.crew_performance import (
-        _load_cards,
-        _load_wip_limits,
-        format_prometheus_report,
-    )
 
     class MetricsHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
