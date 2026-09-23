@@ -334,14 +334,17 @@ def test_command_does_not_produce_markdown_output_by_default(run_command):
 
 
 def test_command_reports_no_performance_data_in_markdown_when_no_cards(run_command):
-    """AC1: when no crew performance data is available, the markdown report
-    includes 'No performance data available' and does not include summary
-    counts or crew member performance lines."""
+    """AC1 of #13: when no crew performance data is available, the markdown report
+    includes 'No performance data available' and does not include the sprint's
+    delivery metrics, which would all read zero for want of data.
+
+    The heading this once asserted was absent is required by AC3 of #12, which
+    has the report open the same way whether or not there is data to report.
+    """
     exit_code, output, _ = run_command([], markdown=True)
 
     assert exit_code == 0
     assert "No performance data available" in output
-    assert "# Crew Performance Report" not in output
     assert "## Current Sprint" not in output
     assert "- **Cycle time**" not in output
     assert "- **Lead time**" not in output
@@ -562,3 +565,70 @@ def test_command_reports_json_error_for_invalid_card_date(tmp_path, capsys):
     assert exit_code != 0
     assert captured.err
     assert captured.out == ""
+
+
+def test_markdown_report_includes_crew_performance_summary(run_command):
+    """AC1: the markdown report starts with a heading, includes the report date,
+    and shows a summary line for each of completed, in-progress, and blocked
+    work with the count of cards in each state."""
+    cards = [
+        COMPLETED_CARD,
+        IN_FLIGHT_CARD,
+        {"created": "2024-01-01", "blocked_since": "2024-01-02"},
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    assert output.startswith("# Crew Performance Report")
+    assert "Report date:" in output
+    assert "- **Completed**: 1" in output
+    assert "- **In progress**: 1" in output
+    assert "- **Blocked**: 1" in output
+
+
+def test_markdown_report_shows_zero_for_in_progress_and_blocked_when_none(run_command):
+    """AC2: when no card is in progress and none is blocked, the markdown report
+    still includes all three summary lines, showing zero for in-progress and
+    for blocked."""
+    cards = [COMPLETED_CARD]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    assert "- **Completed**: 1" in output
+    assert "- **In progress**: 0" in output
+    assert "- **Blocked**: 0" in output
+
+
+def test_markdown_report_for_empty_sprint(run_command):
+    """AC3: an empty set of crew performance data still produces a markdown report
+    that starts with a heading, includes the report date, and shows zero for all
+    three summary lines."""
+    exit_code, output, _ = run_command([], markdown=True)
+
+    assert exit_code == 0
+    assert output.startswith("# Crew Performance Report")
+    assert "Report date:" in output
+    assert "- **Completed**: 0" in output
+    assert "- **In progress**: 0" in output
+    assert "- **Blocked**: 0" in output
+
+
+def test_markdown_summary_counts_each_card_in_one_state_only(run_command):
+    """AC1: the summary lines show the count of cards in each state, so a card
+    stands in exactly one of them — work held up is blocked rather than still in
+    progress, and work that finished after being held up is simply completed."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "blocked_since": "2024-01-04"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "blocked_since": "2024-01-04",
+        },
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    assert "- **Completed**: 1" in output
+    assert "- **In progress**: 0" in output
+    assert "- **Blocked**: 1" in output
