@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
 import pytest
@@ -128,3 +129,87 @@ def test_scrape_reports_zero_for_empty_cards_file(tmp_path, start_scrape):
     assert "sprint_wip_violations 0" in lines
     assert "sprint_blocked_aging_days 0" in lines
     assert "sprint_escalation_rate_percent 0" in lines
+
+
+def test_scrape_endpoint_returns_500_when_cards_file_is_not_valid_json(tmp_path, start_scrape):
+    """AC1: Given the command is started in scrape mode with a cards file that is
+    not valid JSON, when the /metrics endpoint is requested, then the HTTP status
+    is 500, the response body contains 'sprint-metrics:', and the response body
+    contains none of the sprint metric names."""
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text("not valid json")
+    url = start_scrape(cards_path)
+
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            status = response.status
+            body = response.read().decode()
+    except urllib.error.HTTPError as e:
+        status = e.code
+        body = e.read().decode()
+
+    assert status == 500
+    assert "sprint-metrics:" in body
+    assert "sprint_cycle_time_days" not in body
+    assert "sprint_lead_time_days" not in body
+    assert "sprint_throughput_cards" not in body
+    assert "sprint_wip_violations" not in body
+    assert "sprint_blocked_aging_days" not in body
+    assert "sprint_escalation_rate_percent" not in body
+
+
+def test_scrape_endpoint_returns_500_when_cards_file_is_deleted(tmp_path, start_scrape):
+    """AC2: Given a scrape endpoint is running with a cards file, when the cards
+    file is deleted and the /metrics endpoint is requested, then the HTTP status
+    is 500 and the response body contains 'sprint-metrics:'."""
+    cards_path = _write_cards(tmp_path, [COMPLETED_CARD])
+    url = start_scrape(cards_path)
+
+    # Verify the endpoint works initially
+    status, body = _fetch(url)
+    assert status == 200
+
+    # Delete the cards file
+    cards_path.unlink()
+
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            status = response.status
+            body = response.read().decode()
+    except urllib.error.HTTPError as e:
+        status = e.code
+        body = e.read().decode()
+
+    assert status == 500
+    assert "sprint-metrics:" in body
+
+
+def test_scrape_endpoint_returns_500_when_wip_limits_file_is_not_valid_json(tmp_path, start_scrape):
+    """AC3: Given the command is started in scrape mode with a WIP limits file that
+    is not valid JSON, when the /metrics endpoint is requested, then the HTTP status
+    is 500, the response body contains 'sprint-metrics:', and the response body
+    contains none of the sprint metric names."""
+    cards_path = _write_cards(tmp_path, [COMPLETED_CARD])
+    wip_limits_path = tmp_path / "wip-limits.json"
+    wip_limits_path.write_text("not valid json")
+    url = start_scrape(cards_path, wip_limits={"In Progress": 3})
+
+    # Override the wip limits file with invalid JSON
+    wip_limits_path.write_text("not valid json")
+
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            status = response.status
+            body = response.read().decode()
+    except urllib.error.HTTPError as e:
+        status = e.code
+        body = e.read().decode()
+
+    assert status == 500
+    assert "sprint-metrics:" in body
+    assert "sprint_cycle_time_days" not in body
+    assert "sprint_lead_time_days" not in body
+    assert "sprint_throughput_cards" not in body
+    assert "sprint_wip_violations" not in body
+    assert "sprint_blocked_aging_days" not in body
+    assert "sprint_escalation_rate_percent" not in body
