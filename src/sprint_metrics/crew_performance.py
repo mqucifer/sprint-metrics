@@ -491,9 +491,13 @@ def serve_metrics(
                 if wip_limits_path is not None:
                     with open(wip_limits_path) as f:
                         wip_limits = _load_wip_limits(f.read())
-            except (TypeError, ValueError, OSError):
+            except (TypeError, ValueError, OSError) as exc:
+                error_body = f"sprint-metrics: {exc}"
                 self.send_response(500)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(error_body)))
                 self.end_headers()
+                self.wfile.write(error_body.encode())
                 return
 
             body = format_prometheus_report(cards, wip_limits, escalations)
