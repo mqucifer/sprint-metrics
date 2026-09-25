@@ -72,3 +72,69 @@ def test_prior_sprint_cannot_be_most_recent(tmp_path, capsys):
     assert exit_code == 2
     assert "most recent" in captured.err
     assert captured.out == ""
+
+
+def test_prior_sprint_markdown_shows_prior_values_and_change(tmp_path, capsys):
+    """AC1: sprint 2024-01 has 3 completed cards (created 2023-12-31, started
+    2024-01-02, completed 2024-01-08) and sprint 2024-02 has 5 completed cards
+    (created 2024-01-01, started 2024-01-03, completed 2024-01-07). Running with
+    --prior-sprint 2024-01 and --markdown shows the prior values and signed
+    change for cycle time, lead time, and throughput."""
+    prior_card = {"created": "2023-12-31", "started": "2024-01-02", "completed": "2024-01-08"}
+    current_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [prior_card] * 3, "2024-02": [current_card] * 5}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days (was 6 days, -2)" in captured.out
+    assert "- **Lead time**: 6 days (was 8 days, -2)" in captured.out
+    assert "- **Throughput**: 5 (was 3, +2)" in captured.out
+
+
+def test_markdown_without_prior_sprint_has_no_was(tmp_path, capsys):
+    """AC2: a JSON list with one completed card, run with --markdown and without
+    --prior-sprint, shows cycle time without the substring 'was' anywhere."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([COMPLETED_CARD]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days" in captured.out
+    assert "was" not in captured.out
+
+
+def test_prior_sprint_in_flight_card_shows_zero_cycle_time(tmp_path, capsys):
+    """AC3: sprint 2024-01 has one in-flight card (created 2024-01-01, started
+    2024-01-02, no completed date) and sprint 2024-02 has one completed card
+    (created 2024-01-01, started 2024-01-03, completed 2024-01-07). Running with
+    --prior-sprint 2024-01 and --markdown shows cycle time 4 days (was 0 days, +4)
+    and escalation rate 0% (was 0%, 0)."""
+    in_flight = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
+    sprints = {"2024-01": [in_flight], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days (was 0 days, +4)" in captured.out
+    assert "- **Escalation rate**: 0% (was 0%, 0)" in captured.out
+
+
+def test_prior_sprint_identical_dates_show_zero_change(tmp_path, capsys):
+    """AC4: both sprints have one completed card with identical dates. Running
+    with --prior-sprint 2024-01 and --markdown shows cycle time 4 days (was 4
+    days, 0) and throughput 1 (was 1, 0)."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days (was 4 days, 0)" in captured.out
+    assert "- **Throughput**: 1 (was 1, 0)" in captured.out

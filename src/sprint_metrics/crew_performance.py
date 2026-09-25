@@ -545,24 +545,49 @@ def _sprint_section(
     wip_limits: Mapping[str, int] | None,
     escalations: int,
     as_of: date | None = None,
+    prior_cards: Sequence[Card] | None = None,
 ) -> list[str]:
     """The current sprint's delivery metrics.
 
     Only rendered when there are cards: with none, the metrics are all zero for
     want of data rather than because the sprint went that way.
+
+    When ``prior_cards`` is provided, each metric line includes the prior
+    sprint's value and the signed change from prior to current.
     """
     if not cards:
         return ["No performance data available"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+    throughput = calculate_throughput(cards)
+    wip_violations = calculate_wip_violations(cards, wip_limits)
+    blocked_aging = calculate_blocked_aging(cards, as_of)
+    escalation_rate = calculate_escalation_rate(cards, escalations)
+
+    if prior_cards is not None:
+        prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
+        prior_throughput = calculate_throughput(prior_cards)
+        prior_wip = calculate_wip_violations(prior_cards, wip_limits)
+        prior_blocked = calculate_blocked_aging(prior_cards, as_of)
+        prior_escalation = calculate_escalation_rate(prior_cards, escalations)
+        return [
+            "## Current Sprint",
+            "",
+            f"- **Cycle time**: {cycle_time} days (was {prior_cycle} days, {_signed(cycle_time - prior_cycle)})",
+            f"- **Lead time**: {lead_time} days (was {prior_lead} days, {_signed(lead_time - prior_lead)})",
+            f"- **Throughput**: {throughput} (was {prior_throughput}, {_signed(throughput - prior_throughput)})",
+            f"- **WIP violations**: {wip_violations} (was {prior_wip}, {_signed(wip_violations - prior_wip)})",
+            f"- **Blocked aging**: {blocked_aging} days (was {prior_blocked} days, {_signed(blocked_aging - prior_blocked)})",
+            f"- **Escalation rate**: {escalation_rate}% (was {prior_escalation}%, {_signed(escalation_rate - prior_escalation)})",
+        ]
     return [
         "## Current Sprint",
         "",
         f"- **Cycle time**: {cycle_time} days",
         f"- **Lead time**: {lead_time} days",
-        f"- **Throughput**: {calculate_throughput(cards)} cards",
-        f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
-        f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
-        f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
+        f"- **Throughput**: {throughput} cards",
+        f"- **WIP violations**: {wip_violations}",
+        f"- **Blocked aging**: {blocked_aging} days",
+        f"- **Escalation rate**: {escalation_rate}%",
     ]
 
 
@@ -582,7 +607,8 @@ def format_markdown_report(
     than leaving the Scrum Master to explain a missing section.
 
     When ``prior_sprint`` and ``prior_cards`` are provided, a comparison section
-    for the prior sprint is included before the current sprint section.
+    for the prior sprint is included before the current sprint section, and the
+    current sprint's metrics show the prior value and signed change.
     """
     parsed = _as_cards(cards)
     report_date = as_of if as_of is not None else date.today()
@@ -597,7 +623,7 @@ def format_markdown_report(
             _prior_sprint_section(prior_cards, prior_sprint, wip_limits, escalations, as_of)
         )
     lines.append("")
-    lines.extend(_sprint_section(parsed, wip_limits, escalations, as_of))
+    lines.extend(_sprint_section(parsed, wip_limits, escalations, as_of, prior_cards))
     lines.append("")
     lines.extend(_summary_section(parsed))
     return "\n".join(lines)
@@ -891,3 +917,10 @@ def _prior_sprint_section(
         f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
         f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
     ]
+
+
+def _signed(delta: int) -> str:
+    """Format a signed change: a zero change is a bare ``0``, otherwise ``+N`` or ``-N``."""
+    if delta == 0:
+        return "0"
+    return f"{delta:+d}"
