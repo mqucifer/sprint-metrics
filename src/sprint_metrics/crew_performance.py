@@ -177,7 +177,9 @@ def format_performance_table(
     """Render the crew performance metrics as a markdown table.
 
     When ``prior_cards`` is provided, a second row labelled Prior is appended
-    after the Current row so the two periods can be compared at a glance.
+    after the Current row so the two periods can be compared at a glance, and a
+    third row labelled Delta shows the signed change in each metric from the
+    prior period to the current period.
     """
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
@@ -199,6 +201,11 @@ def format_performance_table(
         rows.append(
             f"| Prior | {prior_cycle} days | {prior_lead} days | {prior_throughput} "
             f"| {prior_wip} | {prior_blocked} days | {prior_escalation}% |"
+        )
+        rows.append(
+            f"| Delta | {_signed(cycle_time - prior_cycle)} days | {_signed(lead_time - prior_lead)} days "
+            f"| {_signed(throughput - prior_throughput)} | {_signed(wip_violations - prior_wip)} "
+            f"| {_signed(blocked_aging - prior_blocked)} days | {_signed(escalation_rate - prior_escalation)}% |"
         )
     return "\n".join(rows)
 

@@ -52,3 +52,54 @@ def test_no_prior_flag_shows_only_current_row(tmp_path, capsys):
     assert exit_code == 0
     assert "| Current |" in captured.out
     assert "| Prior |" not in captured.out
+
+
+def test_prior_flag_shows_delta_row_with_signed_changes(tmp_path, capsys):
+    """AC1: a current card with cycle time 4 days and a prior card with cycle time 6 days,
+    run with --prior, shows a Delta row with cycle time -2 days and lead time 0 days."""
+    current = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    prior = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([current]))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps([prior]))
+    exit_code = main([str(cards_path), "--prior", str(prior_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Delta | -2 days | 0 days | 0 | 0 | 0 days | 0% |" in captured.out
+    assert captured.out.index("| Current |") < captured.out.index("| Prior |")
+    assert captured.out.index("| Prior |") < captured.out.index("| Delta |")
+
+
+def test_prior_flag_shows_delta_row_throughput_increase(tmp_path, capsys):
+    """AC2: five completed cards in the current period and three in the prior period,
+    run with --prior, shows a Delta row with throughput +2."""
+    current = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    prior = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([current] * 5))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps([prior] * 3))
+    exit_code = main([str(cards_path), "--prior", str(prior_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Delta | -2 days | 0 days | +2 | 0 | 0 days | 0% |" in captured.out
+
+
+def test_prior_flag_shows_delta_row_with_empty_prior(tmp_path, capsys):
+    """AC3: a current card with cycle time 4 days, lead time 6 days, throughput 1,
+    and an empty prior period, run with --prior, shows a Delta row with cycle time
+    +4 days, lead time +6 days, throughput +1, WIP violations 0, blocked aging 0 days,
+    and escalation rate 0%."""
+    current = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([current]))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps([]))
+    exit_code = main([str(cards_path), "--prior", str(prior_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Delta | +4 days | +6 days | +1 | 0 | 0 days | 0% |" in captured.out
