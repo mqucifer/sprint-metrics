@@ -739,3 +739,49 @@ def test_markdown_shows_today_when_no_sprint_date(run_command):
 
     assert exit_code == 0
     assert f"Report date: {date.today().isoformat()}" in output
+
+
+def test_command_reports_json_sprint_date_when_sprint_date_is_provided(run_command):
+    """AC1: with --sprint-date 2024-01-31 and --json, the JSON output includes a
+    sprint_date key with value 2024-01-31 and still has all the metric keys."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], sprint_date="2024-01-31", json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["sprint_date"] == "2024-01-31"
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+
+
+def test_command_reports_json_without_sprint_date_when_no_sprint_date(run_command):
+    """AC2: without --sprint-date and with --json, the JSON output does not include
+    a sprint_date key but still includes all the metric keys."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert "sprint_date" not in data
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+
+
+def test_command_reports_json_error_for_invalid_cards_with_sprint_date(tmp_path, capsys):
+    """AC3: when the cards file is not valid JSON and --sprint-date is provided
+    with --json, the command exits with code 2, writes an error to stderr, and
+    writes nothing to stdout."""
+    path = tmp_path / "cards.json"
+    path.write_text("not valid json")
+    exit_code = main([str(path), "--sprint-date", "2024-01-31", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.err
+    assert captured.out == ""
