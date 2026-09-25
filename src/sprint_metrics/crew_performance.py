@@ -172,21 +172,35 @@ def format_performance_table(
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
     as_of: date | None = None,
+    prior_cards: Iterable[Card | Mapping[str, object]] | None = None,
 ) -> str:
-    """Render the crew performance metrics as a markdown table."""
+    """Render the crew performance metrics as a markdown table.
+
+    When ``prior_cards`` is provided, a second row labelled Prior is appended
+    after the Current row so the two periods can be compared at a glance.
+    """
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
     sprint_label = as_of.isoformat() if as_of is not None else "Current"
-    return "\n".join(
-        [
-            "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
-            "|--------|------------|-----------|------------|----------------|---------------|-----------------|",
-            f"| {sprint_label} | {cycle_time} days | {lead_time} days | {throughput} | {wip_violations} | {blocked_aging} days | {escalation_rate}% |",
-        ]
-    )
+    rows = [
+        "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
+        "|--------|------------|-----------|------------|----------------|---------------|-----------------|",
+        f"| {sprint_label} | {cycle_time} days | {lead_time} days | {throughput} | {wip_violations} | {blocked_aging} days | {escalation_rate}% |",
+    ]
+    if prior_cards is not None:
+        prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
+        prior_throughput = calculate_throughput(prior_cards)
+        prior_wip = calculate_wip_violations(prior_cards, wip_limits)
+        prior_blocked = calculate_blocked_aging(prior_cards, as_of)
+        prior_escalation = calculate_escalation_rate(prior_cards, escalations)
+        rows.append(
+            f"| Prior | {prior_cycle} days | {prior_lead} days | {prior_throughput} "
+            f"| {prior_wip} | {prior_blocked} days | {prior_escalation}% |"
+        )
+    return "\n".join(rows)
 
 
 def _load_cards(source: str) -> list[Card]:
@@ -268,6 +282,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "A prior sprint label (YYYY-MM) to compare against in the markdown report. "
             "The cards file must be a JSON object keyed by sprint label."
         ),
+    )
+    parser.add_argument(
+        "--prior",
+        type=argparse.FileType("r"),
+        default=None,
+        metavar="FILE",
+        help="JSON file of prior-period cards, shown as a second row in the default table.",
     )
     parser.add_argument(
         "--markdown",
@@ -424,6 +445,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"sprint-metrics: {exc}", file=sys.stderr)
         return 2
 
+    prior_cards = None
+    if args.prior is not None:
+        try:
+            prior_cards = _load_cards(_read(args.prior))
+        except (TypeError, ValueError) as exc:
+            print(f"sprint-metrics: {exc}", file=sys.stderr)
+            return 2
+
     if args.prometheus:
         print(format_prometheus_report(cards, wip_limits, args.escalations, sprint_date))
     elif args.markdown:
@@ -431,7 +460,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.json:
         print(format_json_report(cards, wip_limits, args.escalations, sprint_date))
     else:
-        print(format_performance_table(cards, wip_limits, args.escalations, sprint_date))
+        print(
+            format_performance_table(
+                cards, wip_limits, args.escalations, sprint_date, prior_cards=prior_cards
+            )
+        )
     return 0
 
 
