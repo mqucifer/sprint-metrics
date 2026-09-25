@@ -185,3 +185,68 @@ def test_sprint_range_with_sprint_date(tmp_path, capsys):
     assert exit_code == 0
     assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 29 days | 0% |" in captured.out
     assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 29 days | 0% |" in captured.out
+
+
+def test_sprint_range_with_wip_limits_and_escalations(tmp_path, capsys):
+    """AC1: WIP limits and escalations apply to each sprint in the range."""
+    in_flight = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
+    completed = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {
+        "2024-01": [in_flight] * 4 + [completed] * 2,
+        "2024-02": [in_flight] * 4 + [completed] * 2,
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    limits_path = tmp_path / "wip-limits.json"
+    limits_path.write_text(json.dumps({"In Progress": 3}))
+    exit_code = main(
+        [
+            str(path),
+            "--sprint-range",
+            "2024-01..2024-02",
+            "--wip-limits",
+            str(limits_path),
+            "--escalations",
+            "1",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| 2024-01 | 4 days | 6 days | 2 | 1 | 0 days | 50% |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 2 | 1 | 0 days | 50% |" in captured.out
+
+
+def test_sprint_range_without_wip_limits_or_escalations(tmp_path, capsys):
+    """AC2: without --wip-limits and --escalations, each sprint shows 0 violations and 0% escalation."""
+    in_flight = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
+    completed = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {
+        "2024-01": [in_flight] * 4 + [completed] * 2,
+        "2024-02": [in_flight] * 4 + [completed] * 2,
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| 2024-01 | 4 days | 6 days | 2 | 0 | 0 days | 0% |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 2 | 0 | 0 days | 0% |" in captured.out
+
+
+def test_sprint_range_with_invalid_wip_limits_format(tmp_path, capsys):
+    """AC3: a WIP limits file containing a JSON array is rejected with exit code 2."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    limits_path = tmp_path / "wip-limits.json"
+    limits_path.write_text(json.dumps(["In Progress", 3]))
+    exit_code = main(
+        [str(path), "--sprint-range", "2024-01..2024-02", "--wip-limits", str(limits_path)]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.err
+    assert captured.out == ""
