@@ -173,6 +173,7 @@ def format_performance_table(
     escalations: int = 0,
     as_of: date | None = None,
     prior_cards: Iterable[Card | Mapping[str, object]] | None = None,
+    thresholds: Mapping[str, float] | None = None,
 ) -> str:
     """Render the crew performance metrics as a markdown table.
 
@@ -180,6 +181,11 @@ def format_performance_table(
     after the Current row so the two periods can be compared at a glance, and a
     third row labelled Delta shows the signed change in each metric from the
     prior period to the current period.
+
+    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric cell
+    in the Current row whose value exceeds its threshold (strict greater-than;
+    meeting the threshold exactly is not a breach). The Prior and Delta rows are
+    never flagged.
     """
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
@@ -190,7 +196,12 @@ def format_performance_table(
     rows = [
         "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
         "|--------|------------|-----------|------------|----------------|---------------|-----------------|",
-        f"| {sprint_label} | {cycle_time} days | {lead_time} days | {throughput} | {wip_violations} | {blocked_aging} days | {escalation_rate}% |",
+        f"| {sprint_label} | {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')} "
+        f"| {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')} "
+        f"| {throughput}{_flag(throughput, thresholds, 'throughput')} "
+        f"| {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')} "
+        f"| {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')} "
+        f"| {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')} |",
     ]
     if prior_cards is not None:
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
@@ -495,7 +506,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         print(
             format_performance_table(
-                cards, wip_limits, args.escalations, sprint_date, prior_cards=prior_cards
+                cards,
+                wip_limits,
+                args.escalations,
+                sprint_date,
+                prior_cards=prior_cards,
+                thresholds=thresholds,
             )
         )
     return 0

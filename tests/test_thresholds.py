@@ -83,3 +83,74 @@ def test_invalid_thresholds_file_exits_2(tmp_path, capsys):
     assert exit_code == 2
     assert "sprint-metrics" in captured.err
     assert captured.out == ""
+
+
+def test_table_flags_cycle_time_when_threshold_breached(tmp_path, capsys):
+    """AC1: a card with cycle time 7 days and a thresholds file with cycle_time_days 5
+    produces a table where the cycle time cell carries a ⚠️ marker and no other cell
+    does."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main([str(cards_path), "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Current | 7 days ⚠️ | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert captured.out.count("⚠️") == 1
+
+
+def test_table_has_no_flags_without_thresholds_flag(tmp_path, capsys):
+    """AC2: without --thresholds, the table output contains no ⚠️ markers and the
+    metric cells are identical to the current behaviour."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    exit_code = main([str(cards_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Current | 7 days | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "⚠️" not in captured.out
+
+
+def test_table_does_not_flag_cycle_time_when_meeting_threshold_exactly(tmp_path, capsys):
+    """AC3: a card with cycle time exactly 5 days and a thresholds file with
+    cycle_time_days 5 produces no ⚠️ marker, because meeting the threshold
+    exactly is not a breach."""
+    card = {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main([str(cards_path), "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Current | 5 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "⚠️" not in captured.out
+
+
+def test_table_flags_only_current_row_with_prior(tmp_path, capsys):
+    """AC4: with --prior and --thresholds, only the Current row's cycle time cell
+    carries a ⚠️ marker; the Prior and Delta rows do not."""
+    current = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    prior = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([current]))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps([prior]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main(
+        [str(cards_path), "--prior", str(prior_path), "--thresholds", str(thresholds_path)]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Current | 7 days ⚠️ | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Prior | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Delta | +3 days | +1 days | 0 | 0 | 0 days | 0% |" in captured.out
+    assert captured.out.count("⚠️") == 1
