@@ -701,3 +701,41 @@ def test_command_rejects_invalid_sprint_date(tmp_path, capsys):
     assert exit_code == 2
     assert "sprint-metrics" in captured.err
     assert captured.out == ""
+
+
+def test_table_shows_sprint_date_when_sprint_date_is_provided(run_command):
+    """AC1: with --sprint-date 2024-01-31, the table output includes the sprint
+    date and does not include 'Current'."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], sprint_date="2024-01-31")
+
+    assert exit_code == 0
+    assert "| 2024-01-31 |" in output
+    assert "| Current |" not in output
+
+
+def test_markdown_shows_sprint_date_when_sprint_date_is_provided(run_command):
+    """AC2: with --sprint-date 2024-01-31 and --markdown, the markdown output
+    includes 'Report date: 2024-01-31'."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], sprint_date="2024-01-31", markdown=True)
+
+    assert exit_code == 0
+    assert "Report date: 2024-01-31" in output
+
+
+def test_table_shows_current_when_no_sprint_date(run_command):
+    """AC3: without --sprint-date, the table output includes 'Current'."""
+    exit_code, output, _ = run_command([COMPLETED_CARD])
+
+    assert exit_code == 0
+    assert "| Current |" in output
+
+
+def test_markdown_shows_today_when_no_sprint_date(run_command):
+    """AC4: without --sprint-date, the markdown output includes 'Report date:'
+    followed by the current date in ISO-8601 format."""
+    from datetime import date
+
+    exit_code, output, _ = run_command([COMPLETED_CARD], markdown=True)
+
+    assert exit_code == 0
+    assert f"Report date: {date.today().isoformat()}" in output
