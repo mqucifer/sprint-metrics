@@ -27,3 +27,16 @@ intent:
     never_touch:
     - .github/workflows/board.yml
   priority: 1
+design:
+  language: Python 3.12
+  dependencies: 'No runtime dependencies (standard library only: argparse, json, http.server,
+    threading, dataclasses, datetime, collections.abc, contextlib, sys). Dev dependencies:
+    pytest>=8.0, ruff>=0.6.'
+  sandbox: Python 3.12 interpreter and uv (the package manager). No other tools are
+    required to build or test.
+  checks:
+  - uv run ruff check .
+  - uv run pytest -q
+  release_how: A release is a version tag on the sprint-metrics repository. The crew
+    installs the tool as a git dependency pinned to that tag. The version in pyproject.toml
+    is updated to match the tag before it is cut.
