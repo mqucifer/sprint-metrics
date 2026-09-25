@@ -570,3 +570,142 @@ def test_sprint_range_json_missing_sprint_in_range_exits_2(tmp_path, capsys):
     assert exit_code == 2
     assert "2024-03" in captured.err
     assert captured.out == ""
+
+
+def test_sprint_range_json_delta_basic(tmp_path, capsys):
+    """AC1: a sprints JSON object with keys 2024-01 and 2024-02, where 2024-01 contains
+    one completed card created 2024-01-01, started 2024-01-03, completed 2024-01-07,
+    and 2024-02 contains one completed card created 2024-01-01, started 2024-01-02,
+    completed 2024-01-08. When the command is run with --sprint-range 2024-01..2024-02
+    and --json, the exit code is 0 and stdout JSON has 2024-01.delta null and
+    2024-02.delta cycle_time_days 2, lead_time_days 1, throughput 0, wip_violations 0,
+    blocked_aging_days 0, escalation_rate_percent 0."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+        "2024-02": [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-08"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-01"]["delta"] is None
+    assert data["2024-02"]["delta"]["cycle_time_days"] == 2
+    assert data["2024-02"]["delta"]["lead_time_days"] == 1
+    assert data["2024-02"]["delta"]["throughput"] == 0
+    assert data["2024-02"]["delta"]["wip_violations"] == 0
+    assert data["2024-02"]["delta"]["blocked_aging_days"] == 0
+    assert data["2024-02"]["delta"]["escalation_rate_percent"] == 0
+
+
+def test_sprint_range_json_delta_wip_violations(tmp_path, capsys):
+    """AC2: a sprints JSON object with keys 2024-01 and 2024-02, where 2024-01 contains
+    two in-progress cards, 2024-02 contains four in-progress cards, and a WIP limits
+    input with In Progress set to 3. When the command is run with --sprint-range
+    2024-01..2024-02, --wip-limits, and --json, the exit code is 0 and stdout JSON has
+    2024-02.delta.wip_violations 1."""
+    in_progress = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
+    sprints = {
+        "2024-01": [in_progress] * 2,
+        "2024-02": [in_progress] * 4,
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    limits_path = tmp_path / "wip-limits.json"
+    limits_path.write_text(json.dumps({"In Progress": 3}))
+    exit_code = main(
+        [
+            str(path),
+            "--sprint-range",
+            "2024-01..2024-02",
+            "--wip-limits",
+            str(limits_path),
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-02"]["delta"]["wip_violations"] == 1
+
+
+def test_sprint_range_json_delta_escalation_rate(tmp_path, capsys):
+    """AC3: a sprints JSON object with keys 2024-01 and 2024-02, where 2024-01 contains
+    ten completed cards, 2024-02 contains five completed cards, and two escalations are
+    supplied. When the command is run with --sprint-range 2024-01..2024-02, --escalations 2,
+    and --json, the exit code is 0 and stdout JSON has 2024-02.delta.escalation_rate_percent 20."""
+    completed = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {
+        "2024-01": [completed] * 10,
+        "2024-02": [completed] * 5,
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main(
+        [str(path), "--sprint-range", "2024-01..2024-02", "--escalations", "2", "--json"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-02"]["delta"]["escalation_rate_percent"] == 20
+
+
+def test_sprint_range_json_delta_blocked_aging(tmp_path, capsys):
+    """AC4: a sprints JSON object with keys 2024-01 and 2024-02, where 2024-01 contains
+    one blocked card created 2024-01-01 and blocked_since 2024-01-02, 2024-02 contains
+    one blocked card created 2024-01-01 and blocked_since 2024-01-01, and --sprint-date
+    2024-01-31 is supplied. When the command is run with --sprint-range 2024-01..2024-02,
+    --sprint-date 2024-01-31, and --json, the exit code is 0 and stdout JSON has
+    2024-02.delta.blocked_aging_days 1."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "blocked_since": "2024-01-02"}],
+        "2024-02": [{"created": "2024-01-01", "blocked_since": "2024-01-01"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main(
+        [str(path), "--sprint-range", "2024-01..2024-02", "--sprint-date", "2024-01-31", "--json"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-02"]["delta"]["blocked_aging_days"] == 1
+
+
+def test_sprint_range_json_delta_empty_prior(tmp_path, capsys):
+    """AC5: a sprints JSON object with keys 2024-01 and 2024-02, where 2024-01 contains
+    an empty list and 2024-02 contains one completed card created 2024-01-01, started
+    2024-01-03, completed 2024-01-07. When the command is run with --sprint-range
+    2024-01..2024-02 and --json, the exit code is 0 and stdout JSON has 2024-02.prior
+    cycle_time_days 0, lead_time_days 0, throughput 0, wip_violations 0,
+    blocked_aging_days 0, escalation_rate_percent 0, and 2024-02.delta cycle_time_days 4,
+    lead_time_days 6, throughput 1, wip_violations 0, blocked_aging_days 0,
+    escalation_rate_percent 0."""
+    sprints = {
+        "2024-01": [],
+        "2024-02": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-02"]["prior"]["cycle_time_days"] == 0
+    assert data["2024-02"]["prior"]["lead_time_days"] == 0
+    assert data["2024-02"]["prior"]["throughput"] == 0
+    assert data["2024-02"]["prior"]["wip_violations"] == 0
+    assert data["2024-02"]["prior"]["blocked_aging_days"] == 0
+    assert data["2024-02"]["prior"]["escalation_rate_percent"] == 0
+    assert data["2024-02"]["delta"]["cycle_time_days"] == 4
+    assert data["2024-02"]["delta"]["lead_time_days"] == 6
+    assert data["2024-02"]["delta"]["throughput"] == 1
+    assert data["2024-02"]["delta"]["wip_violations"] == 0
+    assert data["2024-02"]["delta"]["blocked_aging_days"] == 0
+    assert data["2024-02"]["delta"]["escalation_rate_percent"] == 0

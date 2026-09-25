@@ -866,7 +866,9 @@ def format_sprint_range_json(
     the single-sprint report, so a script can process the range without parsing
     a table. Each sprint also includes a ``prior`` key holding the six metrics
     computed from the immediately preceding sprint label in the range, or
-    ``null`` for the first sprint.
+    ``null`` for the first sprint, and a ``delta`` key holding the signed change
+    in each metric from the prior period to the current period, or ``null`` for
+    the first sprint.
     """
     report: dict[str, object] = {}
     for index, label in enumerate(labels):
@@ -882,6 +884,7 @@ def format_sprint_range_json(
         }
         if index == 0:
             prior = None
+            delta = None
         else:
             prior_label = labels[index - 1]
             prior_cards = sprints[prior_label]
@@ -894,10 +897,22 @@ def format_sprint_range_json(
                 "blocked_aging_days": calculate_blocked_aging(prior_cards, as_of),
                 "escalation_rate_percent": calculate_escalation_rate(prior_cards, escalations),
             }
+            delta = {
+                "cycle_time_days": sprint_metrics["cycle_time_days"] - prior["cycle_time_days"],
+                "lead_time_days": sprint_metrics["lead_time_days"] - prior["lead_time_days"],
+                "throughput": sprint_metrics["throughput"] - prior["throughput"],
+                "wip_violations": sprint_metrics["wip_violations"] - prior["wip_violations"],
+                "blocked_aging_days": sprint_metrics["blocked_aging_days"]
+                - prior["blocked_aging_days"],
+                "escalation_rate_percent": (
+                    sprint_metrics["escalation_rate_percent"] - prior["escalation_rate_percent"]
+                ),
+            }
         report[label] = {
             **sprint_metrics,
             "flags": calculate_flags(cards, wip_limits, escalations, as_of, thresholds),
             "prior": prior,
+            "delta": delta,
         }
     return json.dumps(report)
 
