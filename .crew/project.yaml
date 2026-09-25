@@ -15,7 +15,9 @@ intent:
     - Serves the Prometheus metrics at /metrics in scrape mode.
     - Packaging and deployment of the tool so the crew can invoke it.
     out_of_scope:
-    - Reporting on anything outside of GitHub and the projects the crew is building.
+    - 'Reporting on anything beyond the projects the Sponsor has asked the crew to
+      contribute to: today, one or more repositories in this GitHub organization''s
+      crew project. Expanding past this organization and project is not planned.'
     - An MCP server, for now. The crew invokes the tool directly.
   release:
     deploys: true
