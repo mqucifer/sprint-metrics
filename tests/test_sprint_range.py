@@ -13,7 +13,9 @@ COMPLETED_CARD = {"created": "2024-01-01", "started": "2024-01-03", "completed":
 def run_range_command(tmp_path, capsys):
     """Run the command with a JSON object of sprint cards and a --sprint-range argument."""
 
-    def run(sprints, sprint_range, wip_limits=None, escalations=0, sprint_date=None):
+    def run(
+        sprints, sprint_range, wip_limits=None, escalations=0, sprint_date=None, json_output=False
+    ):
         path = tmp_path / "sprints.json"
         path.write_text(json.dumps(sprints))
         argv = [str(path), "--sprint-range", sprint_range]
@@ -25,6 +27,8 @@ def run_range_command(tmp_path, capsys):
             argv += ["--escalations", str(escalations)]
         if sprint_date is not None:
             argv += ["--sprint-date", sprint_date]
+        if json_output:
+            argv += ["--json"]
         exit_code = main(argv)
         captured = capsys.readouterr()
         return exit_code, captured.out, captured.err
@@ -245,6 +249,55 @@ def test_sprint_range_with_invalid_wip_limits_format(tmp_path, capsys):
     exit_code = main(
         [str(path), "--sprint-range", "2024-01..2024-02", "--wip-limits", str(limits_path)]
     )
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.err
+    assert captured.out == ""
+
+
+def test_sprint_range_json_reports_metrics_per_sprint(run_range_command):
+    """AC1: a JSON object with keys '2024-01' and '2024-02', each containing one
+    completed card, produces a JSON object keyed by sprint label when --sprint-range
+    2024-01..2024-02 and --json are given. Each value has the six metrics."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02", json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert set(data.keys()) == {"2024-01", "2024-02"}
+    for label in ("2024-01", "2024-02"):
+        assert data[label]["cycle_time_days"] == 4
+        assert data[label]["lead_time_days"] == 6
+        assert data[label]["throughput"] == 1
+        assert data[label]["wip_violations"] == 0
+        assert data[label]["blocked_aging_days"] == 0
+        assert data[label]["escalation_rate_percent"] == 0
+
+
+def test_sprint_range_json_missing_sprint_exits_2(tmp_path, capsys):
+    """AC2: when the range includes a sprint label not present in the JSON object
+    and --json is used, the command exits 2, writes an error to stderr naming the
+    missing label, and writes nothing to stdout."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-03", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "2024-03" in captured.err
+    assert captured.out == ""
+
+
+def test_sprint_range_json_invalid_card_date_exits_2(tmp_path, capsys):
+    """AC3: when a card's created value is not an ISO-8601 date and --sprint-range
+    with --json is used, the command exits 2, writes an error to stderr, and
+    writes nothing to stdout."""
+    sprints = {"2024-01": [{"created": "not-a-date"}]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01", "--json"])
     captured = capsys.readouterr()
 
     assert exit_code == 2

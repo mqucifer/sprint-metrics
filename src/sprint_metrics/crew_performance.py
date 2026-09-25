@@ -334,7 +334,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 2
 
-        print(format_sprint_range_table(sprints, labels, wip_limits, args.escalations, sprint_date))
+        if args.json:
+            print(
+                format_sprint_range_json(sprints, labels, wip_limits, args.escalations, sprint_date)
+            )
+        else:
+            print(
+                format_sprint_range_table(
+                    sprints, labels, wip_limits, args.escalations, sprint_date
+                )
+            )
         return 0
 
     try:
@@ -673,3 +682,30 @@ def format_sprint_range_table(
             f"| {wip_violations} | {blocked_aging} days | {escalation_rate}% |"
         )
     return "\n".join(rows)
+
+
+def format_sprint_range_json(
+    sprints: Mapping[str, list[Card]],
+    labels: Sequence[str],
+    wip_limits: Mapping[str, int] | None = None,
+    escalations: int = 0,
+    as_of: date | None = None,
+) -> str:
+    """Render one JSON object per sprint label in ``labels``, keyed by label.
+
+    Each value carries the same six metrics the table and single-sprint JSON
+    reports produce, so a script can process the range without parsing a table.
+    """
+    report: dict[str, object] = {}
+    for label in labels:
+        cards = sprints[label]
+        cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+        report[label] = {
+            "cycle_time_days": cycle_time,
+            "lead_time_days": lead_time,
+            "throughput": calculate_throughput(cards),
+            "wip_violations": calculate_wip_violations(cards, wip_limits),
+            "blocked_aging_days": calculate_blocked_aging(cards, as_of),
+            "escalation_rate_percent": calculate_escalation_rate(cards, escalations),
+        }
+    return json.dumps(report)
