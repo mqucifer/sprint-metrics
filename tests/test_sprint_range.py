@@ -14,7 +14,13 @@ def run_range_command(tmp_path, capsys):
     """Run the command with a JSON object of sprint cards and a --sprint-range argument."""
 
     def run(
-        sprints, sprint_range, wip_limits=None, escalations=0, sprint_date=None, json_output=False
+        sprints,
+        sprint_range,
+        wip_limits=None,
+        escalations=0,
+        sprint_date=None,
+        json_output=False,
+        markdown=False,
     ):
         path = tmp_path / "sprints.json"
         path.write_text(json.dumps(sprints))
@@ -29,6 +35,8 @@ def run_range_command(tmp_path, capsys):
             argv += ["--sprint-date", sprint_date]
         if json_output:
             argv += ["--json"]
+        if markdown:
+            argv += ["--markdown"]
         exit_code = main(argv)
         captured = capsys.readouterr()
         return exit_code, captured.out, captured.err
@@ -303,3 +311,63 @@ def test_sprint_range_json_invalid_card_date_exits_2(tmp_path, capsys):
     assert exit_code == 2
     assert captured.err
     assert captured.out == ""
+
+
+def test_sprint_range_markdown_reports_one_section_per_sprint(run_range_command):
+    """AC1: a JSON object with keys '2024-01' and '2024-02', each containing one
+    completed card, produces a markdown report with one section per sprint when
+    --sprint-range 2024-01..2024-02 and --markdown are given. The report starts
+    with '# Crew Performance Report', includes 'Report date:', shows '## Sprint
+    2024-01' before '## Sprint 2024-02', and each section carries the sprint's
+    delivery metrics and summary counts."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02", markdown=True)
+
+    assert exit_code == 0
+    assert output.startswith("# Crew Performance Report")
+    assert "Report date:" in output
+    idx_01 = output.index("## Sprint 2024-01")
+    idx_02 = output.index("## Sprint 2024-02")
+    assert idx_01 < idx_02
+    for label in ("2024-01", "2024-02"):
+        section = output[idx_01:] if label == "2024-01" else output[idx_02:]
+        assert f"## Sprint {label}" in section
+        assert "- **Cycle time**: 4 days" in section
+        assert "- **Lead time**: 6 days" in section
+        assert "- **Throughput**: 1 cards" in section
+        assert "- **WIP violations**: 0" in section
+        assert "- **Blocked aging**: 0 days" in section
+        assert "- **Escalation rate**: 0%" in section
+        assert "- **Completed**: 1" in section
+        assert "- **In progress**: 0" in section
+        assert "- **Blocked**: 0" in section
+
+
+def test_sprint_range_markdown_missing_sprint_exits_2(run_range_command):
+    """AC2: when the range includes a sprint label not present in the JSON object
+    and --markdown is used, the command exits 2, writes an error to stderr naming
+    the missing label, and writes nothing to stdout."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    exit_code, output, errors = run_range_command(sprints, "2024-01..2024-03", markdown=True)
+
+    assert exit_code == 2
+    assert "2024-03" in errors
+    assert output == ""
+
+
+def test_sprint_range_markdown_empty_sprint_shows_no_data(run_range_command):
+    """AC3: a sprint with no cards shows 'No performance data available' and zero
+    summary counts, while a sprint with cards shows its delivery metrics."""
+    sprints = {"2024-01": [], "2024-02": [COMPLETED_CARD]}
+    exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02", markdown=True)
+
+    assert exit_code == 0
+    idx_01 = output.index("## Sprint 2024-01")
+    idx_02 = output.index("## Sprint 2024-02")
+    assert idx_01 < idx_02
+    section_01 = output[idx_01:idx_02]
+    assert "No performance data available" in section_01
+    assert "- **Completed**: 0" in section_01
+    assert "- **Cycle time**" not in section_01
+    section_02 = output[idx_02:]
+    assert "- **Cycle time**: 4 days" in section_02

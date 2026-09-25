@@ -338,6 +338,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 format_sprint_range_json(sprints, labels, wip_limits, args.escalations, sprint_date)
             )
+        elif args.markdown:
+            print(
+                format_sprint_range_markdown(
+                    sprints, labels, wip_limits, args.escalations, sprint_date
+                )
+            )
         else:
             print(
                 format_sprint_range_table(
@@ -709,3 +715,45 @@ def format_sprint_range_json(
             "escalation_rate_percent": calculate_escalation_rate(cards, escalations),
         }
     return json.dumps(report)
+
+
+def format_sprint_range_markdown(
+    sprints: Mapping[str, list[Card]],
+    labels: Sequence[str],
+    wip_limits: Mapping[str, int] | None = None,
+    escalations: int = 0,
+    as_of: date | None = None,
+) -> str:
+    """Render one markdown section per sprint label in ``labels``, in order.
+
+    The report opens with the same heading and report date as the single-sprint
+    markdown report, then carries one ``## Sprint <label>`` section per sprint so
+    a Scrum Master can paste a comparable record of past sprints into the
+    standup issue. Each section shows the sprint's delivery metrics when it has
+    cards, or ``No performance data available`` when it does not, and always
+    closes with the summary of work in each state.
+    """
+    report_date = as_of if as_of is not None else date.today()
+    lines: list[str] = [
+        "# Crew Performance Report",
+        "",
+        f"Report date: {report_date.isoformat()}",
+    ]
+    for label in labels:
+        cards = sprints[label]
+        lines.append("")
+        lines.append(f"## Sprint {label}")
+        lines.append("")
+        if not cards:
+            lines.append("No performance data available")
+        else:
+            cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+            lines.append(f"- **Cycle time**: {cycle_time} days")
+            lines.append(f"- **Lead time**: {lead_time} days")
+            lines.append(f"- **Throughput**: {calculate_throughput(cards)} cards")
+            lines.append(f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}")
+            lines.append(f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days")
+            lines.append(f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%")
+        lines.append("")
+        lines.extend(_summary_section(cards))
+    return "\n".join(lines)
