@@ -431,6 +431,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         try:
             wip_limits = _load_wip_limits(wip_source) if wip_source is not None else None
+            thresholds = (
+                _load_thresholds(thresholds_source) if thresholds_source is not None else None
+            )
         except (TypeError, ValueError) as exc:
             print(f"sprint-metrics: {exc}", file=sys.stderr)
             return 2
@@ -448,6 +451,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     sprint_date,
                     prior_sprint=args.prior_sprint,
                     prior_cards=prior_cards,
+                    thresholds=thresholds,
                 )
             )
         elif args.json:
@@ -481,7 +485,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.prometheus:
         print(format_prometheus_report(cards, wip_limits, args.escalations, sprint_date))
     elif args.markdown:
-        print(format_markdown_report(cards, wip_limits, args.escalations, sprint_date))
+        print(
+            format_markdown_report(
+                cards, wip_limits, args.escalations, sprint_date, thresholds=thresholds
+            )
+        )
     elif args.json:
         print(format_json_report(cards, wip_limits, args.escalations, sprint_date, thresholds))
     else:
@@ -571,6 +579,7 @@ def _sprint_section(
     escalations: int,
     as_of: date | None = None,
     prior_cards: Sequence[Card] | None = None,
+    thresholds: Mapping[str, float] | None = None,
 ) -> list[str]:
     """The current sprint's delivery metrics.
 
@@ -579,6 +588,10 @@ def _sprint_section(
 
     When ``prior_cards`` is provided, each metric line includes the prior
     sprint's value and the signed change from prior to current.
+
+    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric line
+    whose value exceeds its threshold (strict greater-than; meeting the
+    threshold exactly is not a breach).
     """
     if not cards:
         return ["No performance data available"]
@@ -597,22 +610,22 @@ def _sprint_section(
         return [
             "## Current Sprint",
             "",
-            f"- **Cycle time**: {cycle_time} days (was {prior_cycle} days, {_signed(cycle_time - prior_cycle)})",
-            f"- **Lead time**: {lead_time} days (was {prior_lead} days, {_signed(lead_time - prior_lead)})",
-            f"- **Throughput**: {throughput} (was {prior_throughput}, {_signed(throughput - prior_throughput)})",
-            f"- **WIP violations**: {wip_violations} (was {prior_wip}, {_signed(wip_violations - prior_wip)})",
-            f"- **Blocked aging**: {blocked_aging} days (was {prior_blocked} days, {_signed(blocked_aging - prior_blocked)})",
-            f"- **Escalation rate**: {escalation_rate}% (was {prior_escalation}%, {_signed(escalation_rate - prior_escalation)})",
+            f"- **Cycle time**: {cycle_time} days (was {prior_cycle} days, {_signed(cycle_time - prior_cycle)}){_flag(cycle_time, thresholds, 'cycle_time_days')}",
+            f"- **Lead time**: {lead_time} days (was {prior_lead} days, {_signed(lead_time - prior_lead)}){_flag(lead_time, thresholds, 'lead_time_days')}",
+            f"- **Throughput**: {throughput} (was {prior_throughput}, {_signed(throughput - prior_throughput)}){_flag(throughput, thresholds, 'throughput')}",
+            f"- **WIP violations**: {wip_violations} (was {prior_wip}, {_signed(wip_violations - prior_wip)}){_flag(wip_violations, thresholds, 'wip_violations')}",
+            f"- **Blocked aging**: {blocked_aging} days (was {prior_blocked} days, {_signed(blocked_aging - prior_blocked)}){_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
+            f"- **Escalation rate**: {escalation_rate}% (was {prior_escalation}%, {_signed(escalation_rate - prior_escalation)}){_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
         ]
     return [
         "## Current Sprint",
         "",
-        f"- **Cycle time**: {cycle_time} days",
-        f"- **Lead time**: {lead_time} days",
-        f"- **Throughput**: {throughput} cards",
-        f"- **WIP violations**: {wip_violations}",
-        f"- **Blocked aging**: {blocked_aging} days",
-        f"- **Escalation rate**: {escalation_rate}%",
+        f"- **Cycle time**: {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')}",
+        f"- **Lead time**: {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')}",
+        f"- **Throughput**: {throughput} cards{_flag(throughput, thresholds, 'throughput')}",
+        f"- **WIP violations**: {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}",
+        f"- **Blocked aging**: {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
+        f"- **Escalation rate**: {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
     ]
 
 
@@ -623,6 +636,7 @@ def format_markdown_report(
     as_of: date | None = None,
     prior_sprint: str | None = None,
     prior_cards: Sequence[Card] | None = None,
+    thresholds: Mapping[str, float] | None = None,
 ) -> str:
     """Render the crew performance metrics as a markdown report for the standup issue.
 
@@ -634,6 +648,9 @@ def format_markdown_report(
     When ``prior_sprint`` and ``prior_cards`` are provided, a comparison section
     for the prior sprint is included before the current sprint section, and the
     current sprint's metrics show the prior value and signed change.
+
+    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric line
+    whose value exceeds its threshold.
     """
     parsed = _as_cards(cards)
     report_date = as_of if as_of is not None else date.today()
@@ -648,7 +665,7 @@ def format_markdown_report(
             _prior_sprint_section(prior_cards, prior_sprint, wip_limits, escalations, as_of)
         )
     lines.append("")
-    lines.extend(_sprint_section(parsed, wip_limits, escalations, as_of, prior_cards))
+    lines.extend(_sprint_section(parsed, wip_limits, escalations, as_of, prior_cards, thresholds))
     lines.append("")
     lines.extend(_summary_section(parsed))
     return "\n".join(lines)
@@ -1008,3 +1025,18 @@ def _load_thresholds(source: str) -> dict[str, float]:
     if not isinstance(raw, Mapping):
         raise TypeError("expected a JSON object of thresholds, keyed by metric name")
     return {str(key): float(value) for key, value in raw.items()}
+
+
+def _flag(value: int, thresholds: Mapping[str, float] | None, metric: str) -> str:
+    """Return ' ⚠️' when ``value`` exceeds the threshold for ``metric``, else ''.
+
+    A ``None`` thresholds mapping means no thresholds are in effect, so no
+    metric is flagged. The comparison is strict greater-than: meeting the
+    threshold exactly is not a breach.
+    """
+    if thresholds is None:
+        return ""
+    threshold = thresholds.get(metric)
+    if threshold is None:
+        return ""
+    return " ⚠️" if value > threshold else ""
