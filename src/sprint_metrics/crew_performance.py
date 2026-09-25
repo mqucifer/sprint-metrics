@@ -634,6 +634,7 @@ def format_json_report(
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
+    flags = calculate_flags(parsed, wip_limits, escalations, as_of)
     report: dict[str, object] = {
         "cycle_time_days": cycle_time,
         "lead_time_days": lead_time,
@@ -641,6 +642,7 @@ def format_json_report(
         "wip_violations": wip_violations,
         "blocked_aging_days": blocked_aging,
         "escalation_rate_percent": escalation_rate,
+        "flags": flags,
     }
     if as_of is not None:
         report["sprint_date"] = as_of.isoformat()
@@ -891,3 +893,44 @@ def _signed(delta: int) -> str:
     if delta == 0:
         return "0"
     return f"{delta:+d}"
+
+
+# Fixed default thresholds for flagging metric breaches in JSON output.
+# These are not configurable; they represent the crew's standing expectations.
+DEFAULT_THRESHOLDS: dict[str, float] = {
+    "cycle_time_days": 5,
+    "lead_time_days": 7,
+    "throughput": 1,
+    "wip_violations": 0,
+    "blocked_aging_days": 5,
+    "escalation_rate_percent": 10,
+}
+
+
+def calculate_flags(
+    cards: Iterable[Card | Mapping[str, object]],
+    wip_limits: Mapping[str, int] | None = None,
+    escalations: int = 0,
+    as_of: date | None = None,
+) -> dict[str, bool]:
+    """Return a dict mapping each metric name to whether it breaches its default threshold.
+
+    The thresholds are fixed defaults defined in ``DEFAULT_THRESHOLDS``. A metric
+    is flagged as breached when its value exceeds (or, for throughput, falls
+    below) the threshold.
+    """
+    parsed = _as_cards(cards)
+    cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
+    throughput = calculate_throughput(parsed)
+    wip_violations = calculate_wip_violations(parsed, wip_limits)
+    blocked_aging = calculate_blocked_aging(parsed, as_of)
+    escalation_rate = calculate_escalation_rate(parsed, escalations)
+
+    return {
+        "cycle_time_days": cycle_time > DEFAULT_THRESHOLDS["cycle_time_days"],
+        "lead_time_days": lead_time > DEFAULT_THRESHOLDS["lead_time_days"],
+        "throughput": throughput < DEFAULT_THRESHOLDS["throughput"],
+        "wip_violations": wip_violations > DEFAULT_THRESHOLDS["wip_violations"],
+        "blocked_aging_days": blocked_aging > DEFAULT_THRESHOLDS["blocked_aging_days"],
+        "escalation_rate_percent": escalation_rate > DEFAULT_THRESHOLDS["escalation_rate_percent"],
+    }
