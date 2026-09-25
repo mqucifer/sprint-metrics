@@ -296,6 +296,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="PORT",
         help="Port for the scrape server (default: 9100). Use 0 for an ephemeral port.",
     )
+    parser.add_argument(
+        "--thresholds",
+        type=argparse.FileType("r"),
+        default=None,
+        metavar="FILE",
+        help=(
+            "JSON file of metric thresholds keyed by metric name, e.g. "
+            '{"cycle_time_days": 3}; overrides the built-in defaults for the '
+            "metrics it specifies."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.sprint_date is not None:
@@ -321,6 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     source = _read(args.cards)
     wip_source = _read(args.wip_limits) if args.wip_limits is not None else None
+    thresholds_source = _read(args.thresholds) if args.thresholds is not None else None
 
     if args.sprint_range is not None:
         try:
@@ -420,6 +432,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         cards = _load_cards(source)
         wip_limits = _load_wip_limits(wip_source) if wip_source is not None else None
+        thresholds = _load_thresholds(thresholds_source) if thresholds_source is not None else None
     except (TypeError, ValueError) as exc:
         print(f"sprint-metrics: {exc}", file=sys.stderr)
         return 2
@@ -429,7 +442,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.markdown:
         print(format_markdown_report(cards, wip_limits, args.escalations, sprint_date))
     elif args.json:
-        print(format_json_report(cards, wip_limits, args.escalations, sprint_date))
+        print(format_json_report(cards, wip_limits, args.escalations, sprint_date, thresholds))
     else:
         print(format_performance_table(cards, wip_limits, args.escalations, sprint_date))
     return 0
@@ -626,6 +639,7 @@ def format_json_report(
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
     as_of: date | None = None,
+    thresholds: Mapping[str, float] | None = None,
 ) -> str:
     """Render the crew performance metrics as a JSON object."""
     parsed = _as_cards(cards)
@@ -634,7 +648,7 @@ def format_json_report(
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
-    flags = calculate_flags(parsed, wip_limits, escalations, as_of)
+    flags = calculate_flags(parsed, wip_limits, escalations, as_of, thresholds)
     report: dict[str, object] = {
         "cycle_time_days": cycle_time,
         "lead_time_days": lead_time,
@@ -912,13 +926,16 @@ def calculate_flags(
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
     as_of: date | None = None,
+    thresholds: Mapping[str, float] | None = None,
 ) -> dict[str, bool]:
-    """Return a dict mapping each metric name to whether it breaches its default threshold.
+    """Return a dict mapping each metric name to whether it breaches its threshold.
 
-    The thresholds are fixed defaults defined in ``DEFAULT_THRESHOLDS``. A metric
-    is flagged as breached when its value exceeds (or, for throughput, falls
-    below) the threshold.
+    The thresholds are the user-supplied ``thresholds`` merged over
+    ``DEFAULT_THRESHOLDS``: a metric the user did not specify falls back to its
+    default. A metric is flagged as breached when its value exceeds (or, for
+    throughput, falls below) the threshold.
     """
+    effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     parsed = _as_cards(cards)
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
     throughput = calculate_throughput(parsed)
@@ -927,10 +944,18 @@ def calculate_flags(
     escalation_rate = calculate_escalation_rate(parsed, escalations)
 
     return {
-        "cycle_time_days": cycle_time > DEFAULT_THRESHOLDS["cycle_time_days"],
-        "lead_time_days": lead_time > DEFAULT_THRESHOLDS["lead_time_days"],
-        "throughput": throughput < DEFAULT_THRESHOLDS["throughput"],
-        "wip_violations": wip_violations > DEFAULT_THRESHOLDS["wip_violations"],
-        "blocked_aging_days": blocked_aging > DEFAULT_THRESHOLDS["blocked_aging_days"],
-        "escalation_rate_percent": escalation_rate > DEFAULT_THRESHOLDS["escalation_rate_percent"],
+        "cycle_time_days": cycle_time > effective["cycle_time_days"],
+        "lead_time_days": lead_time > effective["lead_time_days"],
+        "throughput": throughput < effective["throughput"],
+        "wip_violations": wip_violations > effective["wip_violations"],
+        "blocked_aging_days": blocked_aging > effective["blocked_aging_days"],
+        "escalation_rate_percent": escalation_rate > effective["escalation_rate_percent"],
     }
+
+
+def _load_thresholds(source: str) -> dict[str, float]:
+    """Parse the JSON object of metric thresholds the command was given."""
+    raw = json.loads(source) if source.strip() else {}
+    if not isinstance(raw, Mapping):
+        raise TypeError("expected a JSON object of thresholds, keyed by metric name")
+    return {str(key): float(value) for key, value in raw.items()}
