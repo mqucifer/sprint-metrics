@@ -179,11 +179,12 @@ def format_performance_table(
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
+    sprint_label = as_of.isoformat() if as_of is not None else "Current"
     return "\n".join(
         [
             "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
             "|--------|------------|-----------|------------|----------------|---------------|-----------------|",
-            f"| Current | {cycle_time} days | {lead_time} days | {throughput} | {wip_violations} | {blocked_aging} days | {escalation_rate}% |",
+            f"| {sprint_label} | {cycle_time} days | {lead_time} days | {throughput} | {wip_violations} | {blocked_aging} days | {escalation_rate}% |",
         ]
     )
 
@@ -431,11 +432,12 @@ def format_markdown_report(
     than leaving the Scrum Master to explain a missing section.
     """
     parsed = _as_cards(cards)
+    report_date = as_of if as_of is not None else date.today()
     return "\n".join(
         [
             "# Crew Performance Report",
             "",
-            f"Report date: {date.today().isoformat()}",
+            f"Report date: {report_date.isoformat()}",
             "",
             *_sprint_section(parsed, wip_limits, escalations, as_of),
             "",
