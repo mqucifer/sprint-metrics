@@ -240,7 +240,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=int,
         default=0,
         metavar="N",
-        help="Number of escalations in the current sprint.",
+        help="Number of escalations to apply to each sprint in the range.",
     )
     parser.add_argument(
         "--sprint-date",
@@ -248,6 +248,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         metavar="DATE",
         help="ISO-8601 date to measure blocked aging against (default: today).",
+    )
+    parser.add_argument(
+        "--sprint-range",
+        type=str,
+        default=None,
+        metavar="START..END",
+        help=(
+            "Inclusive range of YYYY-MM sprint labels, e.g. 2024-01..2024-03. "
+            "The cards file must be a JSON object keyed by sprint label."
+        ),
     )
     parser.add_argument(
         "--markdown",
@@ -301,6 +311,31 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     source = _read(args.cards)
     wip_source = _read(args.wip_limits) if args.wip_limits is not None else None
+
+    if args.sprint_range is not None:
+        try:
+            labels = _parse_sprint_range(args.sprint_range)
+        except ValueError as exc:
+            print(f"sprint-metrics: {exc}", file=sys.stderr)
+            return 2
+
+        try:
+            sprints = _load_sprints(source)
+            wip_limits = _load_wip_limits(wip_source) if wip_source is not None else None
+        except (TypeError, ValueError) as exc:
+            print(f"sprint-metrics: {exc}", file=sys.stderr)
+            return 2
+
+        missing = [label for label in labels if label not in sprints]
+        if missing:
+            print(
+                f"sprint-metrics: no data for sprint {missing[0]}",
+                file=sys.stderr,
+            )
+            return 2
+
+        print(format_sprint_range_table(sprints, labels, wip_limits, args.escalations, sprint_date))
+        return 0
 
     try:
         cards = _load_cards(source)
@@ -547,3 +582,94 @@ def serve_metrics(
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return actual_port
+
+
+def _parse_sprint_label(label: str) -> tuple[int, int]:
+    """Parse a ``YYYY-MM`` sprint label into ``(year, month)``.
+
+    Raises ``ValueError`` if the label is not a valid four-digit year and
+    two-digit month.
+    """
+    parts = label.split("-")
+    if len(parts) != 2:
+        raise ValueError(f"sprint label {label!r} is not in YYYY-MM format")
+    year_str, month_str = parts
+    if len(year_str) != 4 or not year_str.isdigit():
+        raise ValueError(f"sprint label {label!r} has an invalid year component")
+    if len(month_str) != 2 or not month_str.isdigit():
+        raise ValueError(f"sprint label {label!r} has an invalid month component")
+    year = int(year_str)
+    month = int(month_str)
+    if month < 1 or month > 12:
+        raise ValueError(f"sprint label {label!r} has an invalid month: {month}")
+    return year, month
+
+
+def _parse_sprint_range(value: str) -> list[str]:
+    """Parse an inclusive ``START..END`` sprint range into a list of ``YYYY-MM`` labels.
+
+    Raises ``ValueError`` if the value is not in ``START..END`` form or if either
+    endpoint is not a valid ``YYYY-MM`` label.
+    """
+    parts = value.split("..")
+    if len(parts) != 2:
+        raise ValueError(f"sprint range {value!r} is not in START..END format")
+    start_label, end_label = parts
+    start_year, start_month = _parse_sprint_label(start_label)
+    end_year, end_month = _parse_sprint_label(end_label)
+    if (start_year, start_month) > (end_year, end_month):
+        raise ValueError(f"sprint range start {start_label!r} is after end {end_label!r}")
+    labels: list[str] = []
+    year, month = start_year, start_month
+    while (year, month) <= (end_year, end_month):
+        labels.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return labels
+
+
+def _load_sprints(source: str) -> dict[str, list[Card]]:
+    """Parse a JSON object keyed by sprint label, each value a list of cards.
+
+    Raises ``TypeError`` if the top-level JSON value is not an object.
+    """
+    raw = json.loads(source) if source.strip() else {}
+    if not isinstance(raw, dict):
+        raise TypeError("expected a JSON object keyed by sprint label")
+    sprints: dict[str, list[Card]] = {}
+    for label, cards in raw.items():
+        if not isinstance(cards, list):
+            raise TypeError(f"sprint {label!r} must map to a JSON list of cards")
+        sprints[str(label)] = _as_cards(cards)
+    return sprints
+
+
+def format_sprint_range_table(
+    sprints: Mapping[str, list[Card]],
+    labels: Sequence[str],
+    wip_limits: Mapping[str, int] | None = None,
+    escalations: int = 0,
+    as_of: date | None = None,
+) -> str:
+    """Render one table row per sprint label in ``labels``, in order.
+
+    Each row uses the same WIP limits, escalation count, and reference date.
+    """
+    rows = [
+        "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
+        "|--------|------------|-----------|------------|----------------|---------------|-----------------|",
+    ]
+    for label in labels:
+        cards = sprints[label]
+        cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+        throughput = calculate_throughput(cards)
+        wip_violations = calculate_wip_violations(cards, wip_limits)
+        blocked_aging = calculate_blocked_aging(cards, as_of)
+        escalation_rate = calculate_escalation_rate(cards, escalations)
+        rows.append(
+            f"| {label} | {cycle_time} days | {lead_time} days | {throughput} "
+            f"| {wip_violations} | {blocked_aging} days | {escalation_rate}% |"
+        )
+    return "\n".join(rows)
