@@ -260,6 +260,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--prior-sprint",
+        type=str,
+        default=None,
+        metavar="LABEL",
+        help=(
+            "A prior sprint label (YYYY-MM) to compare against in the markdown report. "
+            "The cards file must be a JSON object keyed by sprint label."
+        ),
+    )
+    parser.add_argument(
         "--markdown",
         action="store_true",
         help="Output the report as markdown instead of the default table format.",
@@ -349,6 +359,61 @@ def main(argv: Sequence[str] | None = None) -> int:
                 format_sprint_range_table(
                     sprints, labels, wip_limits, args.escalations, sprint_date
                 )
+            )
+        return 0
+
+    if args.prior_sprint is not None:
+        try:
+            sprints = _load_sprints(source)
+        except (TypeError, ValueError) as exc:
+            print(f"sprint-metrics: {exc}", file=sys.stderr)
+            return 2
+
+        if args.prior_sprint not in sprints:
+            print(
+                f"sprint-metrics: no data for prior sprint {args.prior_sprint!r}",
+                file=sys.stderr,
+            )
+            return 2
+
+        most_recent = max(sprints.keys())
+        if args.prior_sprint == most_recent:
+            print(
+                f"sprint-metrics: prior sprint {args.prior_sprint!r} cannot be the most recent sprint",
+                file=sys.stderr,
+            )
+            return 2
+
+        try:
+            wip_limits = _load_wip_limits(wip_source) if wip_source is not None else None
+        except (TypeError, ValueError) as exc:
+            print(f"sprint-metrics: {exc}", file=sys.stderr)
+            return 2
+
+        current_label = most_recent
+        current_cards = sprints[current_label]
+        prior_cards = sprints[args.prior_sprint]
+
+        if args.markdown:
+            print(
+                format_markdown_report(
+                    current_cards,
+                    wip_limits,
+                    args.escalations,
+                    sprint_date,
+                    prior_sprint=args.prior_sprint,
+                    prior_cards=prior_cards,
+                )
+            )
+        elif args.json:
+            print(format_json_report(current_cards, wip_limits, args.escalations, sprint_date))
+        elif args.prometheus:
+            print(
+                format_prometheus_report(current_cards, wip_limits, args.escalations, sprint_date)
+            )
+        else:
+            print(
+                format_performance_table(current_cards, wip_limits, args.escalations, sprint_date)
             )
         return 0
 
@@ -473,6 +538,8 @@ def format_markdown_report(
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
     as_of: date | None = None,
+    prior_sprint: str | None = None,
+    prior_cards: Sequence[Card] | None = None,
 ) -> str:
     """Render the crew performance metrics as a markdown report for the standup issue.
 
@@ -480,20 +547,27 @@ def format_markdown_report(
     always opens with its heading and the date it covers, and always closes with
     the summary of work in each state — an empty sprint reports zeros rather
     than leaving the Scrum Master to explain a missing section.
+
+    When ``prior_sprint`` and ``prior_cards`` are provided, a comparison section
+    for the prior sprint is included before the current sprint section.
     """
     parsed = _as_cards(cards)
     report_date = as_of if as_of is not None else date.today()
-    return "\n".join(
-        [
-            "# Crew Performance Report",
-            "",
-            f"Report date: {report_date.isoformat()}",
-            "",
-            *_sprint_section(parsed, wip_limits, escalations, as_of),
-            "",
-            *_summary_section(parsed),
-        ]
-    )
+    lines: list[str] = [
+        "# Crew Performance Report",
+        "",
+        f"Report date: {report_date.isoformat()}",
+    ]
+    if prior_sprint is not None and prior_cards is not None:
+        lines.append("")
+        lines.extend(
+            _prior_sprint_section(prior_cards, prior_sprint, wip_limits, escalations, as_of)
+        )
+    lines.append("")
+    lines.extend(_sprint_section(parsed, wip_limits, escalations, as_of))
+    lines.append("")
+    lines.extend(_summary_section(parsed))
+    return "\n".join(lines)
 
 
 def format_prometheus_report(
@@ -757,3 +831,30 @@ def format_sprint_range_markdown(
         lines.append("")
         lines.extend(_summary_section(cards))
     return "\n".join(lines)
+
+
+def _prior_sprint_section(
+    cards: Sequence[Card],
+    label: str,
+    wip_limits: Mapping[str, int] | None,
+    escalations: int,
+    as_of: date | None = None,
+) -> list[str]:
+    """The prior sprint's delivery metrics, rendered as a comparison section.
+
+    Only rendered when there are cards: with none, the metrics are all zero for
+    want of data rather than because the sprint went that way.
+    """
+    if not cards:
+        return ["No performance data available"]
+    cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+    return [
+        f"## Prior Sprint {label}",
+        "",
+        f"- **Cycle time**: {cycle_time} days",
+        f"- **Lead time**: {lead_time} days",
+        f"- **Throughput**: {calculate_throughput(cards)} cards",
+        f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
+        f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
+        f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
+    ]
