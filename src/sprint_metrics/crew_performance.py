@@ -484,16 +484,17 @@ def format_json_report(
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
-    return json.dumps(
-        {
-            "cycle_time_days": cycle_time,
-            "lead_time_days": lead_time,
-            "throughput": throughput,
-            "wip_violations": wip_violations,
-            "blocked_aging_days": blocked_aging,
-            "escalation_rate_percent": escalation_rate,
-        }
-    )
+    report: dict[str, object] = {
+        "cycle_time_days": cycle_time,
+        "lead_time_days": lead_time,
+        "throughput": throughput,
+        "wip_violations": wip_violations,
+        "blocked_aging_days": blocked_aging,
+        "escalation_rate_percent": escalation_rate,
+    }
+    if as_of is not None:
+        report["sprint_date"] = as_of.isoformat()
+    return json.dumps(report)
 
 
 def serve_metrics(
