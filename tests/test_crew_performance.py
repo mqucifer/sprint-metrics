@@ -28,7 +28,13 @@ def run_command(tmp_path, capsys):
     """Run the command over a sprint's cards, returning its exit code and output."""
 
     def run(
-        cards, wip_limits=None, escalations=0, markdown=False, prometheus=False, json_output=False
+        cards,
+        wip_limits=None,
+        escalations=0,
+        markdown=False,
+        prometheus=False,
+        json_output=False,
+        sprint_date=None,
     ):
         path = tmp_path / "cards.json"
         path.write_text(json.dumps(cards))
@@ -45,6 +51,8 @@ def run_command(tmp_path, capsys):
             argv += ["--prometheus"]
         if json_output:
             argv += ["--json"]
+        if sprint_date is not None:
+            argv += ["--sprint-date", sprint_date]
         exit_code = main(argv)
         captured = capsys.readouterr()
         return exit_code, captured.out, captured.err
@@ -632,3 +640,64 @@ def test_markdown_summary_counts_each_card_in_one_state_only(run_command):
     assert "- **Completed**: 1" in output
     assert "- **In progress**: 0" in output
     assert "- **Blocked**: 1" in output
+
+
+def test_command_reports_blocked_aging_as_of_sprint_date_in_table(run_command):
+    """AC1: with --sprint-date 2024-01-31, a blocked card blocked since 2024-01-02
+    shows 29 days of blocked aging in the table output."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "blocked_since": "2024-01-02"},
+    ]
+    exit_code, output, _ = run_command(cards, sprint_date="2024-01-31")
+
+    assert exit_code == 0
+    assert "| 4 days | 6 days | 1 | 0 | 29 days | 0% |" in output
+
+
+def test_command_reports_blocked_aging_as_of_sprint_date_in_json(run_command):
+    """AC2: with --sprint-date 2024-01-31 and --json, blocked_aging_days is 29."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "blocked_since": "2024-01-02"},
+    ]
+    exit_code, output, _ = run_command(cards, sprint_date="2024-01-31", json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 29
+    assert data["escalation_rate_percent"] == 0
+
+
+def test_command_reports_blocked_aging_as_of_sprint_date_in_markdown(run_command):
+    """AC3: with --sprint-date 2024-01-31 and --markdown, blocked aging is 29 days."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "blocked_since": "2024-01-02"},
+    ]
+    exit_code, output, _ = run_command(cards, sprint_date="2024-01-31", markdown=True)
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days" in output
+    assert "- **Lead time**: 6 days" in output
+    assert "- **Throughput**: 1 cards" in output
+    assert "- **WIP violations**: 0" in output
+    assert "- **Blocked aging**: 29 days" in output
+    assert "- **Escalation rate**: 0%" in output
+
+
+def test_command_rejects_invalid_sprint_date(tmp_path, capsys):
+    """AC4: --sprint-date not-a-date exits with code 2, writes an error to stderr
+    that includes sprint-metrics, and writes nothing to stdout."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([COMPLETED_CARD]))
+    exit_code = main([str(path), "--sprint-date", "not-a-date"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "sprint-metrics" in captured.err
+    assert captured.out == ""

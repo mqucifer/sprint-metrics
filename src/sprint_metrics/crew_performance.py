@@ -171,12 +171,13 @@ def format_performance_table(
     cards: Iterable[Card | Mapping[str, object]],
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
+    as_of: date | None = None,
 ) -> str:
     """Render the crew performance metrics as a markdown table."""
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
-    blocked_aging = calculate_blocked_aging(cards)
+    blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
     return "\n".join(
         [
@@ -241,6 +242,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Number of escalations in the current sprint.",
     )
     parser.add_argument(
+        "--sprint-date",
+        type=str,
+        default=None,
+        metavar="DATE",
+        help="ISO-8601 date to measure blocked aging against (default: today).",
+    )
+    parser.add_argument(
         "--markdown",
         action="store_true",
         help="Output the report as markdown instead of the default table format.",
@@ -269,6 +277,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.sprint_date is not None:
+        try:
+            sprint_date = date.fromisoformat(args.sprint_date)
+        except ValueError:
+            print(
+                f"sprint-metrics: --sprint-date is not an ISO-8601 date: {args.sprint_date!r}",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        sprint_date = None
+
     if args.scrape:
         cards_path = args.cards.name if hasattr(args.cards, "name") else ""
         wip_limits_path = args.wip_limits.name if args.wip_limits is not None else None
@@ -289,24 +309,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.prometheus:
-        print(format_prometheus_report(cards, wip_limits, args.escalations))
+        print(format_prometheus_report(cards, wip_limits, args.escalations, sprint_date))
     elif args.markdown:
-        print(format_markdown_report(cards, wip_limits, args.escalations))
+        print(format_markdown_report(cards, wip_limits, args.escalations, sprint_date))
     elif args.json:
-        print(format_json_report(cards, wip_limits, args.escalations))
+        print(format_json_report(cards, wip_limits, args.escalations, sprint_date))
     else:
-        print(format_performance_table(cards, wip_limits, args.escalations))
+        print(format_performance_table(cards, wip_limits, args.escalations, sprint_date))
     return 0
 
 
-def calculate_blocked_aging(cards: Iterable[Card | Mapping[str, object]]) -> int:
+def calculate_blocked_aging(
+    cards: Iterable[Card | Mapping[str, object]],
+    as_of: date | None = None,
+) -> int:
     """Return the maximum number of days any card has been blocked in the sprint.
 
     A card is considered blocked if it has a ``blocked_since`` date and has not
     yet been completed. The aging is measured from ``blocked_since`` to the
-    card's completion date (if completed) or to today (if still blocked).
+    card's completion date (if completed) or to ``as_of`` (if still blocked).
+    When ``as_of`` is ``None`` the reference date is today.
     Cards that are not blocked or have no ``blocked_since`` date are ignored.
     """
+    reference = as_of if as_of is not None else date.today()
     parsed = _as_cards(cards)
     max_aging = 0
     for card in parsed:
@@ -315,7 +340,7 @@ def calculate_blocked_aging(cards: Iterable[Card | Mapping[str, object]]) -> int
         if card.completed is not None:
             aging = (card.completed - card.blocked_since).days
         else:
-            aging = (date.today() - card.blocked_since).days
+            aging = (reference - card.blocked_since).days
         max_aging = max(max_aging, aging)
     return max_aging
 
@@ -370,6 +395,7 @@ def _sprint_section(
     cards: Sequence[Card],
     wip_limits: Mapping[str, int] | None,
     escalations: int,
+    as_of: date | None = None,
 ) -> list[str]:
     """The current sprint's delivery metrics.
 
@@ -386,7 +412,7 @@ def _sprint_section(
         f"- **Lead time**: {lead_time} days",
         f"- **Throughput**: {calculate_throughput(cards)} cards",
         f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
-        f"- **Blocked aging**: {calculate_blocked_aging(cards)} days",
+        f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
         f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
     ]
 
@@ -395,6 +421,7 @@ def format_markdown_report(
     cards: Iterable[Card | Mapping[str, object]],
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
+    as_of: date | None = None,
 ) -> str:
     """Render the crew performance metrics as a markdown report for the standup issue.
 
@@ -410,7 +437,7 @@ def format_markdown_report(
             "",
             f"Report date: {date.today().isoformat()}",
             "",
-            *_sprint_section(parsed, wip_limits, escalations),
+            *_sprint_section(parsed, wip_limits, escalations, as_of),
             "",
             *_summary_section(parsed),
         ]
@@ -421,13 +448,14 @@ def format_prometheus_report(
     cards: Iterable[Card | Mapping[str, object]],
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
+    as_of: date | None = None,
 ) -> str:
     """Render the crew performance metrics in Prometheus text exposition format."""
     parsed = _as_cards(cards)
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
     throughput = calculate_throughput(parsed)
     wip_violations = calculate_wip_violations(parsed, wip_limits)
-    blocked_aging = calculate_blocked_aging(parsed)
+    blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
     return "\n".join(
         [
@@ -445,13 +473,14 @@ def format_json_report(
     cards: Iterable[Card | Mapping[str, object]],
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
+    as_of: date | None = None,
 ) -> str:
     """Render the crew performance metrics as a JSON object."""
     parsed = _as_cards(cards)
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
     throughput = calculate_throughput(parsed)
     wip_violations = calculate_wip_violations(parsed, wip_limits)
-    blocked_aging = calculate_blocked_aging(parsed)
+    blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
     return json.dumps(
         {
