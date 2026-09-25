@@ -709,3 +709,65 @@ def test_sprint_range_json_delta_empty_prior(tmp_path, capsys):
     assert data["2024-02"]["delta"]["wip_violations"] == 0
     assert data["2024-02"]["delta"]["blocked_aging_days"] == 0
     assert data["2024-02"]["delta"]["escalation_rate_percent"] == 0
+
+
+def test_sprint_range_table_flags_cycle_time_when_threshold_breached(tmp_path, capsys):
+    """AC1: sprint 2024-01 has a card with cycle time 7 days (exceeds threshold of 5)
+    and sprint 2024-02 has a card with cycle time 4 days (does not exceed threshold).
+    Running with --sprint-range 2024-01..2024-02 --thresholds thresholds.json produces
+    a table where the 2024-01 row shows '7 days ⚠️' in the cycle time cell and the
+    2024-02 row shows '4 days' with no ⚠️ marker."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}],
+        "2024-02": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main(
+        [str(path), "--sprint-range", "2024-01..2024-02", "--thresholds", str(thresholds_path)]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| 2024-01 | 7 days ⚠️ | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert captured.out.count("⚠️") == 1
+
+
+def test_sprint_range_table_has_no_flags_without_thresholds_flag(tmp_path, capsys):
+    """AC2: without --thresholds, the sprint-range table output contains no ⚠️ markers
+    and the metric cells are identical to the current behaviour."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "⚠️" not in captured.out
+
+
+def test_sprint_range_table_does_not_flag_cycle_time_when_meeting_threshold_exactly(
+    tmp_path, capsys
+):
+    """AC3: a card with cycle time exactly 5 days and a thresholds file with
+    cycle_time_days 5 produces no ⚠️ marker, because meeting the threshold
+    exactly is not a breach."""
+    card = {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"}
+    sprints = {"2024-01": [card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main(
+        [str(path), "--sprint-range", "2024-01..2024-01", "--thresholds", str(thresholds_path)]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| 2024-01 | 5 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "⚠️" not in captured.out
