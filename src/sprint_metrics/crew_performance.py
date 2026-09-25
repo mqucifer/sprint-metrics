@@ -413,7 +413,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             print(
                 format_sprint_range_table(
-                    sprints, labels, wip_limits, args.escalations, sprint_date
+                    sprints, labels, wip_limits, args.escalations, sprint_date, thresholds
                 )
             )
         return 0
@@ -861,10 +861,15 @@ def format_sprint_range_table(
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
     as_of: date | None = None,
+    thresholds: Mapping[str, float] | None = None,
 ) -> str:
     """Render one table row per sprint label in ``labels``, in order.
 
     Each row uses the same WIP limits, escalation count, and reference date.
+
+    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric cell
+    whose value exceeds its threshold (strict greater-than; meeting the
+    threshold exactly is not a breach).
     """
     rows = [
         "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
@@ -878,8 +883,12 @@ def format_sprint_range_table(
         blocked_aging = calculate_blocked_aging(cards, as_of)
         escalation_rate = calculate_escalation_rate(cards, escalations)
         rows.append(
-            f"| {label} | {cycle_time} days | {lead_time} days | {throughput} "
-            f"| {wip_violations} | {blocked_aging} days | {escalation_rate}% |"
+            f"| {label} | {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')} "
+            f"| {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')} "
+            f"| {throughput}{_flag(throughput, thresholds, 'throughput')} "
+            f"| {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')} "
+            f"| {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')} "
+            f"| {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')} |"
         )
     return "\n".join(rows)
 
