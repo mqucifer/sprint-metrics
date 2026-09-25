@@ -1,0 +1,29 @@
+# The project's onboarding record (#111). Intent is the Sponsor's, written
+# through `crew onboard`. Design is the project's Architect's, and learned
+# is the crew's; both are proposed by pull request.
+version: 2
+intent:
+  scope:
+    purpose: Report delivery metrics for one or more sprints on the crew's own board,
+      so the crew can use the data to improve its own code.
+    in_scope:
+    - A sprint-metrics CLI that reads sprint cards and optional WIP limits from JSON.
+    - Computes cycle time, lead time, throughput, WIP-limit violations, blocked-card
+      aging, and escalation rate.
+    - Outputs a table by default, or JSON, markdown, or Prometheus text exposition
+      format.
+    - Serves the Prometheus metrics at /metrics in scrape mode.
+    - Packaging and deployment of the tool so the crew can invoke it.
+    out_of_scope:
+    - Reporting on anything outside of GitHub and the projects the crew is building.
+    - An MCP server, for now. The crew invokes the tool directly.
+  release:
+    deploys: true
+    where: A version tag on the sprint-metrics repo, which the crew installs as a
+      git dependency.
+  done:
+    bar: A change is done when its acceptance criteria are met and every check the
+      project's CI runs passes.
+    never_touch:
+    - .github/workflows/board.yml
+  priority: 1
