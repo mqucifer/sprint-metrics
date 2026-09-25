@@ -881,20 +881,40 @@ def format_sprint_range_json(
     Each value carries the same six metrics the table and single-sprint JSON
     reports produce, plus a flags object computed with the same thresholds as
     the single-sprint report, so a script can process the range without parsing
-    a table.
+    a table. Each sprint also includes a ``prior`` key holding the six metrics
+    computed from the immediately preceding sprint label in the range, or
+    ``null`` for the first sprint.
     """
     report: dict[str, object] = {}
-    for label in labels:
+    for index, label in enumerate(labels):
         cards = sprints[label]
         cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
-        report[label] = {
+        sprint_metrics = {
             "cycle_time_days": cycle_time,
             "lead_time_days": lead_time,
             "throughput": calculate_throughput(cards),
             "wip_violations": calculate_wip_violations(cards, wip_limits),
             "blocked_aging_days": calculate_blocked_aging(cards, as_of),
             "escalation_rate_percent": calculate_escalation_rate(cards, escalations),
+        }
+        if index == 0:
+            prior = None
+        else:
+            prior_label = labels[index - 1]
+            prior_cards = sprints[prior_label]
+            prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
+            prior = {
+                "cycle_time_days": prior_cycle,
+                "lead_time_days": prior_lead,
+                "throughput": calculate_throughput(prior_cards),
+                "wip_violations": calculate_wip_violations(prior_cards, wip_limits),
+                "blocked_aging_days": calculate_blocked_aging(prior_cards, as_of),
+                "escalation_rate_percent": calculate_escalation_rate(prior_cards, escalations),
+            }
+        report[label] = {
+            **sprint_metrics,
             "flags": calculate_flags(cards, wip_limits, escalations, as_of, thresholds),
+            "prior": prior,
         }
     return json.dumps(report)
 

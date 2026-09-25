@@ -462,3 +462,111 @@ def test_sprint_range_json_flags_with_user_thresholds(tmp_path, capsys):
     data = json.loads(captured.out)
     assert data["2024-01"]["flags"]["cycle_time_days"] is True
     assert data["2024-02"]["flags"]["cycle_time_days"] is True
+
+
+def test_sprint_range_json_includes_prior_period_metrics(tmp_path, capsys):
+    """AC1: a sprints JSON object with keys 2024-01 and 2024-02, where 2024-01 contains
+    one completed card created 2024-01-01, started 2024-01-03, completed 2024-01-07,
+    and 2024-02 contains one completed card created 2024-01-01, started 2024-01-02,
+    completed 2024-01-08. When the command is run with --sprint-range 2024-01..2024-02
+    and --json, the exit code is 0 and stdout JSON has 2024-01.prior null,
+    2024-02.prior cycle_time_days 4, lead_time_days 6, throughput 1, wip_violations 0,
+    blocked_aging_days 0, escalation_rate_percent 0, and both sprint objects still
+    contain their own six metric keys."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+        "2024-02": [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-08"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-01"]["prior"] is None
+    assert data["2024-02"]["prior"]["cycle_time_days"] == 4
+    assert data["2024-02"]["prior"]["lead_time_days"] == 6
+    assert data["2024-02"]["prior"]["throughput"] == 1
+    assert data["2024-02"]["prior"]["wip_violations"] == 0
+    assert data["2024-02"]["prior"]["blocked_aging_days"] == 0
+    assert data["2024-02"]["prior"]["escalation_rate_percent"] == 0
+    for label in ("2024-01", "2024-02"):
+        for key in (
+            "cycle_time_days",
+            "lead_time_days",
+            "throughput",
+            "wip_violations",
+            "blocked_aging_days",
+            "escalation_rate_percent",
+        ):
+            assert key in data[label]
+
+
+def test_sprint_range_json_prior_period_wip_and_escalation(tmp_path, capsys):
+    """AC2: a sprints JSON object with keys 2024-01 and 2024-02, where 2024-01 contains
+    four in-progress cards and ten completed cards, 2024-02 contains two in-progress
+    cards and ten completed cards, a WIP limits input with In Progress set to 3, and
+    two escalations. When the command is run with --sprint-range 2024-01..2024-02,
+    --wip-limits, --escalations 2, and --json, the exit code is 0 and stdout JSON has
+    2024-01.wip_violations 1, 2024-02.prior.wip_violations 1, and
+    2024-02.prior.escalation_rate_percent 20."""
+    in_progress = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
+    completed = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {
+        "2024-01": [in_progress] * 4 + [completed] * 10,
+        "2024-02": [in_progress] * 2 + [completed] * 10,
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    limits_path = tmp_path / "wip-limits.json"
+    limits_path.write_text(json.dumps({"In Progress": 3}))
+    exit_code = main(
+        [
+            str(path),
+            "--sprint-range",
+            "2024-01..2024-02",
+            "--wip-limits",
+            str(limits_path),
+            "--escalations",
+            "2",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-01"]["wip_violations"] == 1
+    assert data["2024-02"]["prior"]["wip_violations"] == 1
+    assert data["2024-02"]["prior"]["escalation_rate_percent"] == 20
+
+
+def test_sprint_range_json_single_sprint_prior_is_null(tmp_path, capsys):
+    """AC3: a sprints JSON object with key 2024-01 containing one completed card.
+    When the command is run with --sprint-range 2024-01..2024-01 and --json,
+    the exit code is 0 and stdout JSON has 2024-01.prior null."""
+    sprints = {"2024-01": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-01"]["prior"] is None
+
+
+def test_sprint_range_json_missing_sprint_in_range_exits_2(tmp_path, capsys):
+    """AC4: a sprints JSON object with keys 2024-01 and 2024-02. When the command is
+    run with --sprint-range 2024-01..2024-03 and --json, the exit code is 2, stderr
+    contains 2024-03, and stdout is empty."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-03", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "2024-03" in captured.err
+    assert captured.out == ""
