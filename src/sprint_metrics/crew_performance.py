@@ -344,6 +344,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             sprints = _load_sprints(source)
             wip_limits = _load_wip_limits(wip_source) if wip_source is not None else None
+            thresholds = (
+                _load_thresholds(thresholds_source) if thresholds_source is not None else None
+            )
         except (TypeError, ValueError) as exc:
             print(f"sprint-metrics: {exc}", file=sys.stderr)
             return 2
@@ -358,7 +361,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.json:
             print(
-                format_sprint_range_json(sprints, labels, wip_limits, args.escalations, sprint_date)
+                format_sprint_range_json(
+                    sprints, labels, wip_limits, args.escalations, sprint_date, thresholds
+                )
             )
         elif args.markdown:
             print(
@@ -812,11 +817,14 @@ def format_sprint_range_json(
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
     as_of: date | None = None,
+    thresholds: Mapping[str, float] | None = None,
 ) -> str:
     """Render one JSON object per sprint label in ``labels``, keyed by label.
 
     Each value carries the same six metrics the table and single-sprint JSON
-    reports produce, so a script can process the range without parsing a table.
+    reports produce, plus a flags object computed with the same thresholds as
+    the single-sprint report, so a script can process the range without parsing
+    a table.
     """
     report: dict[str, object] = {}
     for label in labels:
@@ -829,6 +837,7 @@ def format_sprint_range_json(
             "wip_violations": calculate_wip_violations(cards, wip_limits),
             "blocked_aging_days": calculate_blocked_aging(cards, as_of),
             "escalation_rate_percent": calculate_escalation_rate(cards, escalations),
+            "flags": calculate_flags(cards, wip_limits, escalations, as_of, thresholds),
         }
     return json.dumps(report)
 
