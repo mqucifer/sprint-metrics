@@ -785,3 +785,141 @@ def test_command_reports_json_error_for_invalid_cards_with_sprint_date(tmp_path,
     assert exit_code == 2
     assert captured.err
     assert captured.out == ""
+
+
+def test_command_reports_json_flags_cycle_time_breached(run_command):
+    """AC1: one card with cycle time 7 days (exceeds threshold of 5) and lead time 7 days
+    (equals threshold of 7, not exceeded) produces flags where cycle_time_days is true
+    and all other flags are false."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    exit_code, output, _ = run_command([card], json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["flags"]["cycle_time_days"] is True
+    assert data["flags"]["lead_time_days"] is False
+    assert data["flags"]["throughput"] is False
+    assert data["flags"]["wip_violations"] is False
+    assert data["flags"]["blocked_aging_days"] is False
+    assert data["flags"]["escalation_rate_percent"] is False
+
+
+def test_command_reports_json_flags_all_false(run_command):
+    """AC2: one card with cycle time 4 days, lead time 6 days, throughput 1, no WIP
+    violations, no blocked cards, no escalations produces flags where all six keys
+    are false."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["flags"]["cycle_time_days"] is False
+    assert data["flags"]["lead_time_days"] is False
+    assert data["flags"]["throughput"] is False
+    assert data["flags"]["wip_violations"] is False
+    assert data["flags"]["blocked_aging_days"] is False
+    assert data["flags"]["escalation_rate_percent"] is False
+
+
+def test_command_reports_json_flags_empty_sprint(run_command):
+    """AC3: an empty sprint produces flags where throughput is true (0 < 1) and all
+    other flags are false."""
+    exit_code, output, _ = run_command([], json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["flags"]["throughput"] is True
+    assert data["flags"]["cycle_time_days"] is False
+    assert data["flags"]["lead_time_days"] is False
+    assert data["flags"]["wip_violations"] is False
+    assert data["flags"]["blocked_aging_days"] is False
+    assert data["flags"]["escalation_rate_percent"] is False
+
+
+def test_command_reports_json_flags_wip_and_escalation_breached(run_command):
+    """AC4: four in-flight cards with WIP limit 3 for In Progress, plus 10 completed
+    cards and 2 escalations, produces flags where wip_violations and
+    escalation_rate_percent are true, and cycle_time_days, lead_time_days,
+    throughput, and blocked_aging_days are false."""
+    in_flight = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
+    cards = [in_flight] * 4 + [COMPLETED_CARD] * 10
+    exit_code, output, _ = run_command(
+        cards, wip_limits={"In Progress": 3}, escalations=2, json_output=True
+    )
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["flags"]["wip_violations"] is True
+    assert data["flags"]["escalation_rate_percent"] is True
+    assert data["flags"]["cycle_time_days"] is False
+    assert data["flags"]["lead_time_days"] is False
+    assert data["flags"]["throughput"] is False
+    assert data["flags"]["blocked_aging_days"] is False
+
+
+def test_command_reports_json_flags_with_user_thresholds_cycle_time_breached(tmp_path, capsys):
+    """AC1: a thresholds file with cycle_time_days 3 and a card with cycle time 4
+    days produces flags where cycle_time_days is true and all other flags are
+    false."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-05"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 3}))
+    exit_code = main([str(cards_path), "--json", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["flags"]["cycle_time_days"] is True
+    assert data["flags"]["lead_time_days"] is False
+    assert data["flags"]["throughput"] is False
+    assert data["flags"]["wip_violations"] is False
+    assert data["flags"]["blocked_aging_days"] is False
+    assert data["flags"]["escalation_rate_percent"] is False
+
+
+def test_command_reports_json_flags_unspecified_metrics_fall_back_to_defaults(tmp_path, capsys):
+    """AC2: a thresholds file with only cycle_time_days 3 leaves lead_time_days
+    at its default of 7, so a lead time of 4 days does not breach it."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-05"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 3}))
+    exit_code = main([str(cards_path), "--json", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["flags"]["cycle_time_days"] is True
+    assert data["flags"]["lead_time_days"] is False
+
+
+def test_command_reports_json_error_for_invalid_thresholds_json(tmp_path, capsys):
+    """AC3: a thresholds file that is not valid JSON exits with code 2, writes an
+    error to stderr that includes sprint-metrics, and writes nothing to stdout."""
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([COMPLETED_CARD]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text("not valid json")
+    exit_code = main([str(cards_path), "--json", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "sprint-metrics" in captured.err
+    assert captured.out == ""
+
+
+def test_command_reports_json_error_for_thresholds_as_array(tmp_path, capsys):
+    """AC4: a thresholds file containing a JSON array exits with code 2, writes an
+    error to stderr, and writes nothing to stdout."""
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([COMPLETED_CARD]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps(["cycle_time_days", 3]))
+    exit_code = main([str(cards_path), "--json", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.err
+    assert captured.out == ""

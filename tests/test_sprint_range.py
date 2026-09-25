@@ -371,3 +371,94 @@ def test_sprint_range_markdown_empty_sprint_shows_no_data(run_range_command):
     assert "- **Cycle time**" not in section_01
     section_02 = output[idx_02:]
     assert "- **Cycle time**: 4 days" in section_02
+
+
+def test_sprint_range_json_flags_cycle_time_breached(tmp_path, capsys):
+    """AC1: sprint 2024-01 has a card with cycle time 7 days (exceeds threshold of 5)
+    and sprint 2024-02 has a card with cycle time 4 days (does not exceed threshold).
+    Running with --sprint-range 2024-01..2024-02 --json produces flags where
+    cycle_time_days is true for 2024-01 and false for 2024-02, and both sprints
+    include all six flag keys."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}],
+        "2024-02": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-01"]["flags"]["cycle_time_days"] is True
+    assert data["2024-02"]["flags"]["cycle_time_days"] is False
+    for label in ("2024-01", "2024-02"):
+        flags = data[label]["flags"]
+        assert set(flags.keys()) == {
+            "cycle_time_days",
+            "lead_time_days",
+            "throughput",
+            "wip_violations",
+            "blocked_aging_days",
+            "escalation_rate_percent",
+        }
+
+
+def test_sprint_range_json_flags_empty_sprint(tmp_path, capsys):
+    """AC2: sprint 2024-01 has no cards (empty list) and sprint 2024-02 has one
+    completed card with cycle time 4 days. Running with --sprint-range
+    2024-01..2024-02 --json produces flags where throughput is true for 2024-01
+    (zero completed cards) and all other flags are false, and all six flags are
+    false for 2024-02."""
+    sprints = {"2024-01": [], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-01"]["flags"]["throughput"] is True
+    assert data["2024-01"]["flags"]["cycle_time_days"] is False
+    assert data["2024-01"]["flags"]["lead_time_days"] is False
+    assert data["2024-01"]["flags"]["wip_violations"] is False
+    assert data["2024-01"]["flags"]["blocked_aging_days"] is False
+    assert data["2024-01"]["flags"]["escalation_rate_percent"] is False
+    for key in (
+        "cycle_time_days",
+        "lead_time_days",
+        "throughput",
+        "wip_violations",
+        "blocked_aging_days",
+        "escalation_rate_percent",
+    ):
+        assert data["2024-02"]["flags"][key] is False
+
+
+def test_sprint_range_json_flags_with_user_thresholds(tmp_path, capsys):
+    """AC3: both sprints have a card with cycle time 4 days, and a thresholds file
+    sets cycle_time_days to 3. Running with --sprint-range 2024-01..2024-02 --json
+    --thresholds thresholds.json produces flags where cycle_time_days is true for
+    both sprints, confirming user-defined thresholds apply to every sprint in the
+    range."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 3}))
+    exit_code = main(
+        [
+            str(path),
+            "--sprint-range",
+            "2024-01..2024-02",
+            "--json",
+            "--thresholds",
+            str(thresholds_path),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["2024-01"]["flags"]["cycle_time_days"] is True
+    assert data["2024-02"]["flags"]["cycle_time_days"] is True
