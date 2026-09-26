@@ -25,6 +25,14 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         "escalation_rate_percent": {"type": "integer"},
         "flags": {"type": "object"},
         "sprint_date": {"type": "string"},
+        "prior": {
+            "type": "object",
+            "properties": {key: {"type": "integer"} for key in METRIC_KEYS},
+        },
+        "delta": {
+            "type": "object",
+            "properties": {key: {"type": "integer"} for key in METRIC_KEYS},
+        },
     },
 }
 
