@@ -877,3 +877,62 @@ def test_sprint_range_json_single_sprint_prior_and_delta_null(tmp_path, capsys):
     assert data["api_version"] == "1"
     assert data["sprints"]["2024-01"]["prior"] is None
     assert data["sprints"]["2024-01"]["delta"] is None
+
+
+def test_sprint_range_single_label_rejected(tmp_path, capsys):
+    """AC1: a --sprint-range argument that is a single label without the ..END form
+    exits 2, stderr is non-empty, and stdout is empty."""
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps({"2024-01": [COMPLETED_CARD]}))
+    exit_code = main([str(path), "--sprint-range", "2024-01"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.err
+    assert captured.out == ""
+
+
+def test_sprint_range_invalid_month_label_rejected(tmp_path, capsys):
+    """AC2: --sprint-range 2024-13..2024-01 (month 13 is not valid) exits 2,
+    stderr contains '2024-13', and stdout is empty."""
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps({"2024-01": [COMPLETED_CARD]}))
+    exit_code = main([str(path), "--sprint-range", "2024-13..2024-01"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "2024-13" in captured.err
+    assert captured.out == ""
+
+
+def test_sprint_range_range_exceeds_available_sprints(tmp_path, capsys):
+    """AC3: a JSON object with keys 2024-01 and 2024-02, run with
+    --sprint-range 2024-01..2024-03, exits 2, stderr contains '2024-03',
+    and stdout is empty."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-03"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "2024-03" in captured.err
+    assert captured.out == ""
+
+
+def test_sprint_range_start_after_end_rejected(tmp_path, capsys):
+    """AC4: --sprint-range 2024-03..2024-01 (start after end) exits 2,
+    stderr is non-empty, and stdout is empty."""
+    sprints = {
+        "2024-01": [COMPLETED_CARD],
+        "2024-02": [COMPLETED_CARD],
+        "2024-03": [COMPLETED_CARD],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-03..2024-01"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.err
+    assert captured.out == ""
