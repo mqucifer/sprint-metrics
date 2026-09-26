@@ -24,6 +24,7 @@ def format_performance_table(
     as_of: date | None = None,
     prior_cards: Iterable[Card | Mapping[str, object]] | None = None,
     thresholds: Mapping[str, float] | None = None,
+    metrics: frozenset[str] | None = None,
 ) -> str:
     """Render the crew performance metrics as a markdown table.
 
@@ -36,6 +37,9 @@ def format_performance_table(
     in the Current row whose value exceeds its threshold (strict greater-than;
     meeting the threshold exactly is not a breach). The Prior and Delta rows are
     never flagged.
+
+    When ``metrics`` is provided, only the requested metric columns are emitted;
+    the header, separator, and every data row use the same column set.
     """
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
@@ -43,31 +47,58 @@ def format_performance_table(
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
     sprint_label = as_of.isoformat() if as_of is not None else "Current"
-    rows = [
-        "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
-        "|--------|------------|-----------|------------|----------------|---------------|-----------------|",
-        f"| {sprint_label} | {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')} "
-        f"| {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')} "
-        f"| {throughput}{_flag(throughput, thresholds, 'throughput')} "
-        f"| {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')} "
-        f"| {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')} "
-        f"| {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')} |",
-    ]
+
+    if metrics is not None:
+        selected = [m for m in _CANONICAL_ORDER if m in metrics]
+    else:
+        selected = list(_CANONICAL_ORDER)
+
+    headers = ["Sprint"] + [_METRIC_COLUMNS[m] for m in selected]
+    header_row = "| " + " | ".join(headers) + " |"
+    separator_row = "|" + "|".join("-" * (len(h) + 2) for h in headers) + "|"
+
+    current_cells: dict[str, str] = {
+        "cycle_time_days": f"{cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')}",
+        "lead_time_days": f"{lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')}",
+        "throughput": f"{throughput}{_flag(throughput, thresholds, 'throughput')}",
+        "wip_violations": f"{wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}",
+        "blocked_aging_days": f"{blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
+        "escalation_rate_percent": f"{escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
+    }
+    current_row = f"| {sprint_label} | " + " | ".join(current_cells[m] for m in selected) + " |"
+
+    rows = [header_row, separator_row, current_row]
+
     if prior_cards is not None:
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
         prior_throughput = calculate_throughput(prior_cards)
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
-        rows.append(
-            f"| Prior | {prior_cycle} days | {prior_lead} days | {prior_throughput} "
-            f"| {prior_wip} | {prior_blocked} days | {prior_escalation}% |"
-        )
-        rows.append(
-            f"| Delta | {_signed(cycle_time - prior_cycle)} days | {_signed(lead_time - prior_lead)} days "
-            f"| {_signed(throughput - prior_throughput)} | {_signed(wip_violations - prior_wip)} "
-            f"| {_signed(blocked_aging - prior_blocked)} days | {_signed(escalation_rate - prior_escalation)}% |"
-        )
+
+        prior_cells: dict[str, str] = {
+            "cycle_time_days": f"{prior_cycle} days",
+            "lead_time_days": f"{prior_lead} days",
+            "throughput": f"{prior_throughput}",
+            "wip_violations": f"{prior_wip}",
+            "blocked_aging_days": f"{prior_blocked} days",
+            "escalation_rate_percent": f"{prior_escalation}%",
+        }
+        prior_row = "| Prior | " + " | ".join(prior_cells[m] for m in selected) + " |"
+
+        delta_cells: dict[str, str] = {
+            "cycle_time_days": f"{_signed(cycle_time - prior_cycle)} days",
+            "lead_time_days": f"{_signed(lead_time - prior_lead)} days",
+            "throughput": f"{_signed(throughput - prior_throughput)}",
+            "wip_violations": f"{_signed(wip_violations - prior_wip)}",
+            "blocked_aging_days": f"{_signed(blocked_aging - prior_blocked)} days",
+            "escalation_rate_percent": f"{_signed(escalation_rate - prior_escalation)}%",
+        }
+        delta_row = "| Delta | " + " | ".join(delta_cells[m] for m in selected) + " |"
+
+        rows.append(prior_row)
+        rows.append(delta_row)
+
     return "\n".join(rows)
 
 
@@ -332,3 +363,23 @@ def _signed(delta: int) -> str:
 
 
 API_VERSION = "1"
+
+
+_METRIC_COLUMNS: dict[str, str] = {
+    "cycle_time_days": "Cycle time",
+    "lead_time_days": "Lead time",
+    "throughput": "Throughput",
+    "wip_violations": "WIP violations",
+    "blocked_aging_days": "Blocked aging",
+    "escalation_rate_percent": "Escalation rate",
+}
+
+
+_CANONICAL_ORDER: tuple[str, ...] = (
+    "cycle_time_days",
+    "lead_time_days",
+    "throughput",
+    "wip_violations",
+    "blocked_aging_days",
+    "escalation_rate_percent",
+)
