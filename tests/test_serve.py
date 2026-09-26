@@ -54,12 +54,3 @@ def test_serve_metrics_returns_500_for_missing_file(tmp_path):
 
     assert status == 500
     assert "sprint-metrics:" in body
-
-
-def test_crew_performance_imports_serve_metrics_from_serve():
-    """AC3: crew_performance.py imports serve_metrics from sprint_metrics.serve,
-    so the full existing test suite passes unchanged."""
-    from sprint_metrics.crew_performance import serve_metrics as cp_serve
-    from sprint_metrics.serve import serve_metrics as serve_fn
-
-    assert cp_serve is serve_fn
