@@ -13,6 +13,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date
 
 from sprint_metrics.card import Card, _as_cards, _load_cards
+from sprint_metrics.metrics import (
+    _load_wip_limits,
+    calculate_blocked_aging,
+    calculate_cycle_time_and_lead_time,
+    calculate_escalation_rate,
+    calculate_throughput,
+    calculate_wip_violations,
+)
 
 
 def _mean_days(values: Sequence[int]) -> int:
@@ -20,30 +28,6 @@ def _mean_days(values: Sequence[int]) -> int:
     if not values:
         return 0
     return round(sum(values) / len(values))
-
-
-def calculate_cycle_time_and_lead_time(
-    cards: Iterable[Card | Mapping[str, object]],
-) -> tuple[int, int]:
-    """Return the sprint's average cycle time and lead time, in whole days.
-
-    Only completed cards carry these metrics, so cards still in flight are
-    ignored. A sprint with nothing completed reports 0 for both.
-    """
-    completed = [card for card in _as_cards(cards) if card.is_completed]
-    return (
-        _mean_days([card.cycle_time for card in completed]),
-        _mean_days([card.lead_time for card in completed]),
-    )
-
-
-def calculate_throughput(cards: Iterable[Card | Mapping[str, object]]) -> int:
-    """Return the number of completed cards in the sprint.
-
-    Throughput is the count of cards that have reached the completed state.
-    Cards still in flight do not count.
-    """
-    return sum(1 for card in _as_cards(cards) if card.is_completed)
 
 
 def _state_windows(card: Card) -> dict[str, tuple[date, date | None]]:
@@ -82,27 +66,6 @@ def _peak_occupancy(cards: Sequence[Card], state: str) -> int:
         occupancy += change
         peak = max(peak, occupancy)
     return peak
-
-
-def calculate_wip_violations(
-    cards: Iterable[Card | Mapping[str, object]],
-    wip_limits: Mapping[str, int] | None = None,
-) -> int:
-    """Return the number of states whose WIP limit was breached this sprint.
-
-    A state is in violation when more cards sat in it at the same time than its
-    limit allows, at any point in the sprint — work that was started and
-    finished before the report ran still crowded the board. States with no
-    configured limit, and a sprint with no limits at all, cannot be violated.
-    """
-    if not wip_limits:
-        return 0
-
-    parsed = _as_cards(cards)
-    breached = [
-        state for state, limit in wip_limits.items() if _peak_occupancy(parsed, state) > limit
-    ]
-    return len(breached)
 
 
 def format_performance_table(
@@ -157,14 +120,6 @@ def format_performance_table(
             f"| {_signed(blocked_aging - prior_blocked)} days | {_signed(escalation_rate - prior_escalation)}% |"
         )
     return "\n".join(rows)
-
-
-def _load_wip_limits(source: str) -> dict[str, int]:
-    """Parse the JSON object of state names to WIP limits the command was given."""
-    raw = json.loads(source) if source.strip() else {}
-    if not isinstance(raw, Mapping):
-        raise TypeError("expected a JSON object of WIP limits, keyed by state")
-    return {str(state): int(limit) for state, limit in raw.items()}
 
 
 def _read(handle) -> str:
@@ -445,48 +400,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
     return 0
-
-
-def calculate_blocked_aging(
-    cards: Iterable[Card | Mapping[str, object]],
-    as_of: date | None = None,
-) -> int:
-    """Return the maximum number of days any card has been blocked in the sprint.
-
-    A card is considered blocked if it has a ``blocked_since`` date and has not
-    yet been completed. The aging is measured from ``blocked_since`` to the
-    card's completion date (if completed) or to ``as_of`` (if still blocked).
-    When ``as_of`` is ``None`` the reference date is today.
-    Cards that are not blocked or have no ``blocked_since`` date are ignored.
-    """
-    reference = as_of if as_of is not None else date.today()
-    parsed = _as_cards(cards)
-    max_aging = 0
-    for card in parsed:
-        if card.blocked_since is None:
-            continue
-        if card.completed is not None:
-            aging = (card.completed - card.blocked_since).days
-        else:
-            aging = (reference - card.blocked_since).days
-        max_aging = max(max_aging, aging)
-    return max_aging
-
-
-def calculate_escalation_rate(
-    cards: Iterable[Card | Mapping[str, object]],
-    escalations: int = 0,
-) -> int:
-    """Return the escalation rate as a percentage (0-100).
-
-    The rate is the number of escalations divided by the number of completed
-    cards, expressed as a whole-number percentage. When no cards are completed
-    the rate is 0.
-    """
-    completed = sum(1 for card in _as_cards(cards) if card.is_completed)
-    if completed == 0:
-        return 0
-    return round(escalations / completed * 100)
 
 
 def _summary_counts(cards: Sequence[Card]) -> tuple[int, int, int]:
