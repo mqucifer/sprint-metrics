@@ -273,14 +273,14 @@ def test_sprint_range_json_reports_metrics_per_sprint(run_range_command):
 
     assert exit_code == 0
     data = json.loads(output)
-    assert set(data.keys()) == {"2024-01", "2024-02"}
+    assert set(data.keys()) == {"api_version", "sprints"}
     for label in ("2024-01", "2024-02"):
-        assert data[label]["cycle_time_days"] == 4
-        assert data[label]["lead_time_days"] == 6
-        assert data[label]["throughput"] == 1
-        assert data[label]["wip_violations"] == 0
-        assert data[label]["blocked_aging_days"] == 0
-        assert data[label]["escalation_rate_percent"] == 0
+        assert data["sprints"][label]["cycle_time_days"] == 4
+        assert data["sprints"][label]["lead_time_days"] == 6
+        assert data["sprints"][label]["throughput"] == 1
+        assert data["sprints"][label]["wip_violations"] == 0
+        assert data["sprints"][label]["blocked_aging_days"] == 0
+        assert data["sprints"][label]["escalation_rate_percent"] == 0
 
 
 def test_sprint_range_json_missing_sprint_exits_2(tmp_path, capsys):
@@ -390,10 +390,10 @@ def test_sprint_range_json_flags_cycle_time_breached(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-01"]["flags"]["cycle_time_days"] is True
-    assert data["2024-02"]["flags"]["cycle_time_days"] is False
+    assert data["sprints"]["2024-01"]["flags"]["cycle_time_days"] is True
+    assert data["sprints"]["2024-02"]["flags"]["cycle_time_days"] is False
     for label in ("2024-01", "2024-02"):
-        flags = data[label]["flags"]
+        flags = data["sprints"][label]["flags"]
         assert set(flags.keys()) == {
             "cycle_time_days",
             "lead_time_days",
@@ -418,12 +418,12 @@ def test_sprint_range_json_flags_empty_sprint(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-01"]["flags"]["throughput"] is True
-    assert data["2024-01"]["flags"]["cycle_time_days"] is False
-    assert data["2024-01"]["flags"]["lead_time_days"] is False
-    assert data["2024-01"]["flags"]["wip_violations"] is False
-    assert data["2024-01"]["flags"]["blocked_aging_days"] is False
-    assert data["2024-01"]["flags"]["escalation_rate_percent"] is False
+    assert data["sprints"]["2024-01"]["flags"]["throughput"] is True
+    assert data["sprints"]["2024-01"]["flags"]["cycle_time_days"] is False
+    assert data["sprints"]["2024-01"]["flags"]["lead_time_days"] is False
+    assert data["sprints"]["2024-01"]["flags"]["wip_violations"] is False
+    assert data["sprints"]["2024-01"]["flags"]["blocked_aging_days"] is False
+    assert data["sprints"]["2024-01"]["flags"]["escalation_rate_percent"] is False
     for key in (
         "cycle_time_days",
         "lead_time_days",
@@ -432,7 +432,7 @@ def test_sprint_range_json_flags_empty_sprint(tmp_path, capsys):
         "blocked_aging_days",
         "escalation_rate_percent",
     ):
-        assert data["2024-02"]["flags"][key] is False
+        assert data["sprints"]["2024-02"]["flags"][key] is False
 
 
 def test_sprint_range_json_flags_with_user_thresholds(tmp_path, capsys):
@@ -460,8 +460,8 @@ def test_sprint_range_json_flags_with_user_thresholds(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-01"]["flags"]["cycle_time_days"] is True
-    assert data["2024-02"]["flags"]["cycle_time_days"] is True
+    assert data["sprints"]["2024-01"]["flags"]["cycle_time_days"] is True
+    assert data["sprints"]["2024-02"]["flags"]["cycle_time_days"] is True
 
 
 def test_sprint_range_json_includes_prior_period_metrics(tmp_path, capsys):
@@ -484,13 +484,13 @@ def test_sprint_range_json_includes_prior_period_metrics(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-01"]["prior"] is None
-    assert data["2024-02"]["prior"]["cycle_time_days"] == 4
-    assert data["2024-02"]["prior"]["lead_time_days"] == 6
-    assert data["2024-02"]["prior"]["throughput"] == 1
-    assert data["2024-02"]["prior"]["wip_violations"] == 0
-    assert data["2024-02"]["prior"]["blocked_aging_days"] == 0
-    assert data["2024-02"]["prior"]["escalation_rate_percent"] == 0
+    assert data["sprints"]["2024-01"]["prior"] is None
+    assert data["sprints"]["2024-02"]["prior"]["cycle_time_days"] == 4
+    assert data["sprints"]["2024-02"]["prior"]["lead_time_days"] == 6
+    assert data["sprints"]["2024-02"]["prior"]["throughput"] == 1
+    assert data["sprints"]["2024-02"]["prior"]["wip_violations"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["blocked_aging_days"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["escalation_rate_percent"] == 0
     for label in ("2024-01", "2024-02"):
         for key in (
             "cycle_time_days",
@@ -500,7 +500,7 @@ def test_sprint_range_json_includes_prior_period_metrics(tmp_path, capsys):
             "blocked_aging_days",
             "escalation_rate_percent",
         ):
-            assert key in data[label]
+            assert key in data["sprints"][label]
 
 
 def test_sprint_range_json_prior_period_wip_and_escalation(tmp_path, capsys):
@@ -537,9 +537,9 @@ def test_sprint_range_json_prior_period_wip_and_escalation(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-01"]["wip_violations"] == 1
-    assert data["2024-02"]["prior"]["wip_violations"] == 1
-    assert data["2024-02"]["prior"]["escalation_rate_percent"] == 20
+    assert data["sprints"]["2024-01"]["wip_violations"] == 1
+    assert data["sprints"]["2024-02"]["prior"]["wip_violations"] == 1
+    assert data["sprints"]["2024-02"]["prior"]["escalation_rate_percent"] == 20
 
 
 def test_sprint_range_json_single_sprint_prior_is_null(tmp_path, capsys):
@@ -554,7 +554,7 @@ def test_sprint_range_json_single_sprint_prior_is_null(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-01"]["prior"] is None
+    assert data["sprints"]["2024-01"]["prior"] is None
 
 
 def test_sprint_range_json_missing_sprint_in_range_exits_2(tmp_path, capsys):
@@ -591,13 +591,13 @@ def test_sprint_range_json_delta_basic(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-01"]["delta"] is None
-    assert data["2024-02"]["delta"]["cycle_time_days"] == 2
-    assert data["2024-02"]["delta"]["lead_time_days"] == 1
-    assert data["2024-02"]["delta"]["throughput"] == 0
-    assert data["2024-02"]["delta"]["wip_violations"] == 0
-    assert data["2024-02"]["delta"]["blocked_aging_days"] == 0
-    assert data["2024-02"]["delta"]["escalation_rate_percent"] == 0
+    assert data["sprints"]["2024-01"]["delta"] is None
+    assert data["sprints"]["2024-02"]["delta"]["cycle_time_days"] == 2
+    assert data["sprints"]["2024-02"]["delta"]["lead_time_days"] == 1
+    assert data["sprints"]["2024-02"]["delta"]["throughput"] == 0
+    assert data["sprints"]["2024-02"]["delta"]["wip_violations"] == 0
+    assert data["sprints"]["2024-02"]["delta"]["blocked_aging_days"] == 0
+    assert data["sprints"]["2024-02"]["delta"]["escalation_rate_percent"] == 0
 
 
 def test_sprint_range_json_delta_wip_violations(tmp_path, capsys):
@@ -629,7 +629,7 @@ def test_sprint_range_json_delta_wip_violations(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-02"]["delta"]["wip_violations"] == 1
+    assert data["sprints"]["2024-02"]["delta"]["wip_violations"] == 1
 
 
 def test_sprint_range_json_delta_escalation_rate(tmp_path, capsys):
@@ -651,7 +651,7 @@ def test_sprint_range_json_delta_escalation_rate(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-02"]["delta"]["escalation_rate_percent"] == 20
+    assert data["sprints"]["2024-02"]["delta"]["escalation_rate_percent"] == 20
 
 
 def test_sprint_range_json_delta_blocked_aging(tmp_path, capsys):
@@ -674,7 +674,7 @@ def test_sprint_range_json_delta_blocked_aging(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-02"]["delta"]["blocked_aging_days"] == 1
+    assert data["sprints"]["2024-02"]["delta"]["blocked_aging_days"] == 1
 
 
 def test_sprint_range_json_delta_empty_prior(tmp_path, capsys):
@@ -697,18 +697,18 @@ def test_sprint_range_json_delta_empty_prior(tmp_path, capsys):
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["2024-02"]["prior"]["cycle_time_days"] == 0
-    assert data["2024-02"]["prior"]["lead_time_days"] == 0
-    assert data["2024-02"]["prior"]["throughput"] == 0
-    assert data["2024-02"]["prior"]["wip_violations"] == 0
-    assert data["2024-02"]["prior"]["blocked_aging_days"] == 0
-    assert data["2024-02"]["prior"]["escalation_rate_percent"] == 0
-    assert data["2024-02"]["delta"]["cycle_time_days"] == 4
-    assert data["2024-02"]["delta"]["lead_time_days"] == 6
-    assert data["2024-02"]["delta"]["throughput"] == 1
-    assert data["2024-02"]["delta"]["wip_violations"] == 0
-    assert data["2024-02"]["delta"]["blocked_aging_days"] == 0
-    assert data["2024-02"]["delta"]["escalation_rate_percent"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["cycle_time_days"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["lead_time_days"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["throughput"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["wip_violations"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["blocked_aging_days"] == 0
+    assert data["sprints"]["2024-02"]["prior"]["escalation_rate_percent"] == 0
+    assert data["sprints"]["2024-02"]["delta"]["cycle_time_days"] == 4
+    assert data["sprints"]["2024-02"]["delta"]["lead_time_days"] == 6
+    assert data["sprints"]["2024-02"]["delta"]["throughput"] == 1
+    assert data["sprints"]["2024-02"]["delta"]["wip_violations"] == 0
+    assert data["sprints"]["2024-02"]["delta"]["blocked_aging_days"] == 0
+    assert data["sprints"]["2024-02"]["delta"]["escalation_rate_percent"] == 0
 
 
 def test_sprint_range_table_flags_cycle_time_when_threshold_breached(tmp_path, capsys):
@@ -816,3 +816,64 @@ def test_format_sprint_range_table_order_and_no_current():
     idx_02 = result.index("| 2024-02 |")
     assert idx_01 < idx_02
     assert "| Current |" not in result
+
+
+def test_sprint_range_json_top_level_has_api_version_and_sprints(tmp_path, capsys):
+    """AC1: a JSON object with keys "2024-01" and "2024-02", each containing one
+    completed card, run with --sprint-range 2024-01..2024-02 --json, produces a
+    top-level JSON object with exactly two keys: "api_version" with value "1" and
+    "sprints" whose value is an object keyed by sprint label."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert set(data.keys()) == {"api_version", "sprints"}
+    assert data["api_version"] == "1"
+    assert set(data["sprints"].keys()) == {"2024-01", "2024-02"}
+
+
+def test_sprint_range_json_sprint_entries_have_all_keys(tmp_path, capsys):
+    """AC2: each sprint object under sprints includes its six metric keys, the flags
+    object, the prior key, and the delta key, with the same values the tool
+    previously produced for each sprint."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    for label in ("2024-01", "2024-02"):
+        entry = data["sprints"][label]
+        assert entry["cycle_time_days"] == 4
+        assert entry["lead_time_days"] == 6
+        assert entry["throughput"] == 1
+        assert entry["wip_violations"] == 0
+        assert entry["blocked_aging_days"] == 0
+        assert entry["escalation_rate_percent"] == 0
+        assert "flags" in entry
+        assert "prior" in entry
+        assert "delta" in entry
+
+
+def test_sprint_range_json_single_sprint_prior_and_delta_null(tmp_path, capsys):
+    """AC3: a JSON object with a single key "2024-01" containing one completed card,
+    run with --sprint-range 2024-01..2024-01 --json, produces a response with
+    "api_version": "1" and the single sprint object has prior set to null and
+    delta set to null."""
+    sprints = {"2024-01": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["api_version"] == "1"
+    assert data["sprints"]["2024-01"]["prior"] is None
+    assert data["sprints"]["2024-01"]["delta"] is None

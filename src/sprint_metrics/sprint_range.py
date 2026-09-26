@@ -14,7 +14,7 @@ from sprint_metrics.metrics import (
     calculate_throughput,
     calculate_wip_violations,
 )
-from sprint_metrics.report import _summary_section
+from sprint_metrics.report import API_VERSION, _summary_section
 from sprint_metrics.thresholds import _flag, calculate_flags
 
 
@@ -126,18 +126,19 @@ def format_sprint_range_json(
     as_of: date | None = None,
     thresholds: Mapping[str, float] | None = None,
 ) -> str:
-    """Render one JSON object per sprint label in ``labels``, keyed by label.
+    """Render one JSON object per sprint label in ``labels``, keyed by label, wrapped
+    in a top-level object with ``api_version`` and a ``sprints`` key.
 
-    Each value carries the same six metrics the table and single-sprint JSON
-    reports produce, plus a flags object computed with the same thresholds as
-    the single-sprint report, so a script can process the range without parsing
-    a table. Each sprint also includes a ``prior`` key holding the six metrics
+    Each value under ``sprints`` carries the same six metrics the table and
+    single-sprint JSON reports produce, plus a flags object computed with the same
+    thresholds as the single-sprint report, so a script can process the range without
+    parsing a table. Each sprint also includes a ``prior`` key holding the six metrics
     computed from the immediately preceding sprint label in the range, or
     ``null`` for the first sprint, and a ``delta`` key holding the signed change
     in each metric from the prior period to the current period, or ``null`` for
     the first sprint.
     """
-    report: dict[str, object] = {}
+    per_sprint: dict[str, object] = {}
     for index, label in enumerate(labels):
         cards = sprints[label]
         cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
@@ -175,12 +176,16 @@ def format_sprint_range_json(
                     sprint_metrics["escalation_rate_percent"] - prior["escalation_rate_percent"]
                 ),
             }
-        report[label] = {
+        per_sprint[label] = {
             **sprint_metrics,
             "flags": calculate_flags(cards, wip_limits, escalations, as_of, thresholds),
             "prior": prior,
             "delta": delta,
         }
+    report: dict[str, object] = {
+        "api_version": API_VERSION,
+        "sprints": per_sprint,
+    }
     return json.dumps(report)
 
 
