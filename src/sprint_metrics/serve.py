@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import http.server
+import json
 import threading
 
 from sprint_metrics.card import _load_cards
 from sprint_metrics.metrics import _load_wip_limits
-from sprint_metrics.report import format_prometheus_report
+from sprint_metrics.report import format_json_report, format_prometheus_report
 
 
 def serve_metrics(
@@ -24,6 +25,31 @@ def serve_metrics(
 
     class MetricsHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
+            if self.path == "/json":
+                try:
+                    with open(cards_path) as f:
+                        cards = _load_cards(f.read())
+                    wip_limits = None
+                    if wip_limits_path is not None:
+                        with open(wip_limits_path) as f:
+                            wip_limits = _load_wip_limits(f.read())
+                except (TypeError, ValueError, OSError) as exc:
+                    error_body = json.dumps({"error": str(exc)})
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(error_body)))
+                    self.end_headers()
+                    self.wfile.write(error_body.encode())
+                    return
+
+                body = format_json_report(cards, wip_limits, escalations)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body.encode())
+                return
+
             if self.path != "/metrics":
                 self.send_response(404)
                 self.end_headers()
