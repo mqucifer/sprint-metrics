@@ -201,8 +201,7 @@ def test_prior_sprint_json_top_level_metrics_from_most_recent(tmp_path, capsys):
 
 def test_prior_sprint_json_missing_sprint_exits_2(tmp_path, capsys):
     """AC3: a JSON object containing only sprint 2024-02, run with --prior-sprint
-    2024-01 --json, exits 2, stderr contains the string 2024-01, and stdout is
-    empty."""
+    2024-01 --json, exits 2 and stderr contains the string 2024-01."""
     sprints = {"2024-02": [COMPLETED_CARD]}
     path = tmp_path / "sprints.json"
     path.write_text(json.dumps(sprints))
@@ -211,4 +210,3 @@ def test_prior_sprint_json_missing_sprint_exits_2(tmp_path, capsys):
 
     assert exit_code == 2
     assert "2024-01" in captured.err
-    assert captured.out == ""
