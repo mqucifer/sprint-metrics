@@ -1059,3 +1059,75 @@ def test_json_metrics_with_sprint_date(tmp_path, capsys):
     assert "wip_violations" not in data
     assert "blocked_aging_days" not in data
     assert "escalation_rate_percent" not in data
+
+
+def test_table_metrics_shows_only_requested_columns(tmp_path, capsys):
+    """AC1: --metrics cycle_time_days,throughput on a completed card shows a table
+    with only Sprint, Cycle time, and Throughput columns, and the data row reads
+    '| Current | 4 days | 1 |'."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--metrics", "cycle_time_days,throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Sprint | Cycle time | Throughput |" in captured.out
+    assert "| Current | 4 days | 1 |" in captured.out
+    assert "Lead time" not in captured.out
+    assert "WIP violations" not in captured.out
+    assert "Blocked aging" not in captured.out
+    assert "Escalation rate" not in captured.out
+
+
+def test_table_metrics_with_prior_shows_only_requested_columns(tmp_path, capsys):
+    """AC2: --prior --metrics throughput shows a table with only Sprint and Throughput
+    columns, with Current, Prior, and Delta rows all showing throughput values."""
+    current = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    prior = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([current]))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps([prior]))
+    exit_code = main([str(cards_path), "--prior", str(prior_path), "--metrics", "throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Sprint | Throughput |" in captured.out
+    assert "| Current | 1 |" in captured.out
+    assert "| Prior | 1 |" in captured.out
+    assert "| Delta | 0 |" in captured.out
+    assert "Cycle time" not in captured.out
+    assert "Lead time" not in captured.out
+    assert "WIP violations" not in captured.out
+    assert "Blocked aging" not in captured.out
+    assert "Escalation rate" not in captured.out
+
+
+def test_table_metrics_with_thresholds_flags_only_visible_columns(tmp_path, capsys):
+    """AC3: --thresholds with cycle_time_days 5 and --metrics cycle_time_days,lead_time_days
+    on a card with cycle time 7 days shows '7 days ⚠️' in the cycle time cell and
+    '7 days' (no flag) in the lead time cell, with no other metric columns."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main(
+        [
+            str(cards_path),
+            "--thresholds",
+            str(thresholds_path),
+            "--metrics",
+            "cycle_time_days,lead_time_days",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Sprint | Cycle time | Lead time |" in captured.out
+    assert "| Current | 7 days \u26a0\ufe0f | 7 days |" in captured.out
+    assert "Throughput" not in captured.out
+    assert "WIP violations" not in captured.out
+    assert "Blocked aging" not in captured.out
+    assert "Escalation rate" not in captured.out

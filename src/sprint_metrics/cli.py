@@ -332,6 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sprint_date,
                 prior_cards=prior_cards,
                 thresholds=thresholds,
+                metrics=metrics_set,
             )
         )
     return 0
