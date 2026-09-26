@@ -230,6 +230,7 @@ def format_json_report(
     escalations: int = 0,
     as_of: date | None = None,
     thresholds: Mapping[str, float] | None = None,
+    metrics: frozenset[str] | None = None,
 ) -> str:
     """Render the crew performance metrics as a JSON object."""
     parsed = _as_cards(cards)
@@ -239,15 +240,26 @@ def format_json_report(
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
     flags = calculate_flags(parsed, wip_limits, escalations, as_of, thresholds)
-    report: dict[str, object] = {
-        "api_version": API_VERSION,
+
+    all_metric_values: dict[str, object] = {
         "cycle_time_days": cycle_time,
         "lead_time_days": lead_time,
         "throughput": throughput,
         "wip_violations": wip_violations,
         "blocked_aging_days": blocked_aging,
         "escalation_rate_percent": escalation_rate,
-        "flags": flags,
+    }
+    if metrics is not None:
+        metric_values = {k: v for k, v in all_metric_values.items() if k in metrics}
+        filtered_flags = {k: v for k, v in flags.items() if k in metrics}
+    else:
+        metric_values = all_metric_values
+        filtered_flags = flags
+
+    report: dict[str, object] = {
+        "api_version": API_VERSION,
+        **metric_values,
+        "flags": filtered_flags,
     }
     if as_of is not None:
         report["sprint_date"] = as_of.isoformat()

@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from datetime import date
 
 from sprint_metrics.card import _load_cards
-from sprint_metrics.metrics import _load_wip_limits
+from sprint_metrics.metrics import ALL_METRICS, _load_wip_limits
 from sprint_metrics.report import (
     format_json_report,
     format_markdown_report,
@@ -143,6 +143,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "metrics it specifies."
         ),
     )
+    parser.add_argument(
+        "--metrics",
+        type=str,
+        default=None,
+        metavar="METRICS",
+        help="Comma-separated list of metric names to include in the JSON output.",
+    )
     args = parser.parse_args(argv)
 
     if args.sprint_date is not None:
@@ -156,6 +163,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
     else:
         sprint_date = None
+
+    metrics_set: frozenset[str] | None = None
+    if args.metrics is not None:
+        names = [name.strip() for name in args.metrics.split(",")]
+        if any(not name for name in names):
+            print("sprint-metrics: --metrics must not be empty", file=sys.stderr)
+            return 2
+        unknown = [name for name in names if name not in ALL_METRICS]
+        if unknown:
+            print(f"sprint-metrics: unknown metric {unknown[0]!r}", file=sys.stderr)
+            return 2
+        metrics_set = frozenset(names)
 
     if args.scrape:
         cards_path = args.cards.name if hasattr(args.cards, "name") else ""
@@ -299,7 +318,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
     elif args.json:
-        print(format_json_report(cards, wip_limits, args.escalations, sprint_date, thresholds))
+        print(
+            format_json_report(
+                cards, wip_limits, args.escalations, sprint_date, thresholds, metrics_set
+            )
+        )
     else:
         print(
             format_performance_table(

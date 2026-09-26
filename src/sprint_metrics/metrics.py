@@ -147,3 +147,15 @@ def _load_wip_limits(source: str) -> dict[str, int]:
     if not isinstance(raw, Mapping):
         raise TypeError("expected a JSON object of WIP limits, keyed by state")
     return {str(state): int(limit) for state, limit in raw.items()}
+
+
+ALL_METRICS: frozenset[str] = frozenset(
+    {
+        "cycle_time_days",
+        "lead_time_days",
+        "throughput",
+        "wip_violations",
+        "blocked_aging_days",
+        "escalation_rate_percent",
+    }
+)
