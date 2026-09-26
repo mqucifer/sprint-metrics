@@ -282,7 +282,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
         elif args.json:
-            print(format_json_report(current_cards, wip_limits, args.escalations, sprint_date))
+            print(
+                format_json_report(
+                    current_cards,
+                    wip_limits,
+                    args.escalations,
+                    sprint_date,
+                    thresholds=thresholds,
+                    prior_cards=prior_cards,
+                )
+            )
         elif args.prometheus:
             print(
                 format_prometheus_report(current_cards, wip_limits, args.escalations, sprint_date)

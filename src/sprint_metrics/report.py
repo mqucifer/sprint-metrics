@@ -231,8 +231,14 @@ def format_json_report(
     as_of: date | None = None,
     thresholds: Mapping[str, float] | None = None,
     metrics: frozenset[str] | None = None,
+    prior_cards: Iterable[Card | Mapping[str, object]] | None = None,
 ) -> str:
-    """Render the crew performance metrics as a JSON object."""
+    """Render the crew performance metrics as a JSON object.
+
+    When ``prior_cards`` is provided, the output includes a ``prior`` object
+    with the prior sprint's six metrics and a ``delta`` object with the signed
+    change from prior to current for each metric.
+    """
     parsed = _as_cards(cards)
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
     throughput = calculate_throughput(parsed)
@@ -261,6 +267,29 @@ def format_json_report(
         **metric_values,
         "flags": filtered_flags,
     }
+    if prior_cards is not None:
+        prior_parsed = _as_cards(prior_cards)
+        prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_parsed)
+        prior_throughput = calculate_throughput(prior_parsed)
+        prior_wip = calculate_wip_violations(prior_parsed, wip_limits)
+        prior_blocked = calculate_blocked_aging(prior_parsed, as_of)
+        prior_escalation = calculate_escalation_rate(prior_parsed, escalations)
+        report["prior"] = {
+            "cycle_time_days": prior_cycle,
+            "lead_time_days": prior_lead,
+            "throughput": prior_throughput,
+            "wip_violations": prior_wip,
+            "blocked_aging_days": prior_blocked,
+            "escalation_rate_percent": prior_escalation,
+        }
+        report["delta"] = {
+            "cycle_time_days": cycle_time - prior_cycle,
+            "lead_time_days": lead_time - prior_lead,
+            "throughput": throughput - prior_throughput,
+            "wip_violations": wip_violations - prior_wip,
+            "blocked_aging_days": blocked_aging - prior_blocked,
+            "escalation_rate_percent": escalation_rate - prior_escalation,
+        }
     if as_of is not None:
         report["sprint_date"] = as_of.isoformat()
     return json.dumps(report)
