@@ -974,3 +974,88 @@ def test_json_includes_api_version_for_empty_sprint(run_command):
     assert data["blocked_aging_days"] == 0
     assert data["escalation_rate_percent"] == 0
     assert "flags" in data
+
+
+def test_json_metrics_selected_keys_present_and_unselected_absent(tmp_path, capsys):
+    """AC1: --json --metrics throughput,cycle_time_days shows only those keys in the JSON
+    object, and the flags object contains only those two keys."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json", "--metrics", "throughput,cycle_time_days"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["throughput"] == 1
+    assert data["cycle_time_days"] == 4
+    assert "lead_time_days" not in data
+    assert "wip_violations" not in data
+    assert "blocked_aging_days" not in data
+    assert "escalation_rate_percent" not in data
+    assert set(data["flags"].keys()) == {"throughput", "cycle_time_days"}
+
+
+def test_json_metrics_flags_filtered_to_requested(tmp_path, capsys):
+    """AC2: --json --metrics cycle_time_days,throughput on a card with cycle time 7 days
+    produces a flags object with exactly two keys: cycle_time_days true and
+    throughput false."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--json", "--metrics", "cycle_time_days,throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert set(data["flags"].keys()) == {"cycle_time_days", "throughput"}
+    assert data["flags"]["cycle_time_days"] is True
+    assert data["flags"]["throughput"] is False
+
+
+def test_json_metrics_unknown_name_exits_2(tmp_path, capsys):
+    """AC3: --json --metrics throughput,bogus_metric exits 2, stderr contains the
+    offending name, and stdout is empty."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([COMPLETED_CARD]))
+    exit_code = main([str(path), "--json", "--metrics", "throughput,bogus_metric"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "bogus_metric" in captured.err
+    assert captured.out == ""
+
+
+def test_json_metrics_empty_string_exits_2(tmp_path, capsys):
+    """AC4: --json --metrics '' (empty string after the flag) exits 2, stderr
+    contains an error mentioning metrics, and stdout is empty."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([COMPLETED_CARD]))
+    exit_code = main([str(path), "--json", "--metrics", ""])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "metrics" in captured.err
+    assert captured.out == ""
+
+
+def test_json_metrics_with_sprint_date(tmp_path, capsys):
+    """AC5: --json --sprint-date 2024-01-31 --metrics throughput shows the
+    throughput and sprint_date keys but not the other metric keys."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([COMPLETED_CARD]))
+    exit_code = main(
+        [str(path), "--json", "--sprint-date", "2024-01-31", "--metrics", "throughput"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["throughput"] == 1
+    assert data["sprint_date"] == "2024-01-31"
+    assert "flags" in data
+    assert "cycle_time_days" not in data
+    assert "lead_time_days" not in data
+    assert "wip_violations" not in data
+    assert "blocked_aging_days" not in data
+    assert "escalation_rate_percent" not in data
