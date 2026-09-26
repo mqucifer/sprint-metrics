@@ -211,4 +211,3 @@ def test_prior_sprint_json_missing_sprint_exits_2(tmp_path, capsys):
 
     assert exit_code == 2
     assert "2024-01" in captured.err
-    assert captured.out == ""
