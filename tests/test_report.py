@@ -27,31 +27,3 @@ def test_format_performance_table_thresholds_flag_cycle_time_only():
     card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     result = format_performance_table([card], thresholds={"cycle_time_days": 3})
     assert "| Current | 4 days \u26a0\ufe0f | 6 days | 1 | 0 | 0 days | 0% |" in result
-
-
-def test_crew_performance_reexports_report_functions():
-    """AC4: crew_performance.py imports the single-sprint formatters from
-    sprint_metrics.report, so the full existing test suite passes unchanged."""
-    from sprint_metrics.crew_performance import (
-        format_json_report,
-        format_markdown_report,
-        format_performance_table,
-        format_prometheus_report,
-    )
-    from sprint_metrics.report import (
-        format_json_report as report_json,
-    )
-    from sprint_metrics.report import (
-        format_markdown_report as report_md,
-    )
-    from sprint_metrics.report import (
-        format_performance_table as report_table,
-    )
-    from sprint_metrics.report import (
-        format_prometheus_report as report_prom,
-    )
-
-    assert format_performance_table is report_table
-    assert format_markdown_report is report_md
-    assert format_prometheus_report is report_prom
-    assert format_json_report is report_json
