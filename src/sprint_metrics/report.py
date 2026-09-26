@@ -240,6 +240,7 @@ def format_json_report(
     escalation_rate = calculate_escalation_rate(parsed, escalations)
     flags = calculate_flags(parsed, wip_limits, escalations, as_of, thresholds)
     report: dict[str, object] = {
+        "api_version": API_VERSION,
         "cycle_time_days": cycle_time,
         "lead_time_days": lead_time,
         "throughput": throughput,
@@ -285,3 +286,6 @@ def _signed(delta: int) -> str:
     if delta == 0:
         return "0"
     return f"{delta:+d}"
+
+
+API_VERSION = "1"

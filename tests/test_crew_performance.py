@@ -923,3 +923,54 @@ def test_command_reports_json_error_for_thresholds_as_array(tmp_path, capsys):
     assert exit_code == 2
     assert captured.err
     assert captured.out == ""
+
+
+def test_json_includes_api_version(run_command):
+    """AC1: a valid cards file with one completed card produces JSON with
+    api_version "1" alongside the six metric keys and the flags object."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["api_version"] == "1"
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+    assert "flags" in data
+
+
+def test_json_includes_api_version_with_sprint_date(run_command):
+    """AC2: with --sprint-date 2024-01-31 and --json, the JSON output includes
+    api_version "1", sprint_date "2024-01-31", and all six metric keys."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], sprint_date="2024-01-31", json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["api_version"] == "1"
+    assert data["sprint_date"] == "2024-01-31"
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+
+
+def test_json_includes_api_version_for_empty_sprint(run_command):
+    """AC3: an empty cards file with --json produces JSON with api_version "1",
+    all six metric keys with value 0, and the flags object."""
+    exit_code, output, _ = run_command([], json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["api_version"] == "1"
+    assert data["cycle_time_days"] == 0
+    assert data["lead_time_days"] == 0
+    assert data["throughput"] == 0
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+    assert "flags" in data
