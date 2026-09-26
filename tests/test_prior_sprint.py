@@ -138,3 +138,78 @@ def test_prior_sprint_identical_dates_show_zero_change(tmp_path, capsys):
     assert exit_code == 0
     assert "- **Cycle time**: 4 days (was 4 days, 0)" in captured.out
     assert "- **Throughput**: 1 (was 1, 0)" in captured.out
+
+
+def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
+    """AC1: a JSON object with sprint labels 2024-01 and 2024-02, where 2024-01
+    contains one card (created 2024-01-01, started 2024-01-03, completed 2024-01-07)
+    and 2024-02 contains one card (created 2024-01-01, started 2024-01-02,
+    completed 2024-01-08). Running with --prior-sprint 2024-01 --json exits 0 and
+    stdout is a JSON object with api_version "1", the current sprint's six metrics,
+    a flags object, a "prior" object with the prior sprint's six metrics, and a
+    "delta" object with the signed change for each metric."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+        "2024-02": [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-08"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["api_version"] == "1"
+    assert data["cycle_time_days"] == 6
+    assert data["lead_time_days"] == 7
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+    assert "flags" in data
+    assert data["prior"] == {
+        "cycle_time_days": 4,
+        "lead_time_days": 6,
+        "throughput": 1,
+        "wip_violations": 0,
+        "blocked_aging_days": 0,
+        "escalation_rate_percent": 0,
+    }
+    assert data["delta"] == {
+        "cycle_time_days": 2,
+        "lead_time_days": 1,
+        "throughput": 0,
+        "wip_violations": 0,
+        "blocked_aging_days": 0,
+        "escalation_rate_percent": 0,
+    }
+
+
+def test_prior_sprint_json_missing_sprint_exits_2(tmp_path, capsys):
+    """AC2: a JSON object containing only sprint label 2024-02, run with
+    --prior-sprint 2024-01 --json, exits 2, stderr contains 2024-01, and
+    stdout is empty."""
+    sprints = {"2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "2024-01" in captured.err
+    assert captured.out == ""
+
+
+def test_prior_sprint_json_cannot_be_most_recent(tmp_path, capsys):
+    """AC3: a JSON object with sprint labels 2024-01 and 2024-02, each containing
+    one completed card, run with --prior-sprint 2024-02 --json, exits 2, stderr
+    contains 'most recent', and stdout is empty."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "most recent" in captured.err
+    assert captured.out == ""
