@@ -1,5 +1,6 @@
 """Delivery metrics for the crew's own board."""
 
+from sprint_metrics.cli import main
 from sprint_metrics.crew_performance import (
     Card,
     calculate_blocked_aging,
@@ -11,7 +12,6 @@ from sprint_metrics.crew_performance import (
     format_json_report,
     format_performance_table,
     format_prometheus_report,
-    main,
 )
 
 __all__ = [

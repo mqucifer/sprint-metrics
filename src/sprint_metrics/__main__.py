@@ -2,7 +2,7 @@
 
 import sys
 
-from sprint_metrics.crew_performance import main
+from sprint_metrics.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())
