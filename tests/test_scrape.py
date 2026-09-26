@@ -213,3 +213,64 @@ def test_scrape_endpoint_returns_500_when_wip_limits_file_is_not_valid_json(tmp_
     assert "sprint_wip_violations" not in body
     assert "sprint_blocked_aging_days" not in body
     assert "sprint_escalation_rate_percent" not in body
+
+
+def test_scrape_json_endpoint_returns_200_with_api_version_and_cycle_time(tmp_path, start_scrape):
+    """AC1: one completed card (created 2024-01-01, started 2024-01-03, completed 2024-01-07).
+    GET /json returns HTTP 200, Content-Type application/json, and the body is a JSON
+    object with api_version "1" and cycle_time_days 4."""
+    url = start_scrape(_write_cards(tmp_path, [COMPLETED_CARD]))
+    json_url = url.replace("/metrics", "/json")
+    with urllib.request.urlopen(json_url, timeout=5) as response:
+        status = response.status
+        content_type = response.headers["Content-Type"]
+        body = json.loads(response.read().decode())
+
+    assert status == 200
+    assert content_type == "application/json"
+    assert body["api_version"] == "1"
+    assert body["cycle_time_days"] == 4
+
+
+def test_scrape_metrics_still_works_alongside_json(tmp_path, start_scrape):
+    """AC2: the same server that serves /json also serves /metrics.
+    GET /metrics returns HTTP 200 with sprint_cycle_time_days 4."""
+    url = start_scrape(_write_cards(tmp_path, [COMPLETED_CARD]))
+    json_url = url.replace("/metrics", "/json")
+
+    # Confirm /json works on this server
+    with urllib.request.urlopen(json_url, timeout=5) as response:
+        assert response.status == 200
+
+    # Confirm /metrics still works
+    status, body = _fetch(url)
+    assert status == 200
+    assert "sprint_cycle_time_days 4" in body
+
+
+def test_scrape_json_endpoint_returns_500_when_cards_file_is_deleted(tmp_path, start_scrape):
+    """AC3: a server started with --scrape pointing at a cards file that is subsequently
+    deleted. GET /json returns HTTP 500 and the body is a JSON object containing an
+    'error' key."""
+    cards_path = _write_cards(tmp_path, [COMPLETED_CARD])
+    url = start_scrape(cards_path)
+    json_url = url.replace("/metrics", "/json")
+
+    # Verify the endpoint works initially
+    with urllib.request.urlopen(json_url, timeout=5) as response:
+        assert response.status == 200
+
+    # Delete the cards file
+    cards_path.unlink()
+
+    try:
+        with urllib.request.urlopen(json_url, timeout=5) as response:
+            status = response.status
+            body = response.read().decode()
+    except urllib.error.HTTPError as e:
+        status = e.code
+        body = e.read().decode()
+
+    assert status == 500
+    data = json.loads(body)
+    assert "error" in data

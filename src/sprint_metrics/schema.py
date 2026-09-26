@@ -1,0 +1,51 @@
+"""JSON Schema documents for the sprint-metrics API response."""
+
+from __future__ import annotations
+
+METRIC_KEYS = [
+    "cycle_time_days",
+    "lead_time_days",
+    "throughput",
+    "wip_violations",
+    "blocked_aging_days",
+    "escalation_rate_percent",
+]
+
+SINGLE_SPRINT_SCHEMA: dict[str, object] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["api_version", *METRIC_KEYS, "flags"],
+    "properties": {
+        "api_version": {"type": "string"},
+        "cycle_time_days": {"type": "integer"},
+        "lead_time_days": {"type": "integer"},
+        "throughput": {"type": "integer"},
+        "wip_violations": {"type": "integer"},
+        "blocked_aging_days": {"type": "integer"},
+        "escalation_rate_percent": {"type": "integer"},
+        "flags": {"type": "object"},
+        "sprint_date": {"type": "string"},
+    },
+}
+
+SPRINT_RANGE_SCHEMA: dict[str, object] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["api_version", "sprints"],
+    "properties": {
+        "api_version": {"type": "string"},
+        "sprints": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "required": [*METRIC_KEYS, "flags", "prior", "delta"],
+                "properties": {
+                    **{key: {"type": "integer"} for key in METRIC_KEYS},
+                    "flags": {"type": "object"},
+                    "prior": {"type": ["object", "null"]},
+                    "delta": {"type": ["object", "null"]},
+                },
+            },
+        },
+    },
+}

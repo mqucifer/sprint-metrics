@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import sys
 import threading
 from collections.abc import Sequence
@@ -21,6 +22,7 @@ from sprint_metrics.report import (
     format_performance_table,
     format_prometheus_report,
 )
+from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA
 from sprint_metrics.serve import serve_metrics
 from sprint_metrics.sprint_range import (
     _load_sprints,
@@ -121,6 +123,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Output the report as a JSON object.",
     )
     parser.add_argument(
+        "--schema",
+        action="store_true",
+        help="Output the JSON Schema for the API response (requires --json).",
+    )
+    parser.add_argument(
         "--scrape",
         action="store_true",
         help="Start an HTTP server that serves the metrics at /metrics for scraping.",
@@ -175,6 +182,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"sprint-metrics: unknown metric {unknown[0]!r}", file=sys.stderr)
             return 2
         metrics_set = frozenset(names)
+
+    if args.schema:
+        if not args.json:
+            print(
+                "sprint-metrics: --schema is only valid with --json",
+                file=sys.stderr,
+            )
+            return 2
+        if args.sprint_range is not None:
+            print(json.dumps(SPRINT_RANGE_SCHEMA))
+        else:
+            print(json.dumps(SINGLE_SPRINT_SCHEMA))
+        return 0
 
     if args.scrape:
         cards_path = args.cards.name if hasattr(args.cards, "name") else ""
