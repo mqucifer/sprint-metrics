@@ -231,6 +231,7 @@ def format_json_report(
     as_of: date | None = None,
     thresholds: Mapping[str, float] | None = None,
     metrics: frozenset[str] | None = None,
+    prior_cards: Iterable[Card | Mapping[str, object]] | None = None,
 ) -> str:
     """Render the crew performance metrics as a JSON object."""
     parsed = _as_cards(cards)
@@ -263,6 +264,31 @@ def format_json_report(
     }
     if as_of is not None:
         report["sprint_date"] = as_of.isoformat()
+    if prior_cards is not None:
+        prior_parsed = _as_cards(prior_cards)
+        prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_parsed)
+        prior_throughput = calculate_throughput(prior_parsed)
+        prior_wip = calculate_wip_violations(prior_parsed, wip_limits)
+        prior_blocked = calculate_blocked_aging(prior_parsed, as_of)
+        prior_escalation = calculate_escalation_rate(prior_parsed, escalations)
+        prior = {
+            "cycle_time_days": prior_cycle,
+            "lead_time_days": prior_lead,
+            "throughput": prior_throughput,
+            "wip_violations": prior_wip,
+            "blocked_aging_days": prior_blocked,
+            "escalation_rate_percent": prior_escalation,
+        }
+        delta = {
+            "cycle_time_days": cycle_time - prior_cycle,
+            "lead_time_days": lead_time - prior_lead,
+            "throughput": throughput - prior_throughput,
+            "wip_violations": wip_violations - prior_wip,
+            "blocked_aging_days": blocked_aging - prior_blocked,
+            "escalation_rate_percent": escalation_rate - prior_escalation,
+        }
+        report["prior"] = prior
+        report["delta"] = delta
     return json.dumps(report)
 
 
