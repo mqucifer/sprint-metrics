@@ -65,4 +65,9 @@ design:
     __main__.py is the python -m entry point.
   docs:
   - README.md
+  - docs/usage.md
+  - docs/cards.md
   - docs/metrics.md
+  - docs/formats.md
+  - docs/thresholds.md
+  - docs/scrape.md
