@@ -43,3 +43,33 @@ def test_readme_basic_usage_shows_minimal_invocation_and_stdin():
     section = _section(_readme(), "Basic usage")
     assert "sprint-metrics cards.json" in section
     assert "standard input" in section.lower()
+
+
+def test_readme_input_format_shows_json_array_with_complete_and_partial_cards():
+    """AC1: the input-format section shows a JSON array of card objects with at least one
+    complete example card that includes created (ISO-8601), started, completed, and
+    blocked_since, and at least one card showing an omitted optional key."""
+    section = _section(_readme(), "Input format (cards.json)")
+    assert '"created"' in section
+    assert '"started"' in section
+    assert '"completed"' in section
+    assert '"blocked_since"' in section
+    # At least two cards: one complete, one with omitted optional keys
+    assert section.count('"created"') >= 2
+
+
+def test_readme_input_format_states_created_only_required_and_top_level_array():
+    """AC2: the input-format section states that created is the only required field per
+    card and that the top-level JSON value must be an array (list), not an object."""
+    section = _section(_readme(), "Input format (cards.json)")
+    assert "only required" in section
+    assert "array" in section
+    assert "not an object" in section
+
+
+def test_readme_input_format_states_empty_array_is_valid():
+    """AC3: the input-format section states that an empty JSON array ([]) is valid input
+    and produces a report in which every metric is zero."""
+    section = _section(_readme(), "Input format (cards.json)")
+    assert "[]" in section
+    assert "zero" in section
