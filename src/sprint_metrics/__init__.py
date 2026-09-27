@@ -6,6 +6,8 @@ from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
+    calculate_failure_breakdown,
+    calculate_first_attempt_rate,
     calculate_throughput,
     calculate_wip_violations,
 )
@@ -21,6 +23,8 @@ __all__ = [
     "calculate_blocked_aging",
     "calculate_cycle_time_and_lead_time",
     "calculate_escalation_rate",
+    "calculate_failure_breakdown",
+    "calculate_first_attempt_rate",
     "calculate_flags",
     "calculate_throughput",
     "calculate_wip_violations",

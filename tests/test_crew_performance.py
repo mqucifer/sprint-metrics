@@ -1779,3 +1779,52 @@ def test_markdown_prior_sprint_shows_first_attempt_rate_with_change(tmp_path, ca
 
     assert exit_code == 0
     assert "- **First attempt rate**: 75% (was 50%, +25)" in captured.out
+
+
+def test_prometheus_reports_first_attempt_rate_and_failure_count(tmp_path, capsys):
+    """AC1: 5 completed cards (3 first-attempt, 1 parse/Developer, 1 check/Code Reviewer)
+    with --prometheus shows sprint_first_attempt_rate_percent 60 and both failure_count
+    lines."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "sprint_first_attempt_rate_percent 60" in captured.out
+    assert 'sprint_failure_count{class="parse",role="Developer"} 1' in captured.out
+    assert 'sprint_failure_count{class="check",role="Code Reviewer"} 1' in captured.out
+
+
+def test_prometheus_empty_sprint_shows_zero_rate_and_no_failure_count(tmp_path, capsys):
+    """AC2: an empty cards file with --prometheus shows
+    sprint_first_attempt_rate_percent 0 and no sprint_failure_count lines."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "sprint_first_attempt_rate_percent 0" in captured.out
+    assert "sprint_failure_count" not in captured.out
