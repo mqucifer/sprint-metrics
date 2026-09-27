@@ -2,6 +2,9 @@ name: tests
 
 on:
   pull_request:
+  # The merge queue tests each pull request on top of those ahead of it, and
+  # waits for this check on that combination before merging (crew#302).
+  merge_group:
   push:
     branches: [main]
 
