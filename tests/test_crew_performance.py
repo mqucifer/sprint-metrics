@@ -1131,3 +1131,80 @@ def test_table_metrics_with_thresholds_flags_only_visible_columns(tmp_path, caps
     assert "WIP violations" not in captured.out
     assert "Blocked aging" not in captured.out
     assert "Escalation rate" not in captured.out
+
+
+def test_markdown_metrics_selected_lines_present_and_unselected_absent(tmp_path, capsys):
+    """AC1: --markdown --metrics cycle_time_days,throughput on a completed card shows
+    only the cycle time and throughput lines, while keeping the heading, report date,
+    and the summary section with Completed, In progress, and Blocked counts."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown", "--metrics", "cycle_time_days,throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days" in captured.out
+    assert "- **Throughput**: 1 cards" in captured.out
+    assert "- **Lead time**" not in captured.out
+    assert "- **WIP violations**" not in captured.out
+    assert "- **Blocked aging**" not in captured.out
+    assert "- **Escalation rate**" not in captured.out
+    assert "# Crew Performance Report" in captured.out
+    assert "Report date:" in captured.out
+    assert "## Crew Performance Summary" in captured.out
+    assert "- **Completed**: 1" in captured.out
+    assert "- **In progress**: 0" in captured.out
+    assert "- **Blocked**: 0" in captured.out
+
+
+def test_markdown_metrics_with_thresholds_flags_only_visible_metric(tmp_path, capsys):
+    """AC2: --markdown --thresholds thresholds.json --metrics cycle_time_days on a card
+    with cycle time 7 days shows '- **Cycle time**: 7 days \u26a0\ufe0f' and does not contain
+    any other metric lines."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main(
+        [
+            str(cards_path),
+            "--markdown",
+            "--thresholds",
+            str(thresholds_path),
+            "--metrics",
+            "cycle_time_days",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 7 days \u26a0\ufe0f" in captured.out
+    assert "- **Lead time**" not in captured.out
+    assert "- **Throughput**" not in captured.out
+    assert "- **WIP violations**" not in captured.out
+    assert "- **Blocked aging**" not in captured.out
+    assert "- **Escalation rate**" not in captured.out
+
+
+def test_markdown_metrics_empty_sprint_shows_no_data_and_summary(tmp_path, capsys):
+    """AC3: --markdown --metrics throughput on an empty cards file shows
+    'No performance data available' and the summary section with zero counts,
+    but does not contain any metric lines."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main([str(path), "--markdown", "--metrics", "throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "No performance data available" in captured.out
+    assert "- **Completed**: 0" in captured.out
+    assert "- **In progress**: 0" in captured.out
+    assert "- **Blocked**: 0" in captured.out
+    assert "- **Throughput**" not in captured.out
+    assert "- **Cycle time**" not in captured.out
+    assert "- **Lead time**" not in captured.out
+    assert "- **WIP violations**" not in captured.out
+    assert "- **Blocked aging**" not in captured.out
+    assert "- **Escalation rate**" not in captured.out
