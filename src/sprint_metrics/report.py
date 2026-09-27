@@ -11,6 +11,8 @@ from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
+    calculate_failure_breakdown,
+    calculate_first_attempt_rate,
     calculate_throughput,
     calculate_wip_violations,
 )
@@ -33,7 +35,7 @@ def format_performance_table(
     third row labelled Delta shows the signed change in each metric from the
     prior period to the current period.
 
-    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric cell
+    When ``thresholds`` is provided, a \u26a0\ufe0f marker is appended to any metric cell
     in the Current row whose value exceeds its threshold (strict greater-than;
     meeting the threshold exactly is not a breach). The Prior and Delta rows are
     never flagged.
@@ -46,6 +48,8 @@ def format_performance_table(
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
+    first_attempt_rate = calculate_first_attempt_rate(cards)
+    failure_breakdown = calculate_failure_breakdown(cards)
     sprint_label = as_of.isoformat() if as_of is not None else "Current"
 
     if metrics is not None:
@@ -64,6 +68,8 @@ def format_performance_table(
         "wip_violations": f"{wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}",
         "blocked_aging_days": f"{blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
         "escalation_rate_percent": f"{escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
+        "first_attempt_rate_percent": f"{first_attempt_rate}%{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}",
+        "failure_breakdown": _format_failure_breakdown(failure_breakdown),
     }
     current_row = f"| {sprint_label} | " + " | ".join(current_cells[m] for m in selected) + " |"
 
@@ -75,6 +81,7 @@ def format_performance_table(
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
+        prior_first_attempt = calculate_first_attempt_rate(prior_cards)
 
         prior_cells: dict[str, str] = {
             "cycle_time_days": f"{prior_cycle} days",
@@ -83,6 +90,8 @@ def format_performance_table(
             "wip_violations": f"{prior_wip}",
             "blocked_aging_days": f"{prior_blocked} days",
             "escalation_rate_percent": f"{prior_escalation}%",
+            "first_attempt_rate_percent": f"{prior_first_attempt}%",
+            "failure_breakdown": "\u2014",
         }
         prior_row = "| Prior | " + " | ".join(prior_cells[m] for m in selected) + " |"
 
@@ -93,6 +102,8 @@ def format_performance_table(
             "wip_violations": f"{_signed(wip_violations - prior_wip)}",
             "blocked_aging_days": f"{_signed(blocked_aging - prior_blocked)} days",
             "escalation_rate_percent": f"{_signed(escalation_rate - prior_escalation)}%",
+            "first_attempt_rate_percent": f"{_signed(first_attempt_rate - prior_first_attempt)}%",
+            "failure_breakdown": "\u2014",
         }
         delta_row = "| Delta | " + " | ".join(delta_cells[m] for m in selected) + " |"
 
@@ -443,6 +454,8 @@ _METRIC_COLUMNS: dict[str, str] = {
     "wip_violations": "WIP violations",
     "blocked_aging_days": "Blocked aging",
     "escalation_rate_percent": "Escalation rate",
+    "first_attempt_rate_percent": "First attempt",
+    "failure_breakdown": "Top causes",
 }
 
 
@@ -453,4 +466,19 @@ _CANONICAL_ORDER: tuple[str, ...] = (
     "wip_violations",
     "blocked_aging_days",
     "escalation_rate_percent",
+    "first_attempt_rate_percent",
+    "failure_breakdown",
 )
+
+
+def _format_failure_breakdown(breakdown: list[tuple[str, str, int]]) -> str:
+    """Render the failure breakdown as 'N\u00d7 class (role), \u2026' or '\u2014' when empty."""
+    if not breakdown:
+        return "\u2014"
+    parts = []
+    for cls, role, count in breakdown:
+        if role:
+            parts.append(f"{count}\u00d7 {cls} ({role})")
+        else:
+            parts.append(f"{count}\u00d7 {cls}")
+    return ", ".join(parts)
