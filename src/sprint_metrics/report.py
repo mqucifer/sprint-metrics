@@ -297,24 +297,33 @@ def format_prometheus_report(
     wip_limits: Mapping[str, int] | None = None,
     escalations: int = 0,
     as_of: date | None = None,
+    metrics: frozenset[str] | None = None,
 ) -> str:
-    """Render the crew performance metrics in Prometheus text exposition format."""
+    """Render the crew performance metrics in Prometheus text exposition format.
+
+    When ``metrics`` is provided, only the requested metric lines are emitted,
+    in canonical order.
+    """
     parsed = _as_cards(cards)
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
     throughput = calculate_throughput(parsed)
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
-    return "\n".join(
-        [
-            f"sprint_cycle_time_days {cycle_time}",
-            f"sprint_lead_time_days {lead_time}",
-            f"sprint_throughput_cards {throughput}",
-            f"sprint_wip_violations {wip_violations}",
-            f"sprint_blocked_aging_days {blocked_aging}",
-            f"sprint_escalation_rate_percent {escalation_rate}",
-        ]
-    )
+
+    all_lines: list[tuple[str, str]] = [
+        ("cycle_time_days", f"sprint_cycle_time_days {cycle_time}"),
+        ("lead_time_days", f"sprint_lead_time_days {lead_time}"),
+        ("throughput", f"sprint_throughput_cards {throughput}"),
+        ("wip_violations", f"sprint_wip_violations {wip_violations}"),
+        ("blocked_aging_days", f"sprint_blocked_aging_days {blocked_aging}"),
+        ("escalation_rate_percent", f"sprint_escalation_rate_percent {escalation_rate}"),
+    ]
+    if metrics is not None:
+        selected = [line for name, line in all_lines if name in metrics]
+    else:
+        selected = [line for _, line in all_lines]
+    return "\n".join(selected)
 
 
 def format_json_report(

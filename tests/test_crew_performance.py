@@ -1208,3 +1208,61 @@ def test_markdown_metrics_empty_sprint_shows_no_data_and_summary(tmp_path, capsy
     assert "- **WIP violations**" not in captured.out
     assert "- **Blocked aging**" not in captured.out
     assert "- **Escalation rate**" not in captured.out
+
+
+def test_prometheus_metrics_selected_lines_present_and_unselected_absent(tmp_path, capsys):
+    """AC1: --prometheus --metrics cycle_time_days,throughput on a completed card shows
+    only sprint_cycle_time_days 4 and sprint_throughput_cards 1, and does not contain
+    the other four metric lines."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus", "--metrics", "cycle_time_days,throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    assert "sprint_cycle_time_days 4" in lines
+    assert "sprint_throughput_cards 1" in lines
+    assert len(lines) == 2
+    assert "sprint_lead_time_days" not in captured.out
+    assert "sprint_wip_violations" not in captured.out
+    assert "sprint_blocked_aging_days" not in captured.out
+    assert "sprint_escalation_rate_percent" not in captured.out
+
+
+def test_prometheus_metrics_empty_sprint_selected_lines(tmp_path, capsys):
+    """AC2: --prometheus --metrics wip_violations,escalation_rate_percent on an empty
+    cards file shows exactly sprint_wip_violations 0 and
+    sprint_escalation_rate_percent 0, and does not contain the other four metric lines."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main(
+        [str(path), "--prometheus", "--metrics", "wip_violations,escalation_rate_percent"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    assert "sprint_wip_violations 0" in lines
+    assert "sprint_escalation_rate_percent 0" in lines
+    assert len(lines) == 2
+    assert "sprint_cycle_time_days" not in captured.out
+    assert "sprint_lead_time_days" not in captured.out
+    assert "sprint_throughput_cards" not in captured.out
+    assert "sprint_blocked_aging_days" not in captured.out
+
+
+def test_prometheus_metrics_unknown_name_exits_2(tmp_path, capsys):
+    """AC3: --prometheus --metrics bogus_metric exits 2, stderr contains
+    'bogus_metric', and stdout is empty."""
+    path = tmp_path / "cards.json"
+    path.write_text(
+        json.dumps([{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}])
+    )
+    exit_code = main([str(path), "--prometheus", "--metrics", "bogus_metric"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "bogus_metric" in captured.err
+    assert captured.out == ""
