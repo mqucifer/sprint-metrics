@@ -52,8 +52,8 @@ def test_sprint_range_reports_one_row_per_sprint(run_range_command):
     exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02")
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in output
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in output
+    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in output
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in output
     assert "| Current |" not in output
     # Verify order: 2024-01 row appears before 2024-02 row
     idx_01 = output.index("| 2024-01 |")
@@ -153,8 +153,8 @@ def test_sprint_range_with_escalations(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 10 | 0 | 0 days | 20% |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 10 | 0 | 0 days | 20% |" in captured.out
+    assert "| 2024-01 | 4 days | 6 days | 10 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 10 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
 
 
 def test_sprint_range_with_wip_limits(tmp_path, capsys):
@@ -171,8 +171,8 @@ def test_sprint_range_with_wip_limits(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 0 days | 0 days | 0 | 1 | 0 days | 0% |" in captured.out
-    assert "| 2024-02 | 0 days | 0 days | 0 | 1 | 0 days | 0% |" in captured.out
+    assert "| 2024-01 | 0 days | 0 days | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
+    assert "| 2024-02 | 0 days | 0 days | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
 
 
 def test_sprint_range_with_sprint_date(tmp_path, capsys):
@@ -195,8 +195,8 @@ def test_sprint_range_with_sprint_date(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 29 days | 0% |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 29 days | 0% |" in captured.out
+    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
 
 
 def test_sprint_range_with_wip_limits_and_escalations(tmp_path, capsys):
@@ -225,8 +225,8 @@ def test_sprint_range_with_wip_limits_and_escalations(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 2 | 1 | 0 days | 50% |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 2 | 1 | 0 days | 50% |" in captured.out
+    assert "| 2024-01 | 4 days | 6 days | 2 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 2 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
 
 
 def test_sprint_range_without_wip_limits_or_escalations(tmp_path, capsys):
@@ -243,8 +243,8 @@ def test_sprint_range_without_wip_limits_or_escalations(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 2 | 0 | 0 days | 0% |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 2 | 0 | 0 days | 0% |" in captured.out
+    assert "| 2024-01 | 4 days | 6 days | 2 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 2 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
 
 
 def test_sprint_range_with_invalid_wip_limits_format(tmp_path, capsys):
@@ -716,8 +716,8 @@ def test_sprint_range_table_flags_cycle_time_when_threshold_breached(tmp_path, c
     """AC1: sprint 2024-01 has a card with cycle time 7 days (exceeds threshold of 5)
     and sprint 2024-02 has a card with cycle time 4 days (does not exceed threshold).
     Running with --sprint-range 2024-01..2024-02 --thresholds thresholds.json produces
-    a table where the 2024-01 row shows '7 days ⚠️' in the cycle time cell and the
-    2024-02 row shows '4 days' with no ⚠️ marker."""
+    a table where the 2024-01 row shows '7 days \u26a0\ufe0f' in the cycle time cell and the
+    2024-02 row shows '4 days' with no \u26a0\ufe0f marker."""
     sprints = {
         "2024-01": [{"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}],
         "2024-02": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
@@ -732,13 +732,16 @@ def test_sprint_range_table_flags_cycle_time_when_threshold_breached(tmp_path, c
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 7 days ⚠️ | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert captured.out.count("⚠️") == 1
+    assert (
+        "| 2024-01 | 7 days \u26a0\ufe0f | 7 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |"
+        in captured.out
+    )
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert captured.out.count("\u26a0\ufe0f") == 1
 
 
 def test_sprint_range_table_has_no_flags_without_thresholds_flag(tmp_path, capsys):
-    """AC2: without --thresholds, the sprint-range table output contains no ⚠️ markers
+    """AC2: without --thresholds, the sprint-range table output contains no \u26a0\ufe0f markers
     and the metric cells are identical to the current behaviour."""
     sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
     path = tmp_path / "sprints.json"
@@ -747,16 +750,16 @@ def test_sprint_range_table_has_no_flags_without_thresholds_flag(tmp_path, capsy
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert "⚠️" not in captured.out
+    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "\u26a0\ufe0f" not in captured.out
 
 
 def test_sprint_range_table_does_not_flag_cycle_time_when_meeting_threshold_exactly(
     tmp_path, capsys
 ):
     """AC3: a card with cycle time exactly 5 days and a thresholds file with
-    cycle_time_days 5 produces no ⚠️ marker, because meeting the threshold
+    cycle_time_days 5 produces no \u26a0\ufe0f marker, because meeting the threshold
     exactly is not a breach."""
     card = {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"}
     sprints = {"2024-01": [card]}
@@ -770,8 +773,8 @@ def test_sprint_range_table_does_not_flag_cycle_time_when_meeting_threshold_exac
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 5 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert "⚠️" not in captured.out
+    assert "| 2024-01 | 5 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "\u26a0\ufe0f" not in captured.out
 
 
 def test_parse_sprint_range_returns_label_list():
@@ -937,3 +940,97 @@ def test_sprint_range_start_after_end_rejected(tmp_path, capsys):
     assert exit_code == 2
     assert captured.err
     assert captured.out == ""
+
+
+def test_sprint_range_table_shows_first_attempt_and_failure_causes(tmp_path, capsys):
+    """AC1: the sprint-range table shows First-attempt percentage and Top failure causes."""
+    sprints = {
+        "2024-01": [
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+                "attempts": 2,
+                "failure_class": "bug",
+            },
+        ],
+        "2024-02": [
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "First-attempt" in captured.out
+    assert "Top failure causes" in captured.out
+    row_01 = [line for line in captured.out.splitlines() if line.startswith("| 2024-01")][0]
+    row_02 = [line for line in captured.out.splitlines() if line.startswith("| 2024-02")][0]
+    assert "67%" in row_01
+    assert "bug (1)" in row_01
+    assert "100%" in row_02
+    assert "\u2014" in row_02
+
+
+def test_sprint_range_table_empty_sprint_shows_zero_and_dash(tmp_path, capsys):
+    """AC2: an empty sprint shows 0% first-attempt and \u2014 for top failure causes."""
+    sprints = {"2024-01": [], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    row_01 = [line for line in captured.out.splitlines() if line.startswith("| 2024-01")][0]
+    row_02 = [line for line in captured.out.splitlines() if line.startswith("| 2024-02")][0]
+    assert "0%" in row_01
+    assert "\u2014" in row_01
+    assert "100%" in row_02
+    assert "\u2014" in row_02
+
+
+def test_sprint_range_table_new_columns_have_no_flag_without_thresholds(tmp_path, capsys):
+    """AC3: without --thresholds, the new First-attempt and Top failure causes cells
+    contain no \u26a0\ufe0f marker."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+                "attempts": 2,
+                "failure_class": "parse",
+            },
+        ],
+        "2024-02": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+                "attempts": 2,
+                "failure_class": "check",
+            },
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    for line in captured.out.splitlines():
+        if line.startswith("| 2024-"):
+            cells = [c.strip() for c in line.split("|")]
+            # cells layout: ['', Sprint, Cycle, Lead, Throughput, WIP, Blocked, Esc, First, Top, '']
+            first_attempt_cell = cells[-3]
+            top_causes_cell = cells[-2]
+            assert "\u26a0\ufe0f" not in first_attempt_cell
+            assert "\u26a0\ufe0f" not in top_causes_cell

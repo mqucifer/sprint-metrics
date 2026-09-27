@@ -11,6 +11,8 @@ from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
+    calculate_failure_breakdown,
+    calculate_first_attempt_rate,
     calculate_throughput,
     calculate_wip_violations,
 )
@@ -92,13 +94,13 @@ def format_sprint_range_table(
 
     Each row uses the same WIP limits, escalation count, and reference date.
 
-    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric cell
+    When ``thresholds`` is provided, a \u26a0\ufe0f marker is appended to any metric cell
     whose value exceeds its threshold (strict greater-than; meeting the
     threshold exactly is not a breach).
     """
     rows = [
-        "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate |",
-        "|--------|------------|-----------|------------|----------------|---------------|-----------------|",
+        "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |",
+        "|--------|------------|-----------|------------|----------------|---------------|-----------------|-------------|------------------|",
     ]
     for label in labels:
         cards = sprints[label]
@@ -107,13 +109,16 @@ def format_sprint_range_table(
         wip_violations = calculate_wip_violations(cards, wip_limits)
         blocked_aging = calculate_blocked_aging(cards, as_of)
         escalation_rate = calculate_escalation_rate(cards, escalations)
+        first_attempt_rate = calculate_first_attempt_rate(cards)
+        failure_breakdown = calculate_failure_breakdown(cards)
         rows.append(
             f"| {label} | {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')} "
             f"| {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')} "
             f"| {throughput}{_flag(throughput, thresholds, 'throughput')} "
             f"| {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')} "
             f"| {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')} "
-            f"| {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')} |"
+            f"| {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')} "
+            f"| {first_attempt_rate}% | {_format_top_causes(failure_breakdown)} |"
         )
     return "\n".join(rows)
 
@@ -229,3 +234,11 @@ def format_sprint_range_markdown(
         lines.append("")
         lines.extend(_summary_section(cards))
     return "\n".join(lines)
+
+
+def _format_top_causes(breakdown: list[tuple[str, str, int]]) -> str:
+    """Format the top 3 failure causes as 'class (N), class (N)' or '\u2014' when empty."""
+    if not breakdown:
+        return "\u2014"
+    parts = [f"{cls} ({count})" for cls, _role, count in breakdown[:3]]
+    return ", ".join(parts)
