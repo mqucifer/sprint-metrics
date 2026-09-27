@@ -72,15 +72,19 @@ def _load_thresholds(source: str) -> dict[str, float]:
 
 
 def _flag(value: int, thresholds: Mapping[str, float] | None, metric: str) -> str:
-    """Return ' \u26a0\ufe0f' when ``value`` exceeds the threshold for ``metric``, else ''.
+    """Return ' \u26a0\ufe0f' when the metric breaches its threshold, else ''.
 
     A ``None`` thresholds mapping means no thresholds are in effect, so no
-    metric is flagged. The comparison is strict greater-than: meeting the
-    threshold exactly is not a breach.
+    metric is flagged. For metrics where lower is worse (throughput,
+    first_attempt_rate_percent) the flag fires when value is strictly less
+    than the threshold; for all others it fires when value is strictly
+    greater.
     """
     if thresholds is None:
         return ""
     threshold = thresholds.get(metric)
     if threshold is None:
         return ""
+    if metric in ("throughput", "first_attempt_rate_percent"):
+        return " \u26a0\ufe0f" if value < threshold else ""
     return " \u26a0\ufe0f" if value > threshold else ""

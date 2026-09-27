@@ -1266,3 +1266,148 @@ def test_prometheus_metrics_unknown_name_exits_2(tmp_path, capsys):
     assert exit_code == 2
     assert "bogus_metric" in captured.err
     assert captured.out == ""
+
+
+def test_table_shows_first_attempt_and_top_causes_by_default(tmp_path, capsys):
+    """AC1: the default table includes 'First attempt' and 'Top causes' columns;
+    with 2 first-attempt cards and 1 parse/Developer failure and 1 check/Code
+    Reviewer failure, the Current row shows 50% and the breakdown."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "First attempt" in captured.out
+    assert "Top causes" in captured.out
+    assert "50%" in captured.out
+    assert "1\u00d7 parse (Developer), 1\u00d7 check (Code Reviewer)" in captured.out
+
+
+def test_table_metrics_shows_only_first_attempt_and_top_causes(tmp_path, capsys):
+    """AC2: --metrics first_attempt_rate_percent,failure_breakdown shows only Sprint,
+    First attempt, and Top causes columns; 5 first-attempt cards show 100% and —."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}] * 5
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--metrics", "first_attempt_rate_percent,failure_breakdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Sprint | First attempt | Top causes |" in captured.out
+    assert "| Current | 100% | \u2014 |" in captured.out
+    assert "Cycle time" not in captured.out
+    assert "Lead time" not in captured.out
+    assert "Throughput" not in captured.out
+
+
+def test_table_flags_first_attempt_rate_when_below_threshold(tmp_path, capsys):
+    """AC3: 3 cards (1 first-attempt, 2 with failures) and --thresholds
+    {"first_attempt_rate_percent": 80} shows 33% \u26a0\ufe0f in the First attempt cell
+    and no \u26a0\ufe0f in any other cell."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"first_attempt_rate_percent": 80}))
+    exit_code = main([str(cards_path), "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "33% \u26a0\ufe0f" in captured.out
+    assert captured.out.count("\u26a0\ufe0f") == 1
+
+
+def test_table_prior_shows_first_attempt_rate_and_delta(tmp_path, capsys):
+    """AC4: 4 first-attempt current cards and 4 prior cards (2 first-attempt, 2
+    with failures) show Current 100%, Prior 50%, Delta +50% in First attempt;
+    Prior and Delta Top causes show —."""
+    current = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}] * 4
+    prior = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(current))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps(prior))
+    exit_code = main([str(cards_path), "--prior", str(prior_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    current_line = [line for line in captured.out.splitlines() if line.startswith("| Current")][0]
+    prior_line = [line for line in captured.out.splitlines() if line.startswith("| Prior")][0]
+    delta_line = [line for line in captured.out.splitlines() if line.startswith("| Delta")][0]
+    assert "100%" in current_line
+    assert "50%" in prior_line
+    assert "+50%" in delta_line
+    assert prior_line.endswith("\u2014 |")
+    assert delta_line.endswith("\u2014 |")
+
+
+def test_table_empty_cards_shows_zero_percent_and_dash(tmp_path, capsys):
+    """AC5: an empty cards file with default output shows 0% in First attempt and
+    — in Top causes, and the command exits 0."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    current_line = [line for line in captured.out.splitlines() if line.startswith("| Current")][0]
+    assert "0%" in current_line
+    assert current_line.endswith("\u2014 |")
