@@ -349,7 +349,7 @@ def format_json_report(
     """Render the crew performance metrics as a JSON object.
 
     When ``prior_cards`` is provided, the response includes a ``prior`` object
-    with the six metrics computed for the prior period and a ``delta`` object
+    with the metrics computed for the prior period and a ``delta`` object
     with the signed change (current minus prior) for each metric.
     """
     parsed = _as_cards(cards)
@@ -358,6 +358,8 @@ def format_json_report(
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
+    first_attempt_rate = calculate_first_attempt_rate(parsed)
+    failure_breakdown = calculate_failure_breakdown(parsed)
     flags = calculate_flags(parsed, wip_limits, escalations, as_of, thresholds)
 
     all_metric_values: dict[str, object] = {
@@ -367,6 +369,10 @@ def format_json_report(
         "wip_violations": wip_violations,
         "blocked_aging_days": blocked_aging,
         "escalation_rate_percent": escalation_rate,
+        "first_attempt_rate_percent": first_attempt_rate,
+        "failure_breakdown": [
+            {"class": cls, "role": role, "count": count} for cls, role, count in failure_breakdown
+        ],
     }
     if metrics is not None:
         metric_values = {k: v for k, v in all_metric_values.items() if k in metrics}
@@ -390,6 +396,7 @@ def format_json_report(
         prior_wip = calculate_wip_violations(prior_parsed, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_parsed, as_of)
         prior_escalation = calculate_escalation_rate(prior_parsed, escalations)
+        prior_first_attempt = calculate_first_attempt_rate(prior_parsed)
         report["prior"] = {
             "cycle_time_days": prior_cycle,
             "lead_time_days": prior_lead,
@@ -397,6 +404,7 @@ def format_json_report(
             "wip_violations": prior_wip,
             "blocked_aging_days": prior_blocked,
             "escalation_rate_percent": prior_escalation,
+            "first_attempt_rate_percent": prior_first_attempt,
         }
         report["delta"] = {
             "cycle_time_days": cycle_time - prior_cycle,
@@ -405,6 +413,7 @@ def format_json_report(
             "wip_violations": wip_violations - prior_wip,
             "blocked_aging_days": blocked_aging - prior_blocked,
             "escalation_rate_percent": escalation_rate - prior_escalation,
+            "first_attempt_rate_percent": first_attempt_rate - prior_first_attempt,
         }
 
     return json.dumps(report)

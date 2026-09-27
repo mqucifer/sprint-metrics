@@ -357,7 +357,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.json:
         print(
             format_json_report(
-                cards, wip_limits, args.escalations, sprint_date, thresholds, metrics_set
+                cards,
+                wip_limits,
+                args.escalations,
+                sprint_date,
+                thresholds,
+                metrics_set,
+                prior_cards=prior_cards,
             )
         )
     else:

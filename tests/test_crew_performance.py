@@ -1411,3 +1411,213 @@ def test_table_empty_cards_shows_zero_percent_and_dash(tmp_path, capsys):
     current_line = [line for line in captured.out.splitlines() if line.startswith("| Current")][0]
     assert "0%" in current_line
     assert current_line.endswith("\u2014 |")
+
+
+def test_json_reports_first_attempt_rate_and_failure_breakdown(tmp_path, capsys):
+    """AC1: 5 completed cards (4 first-attempt, 1 with attempts 2, parse/Developer)
+    produces JSON with first_attempt_rate_percent 80 and failure_breakdown with
+    one element, alongside the existing six metric keys and api_version."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["first_attempt_rate_percent"] == 80
+    assert data["failure_breakdown"] == [{"class": "parse", "role": "Developer", "count": 1}]
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 5
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+    assert data["api_version"] == "1"
+
+
+def test_json_metrics_first_attempt_and_failure_breakdown_filtered(tmp_path, capsys):
+    """AC2: --json --metrics first_attempt_rate_percent,failure_breakdown on 3 cards
+    (1 first-attempt, 2 with failures) shows only those two metric keys plus flags
+    and api_version, and does NOT contain the other six metric keys."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main(
+        [str(path), "--json", "--metrics", "first_attempt_rate_percent,failure_breakdown"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["first_attempt_rate_percent"] == 33
+    assert data["failure_breakdown"] == [
+        {"class": "parse", "role": "Developer", "count": 1},
+        {"class": "check", "role": "Code Reviewer", "count": 1},
+    ]
+    assert "flags" in data
+    assert data["api_version"] == "1"
+    assert "cycle_time_days" not in data
+    assert "lead_time_days" not in data
+    assert "throughput" not in data
+    assert "wip_violations" not in data
+    assert "blocked_aging_days" not in data
+    assert "escalation_rate_percent" not in data
+
+
+def test_json_flags_first_attempt_rate_not_flagged_when_above_user_threshold(tmp_path, capsys):
+    """AC3: 2 completed cards (both first-attempt) with a thresholds file setting
+    first_attempt_rate_percent to 50 produces flags where first_attempt_rate_percent
+    is False (100 does not fall below 50)."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"first_attempt_rate_percent": 50}))
+    exit_code = main([str(cards_path), "--json", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["flags"]["first_attempt_rate_percent"] is False
+
+
+def test_json_flags_first_attempt_rate_flagged_when_below_default_threshold(tmp_path, capsys):
+    """AC4: 2 completed cards (both with attempts > 1) with no thresholds file
+    produces flags where first_attempt_rate_percent is True (0 falls below the
+    default threshold of 80)."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["flags"]["first_attempt_rate_percent"] is True
+
+
+def test_json_schema_includes_first_attempt_rate_and_failure_breakdown(capsys):
+    """AC5: --schema --json produces a JSON Schema whose top-level required array
+    includes first_attempt_rate_percent and failure_breakdown, and whose properties
+    includes first_attempt_rate_percent as type integer and failure_breakdown as
+    type array."""
+    exit_code = main(["--schema", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    assert "first_attempt_rate_percent" in schema["required"]
+    assert "failure_breakdown" in schema["required"]
+    assert schema["properties"]["first_attempt_rate_percent"] == {"type": "integer"}
+    assert schema["properties"]["failure_breakdown"]["type"] == "array"
+
+
+def test_json_prior_and_delta_include_first_attempt_rate(tmp_path, capsys):
+    """AC6: 4 current cards (2 first-attempt, 2 parse/Developer) and 4 prior cards
+    (all first-attempt) with --json --prior produces prior.first_attempt_rate_percent
+    100, delta.first_attempt_rate_percent -50, and failure_breakdown as the current
+    breakdown."""
+    current = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    prior = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(current))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps(prior))
+    exit_code = main([str(cards_path), "--json", "--prior", str(prior_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["prior"]["first_attempt_rate_percent"] == 100
+    assert data["delta"]["first_attempt_rate_percent"] == -50
+    assert data["failure_breakdown"] == [{"class": "parse", "role": "Developer", "count": 2}]
+
+
+def test_json_empty_cards_first_attempt_rate_zero_and_breakdown_empty(tmp_path, capsys):
+    """AC7: an empty cards list with --json produces first_attempt_rate_percent 0
+    and failure_breakdown as an empty array."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["first_attempt_rate_percent"] == 0
+    assert data["failure_breakdown"] == []

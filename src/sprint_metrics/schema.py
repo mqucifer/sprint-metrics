@@ -14,7 +14,13 @@ METRIC_KEYS = [
 SINGLE_SPRINT_SCHEMA: dict[str, object] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
-    "required": ["api_version", *METRIC_KEYS, "flags"],
+    "required": [
+        "api_version",
+        *METRIC_KEYS,
+        "first_attempt_rate_percent",
+        "failure_breakdown",
+        "flags",
+    ],
     "properties": {
         "api_version": {"type": "string"},
         "cycle_time_days": {"type": "integer"},
@@ -23,15 +29,34 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         "wip_violations": {"type": "integer"},
         "blocked_aging_days": {"type": "integer"},
         "escalation_rate_percent": {"type": "integer"},
+        "first_attempt_rate_percent": {"type": "integer"},
+        "failure_breakdown": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "class": {"type": "string"},
+                    "role": {"type": "string"},
+                    "count": {"type": "integer"},
+                },
+                "required": ["class", "role", "count"],
+            },
+        },
         "flags": {"type": "object"},
         "sprint_date": {"type": "string"},
         "prior": {
             "type": "object",
-            "properties": {key: {"type": "integer"} for key in METRIC_KEYS},
+            "properties": {
+                **{key: {"type": "integer"} for key in METRIC_KEYS},
+                "first_attempt_rate_percent": {"type": "integer"},
+            },
         },
         "delta": {
             "type": "object",
-            "properties": {key: {"type": "integer"} for key in METRIC_KEYS},
+            "properties": {
+                **{key: {"type": "integer"} for key in METRIC_KEYS},
+                "first_attempt_rate_percent": {"type": "integer"},
+            },
         },
     },
 }
