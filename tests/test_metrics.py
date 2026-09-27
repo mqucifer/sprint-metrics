@@ -11,6 +11,8 @@ from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
+    calculate_failure_breakdown,
+    calculate_first_attempt_rate,
     calculate_throughput,
     calculate_wip_violations,
 )
@@ -133,3 +135,102 @@ def test_peak_occupancy_counts_overlapping_cards():
 def test_peak_occupancy_is_zero_for_empty_cards():
     """_peak_occupancy returns 0 for an empty list of cards."""
     assert _peak_occupancy([], "In Progress") == 0
+
+
+def test_calculate_first_attempt_rate_mixed():
+    """AC1: 5 completed cards where 4 have attempts 1 and 1 has attempts 2 returns 80."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    assert calculate_first_attempt_rate(cards) == 80
+
+
+def test_calculate_first_attempt_rate_empty():
+    """AC2: an empty list of cards returns 0."""
+    assert calculate_first_attempt_rate([]) == 0
+
+
+def test_calculate_failure_breakdown_grouped():
+    """AC3: 3 cards with failure data return a breakdown sorted by count descending."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    result = calculate_failure_breakdown(cards)
+    assert result[0] == ("parse", "Developer", 2)
+    assert result[1] == ("check", "Code Reviewer", 1)
+
+
+def test_calculate_failure_breakdown_empty_when_all_first_attempt():
+    """AC4: all cards have attempts 1, so the breakdown is an empty list."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+    ]
+    assert calculate_failure_breakdown(cards) == []
+
+
+def test_calculate_first_attempt_rate_half():
+    """AC5: 4 cards where 2 have attempts 1 and 2 have attempts > 1 returns 50."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    assert calculate_first_attempt_rate(cards) == 50
+
+
+def test_all_metrics_includes_new_metrics():
+    """AC6: ALL_METRICS contains first_attempt_rate_percent and failure_breakdown."""
+    from sprint_metrics.metrics import ALL_METRICS
+
+    assert "first_attempt_rate_percent" in ALL_METRICS
+    assert "failure_breakdown" in ALL_METRICS
