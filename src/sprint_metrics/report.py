@@ -139,6 +139,7 @@ def _sprint_section(
     as_of: date | None = None,
     prior_cards: Sequence[Card] | None = None,
     thresholds: Mapping[str, float] | None = None,
+    metrics: frozenset[str] | None = None,
 ) -> list[str]:
     """The current sprint's delivery metrics.
 
@@ -151,6 +152,9 @@ def _sprint_section(
     When ``thresholds`` is provided, a ⚠️ marker is appended to any metric line
     whose value exceeds its threshold (strict greater-than; meeting the
     threshold exactly is not a breach).
+
+    When ``metrics`` is provided, only the requested metric lines are emitted;
+    the section heading is always present when cards exist.
     """
     if not cards:
         return ["No performance data available"]
@@ -160,32 +164,83 @@ def _sprint_section(
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
 
+    if metrics is not None:
+        selected = [m for m in _CANONICAL_ORDER if m in metrics]
+    else:
+        selected = list(_CANONICAL_ORDER)
+
     if prior_cards is not None:
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
         prior_throughput = calculate_throughput(prior_cards)
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
-        return [
-            "## Current Sprint",
-            "",
-            f"- **Cycle time**: {cycle_time} days (was {prior_cycle} days, {_signed(cycle_time - prior_cycle)}){_flag(cycle_time, thresholds, 'cycle_time_days')}",
-            f"- **Lead time**: {lead_time} days (was {prior_lead} days, {_signed(lead_time - prior_lead)}){_flag(lead_time, thresholds, 'lead_time_days')}",
-            f"- **Throughput**: {throughput} (was {prior_throughput}, {_signed(throughput - prior_throughput)}){_flag(throughput, thresholds, 'throughput')}",
-            f"- **WIP violations**: {wip_violations} (was {prior_wip}, {_signed(wip_violations - prior_wip)}){_flag(wip_violations, thresholds, 'wip_violations')}",
-            f"- **Blocked aging**: {blocked_aging} days (was {prior_blocked} days, {_signed(blocked_aging - prior_blocked)}){_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
-            f"- **Escalation rate**: {escalation_rate}% (was {prior_escalation}%, {_signed(escalation_rate - prior_escalation)}){_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
-        ]
-    return [
-        "## Current Sprint",
-        "",
-        f"- **Cycle time**: {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')}",
-        f"- **Lead time**: {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')}",
-        f"- **Throughput**: {throughput} cards{_flag(throughput, thresholds, 'throughput')}",
-        f"- **WIP violations**: {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}",
-        f"- **Blocked aging**: {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
-        f"- **Escalation rate**: {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
-    ]
+        lines: list[str] = ["## Current Sprint", ""]
+        for metric in selected:
+            if metric == "cycle_time_days":
+                lines.append(
+                    f"- **Cycle time**: {cycle_time} days "
+                    f"(was {prior_cycle} days, {_signed(cycle_time - prior_cycle)})"
+                    f"{_flag(cycle_time, thresholds, 'cycle_time_days')}"
+                )
+            elif metric == "lead_time_days":
+                lines.append(
+                    f"- **Lead time**: {lead_time} days "
+                    f"(was {prior_lead} days, {_signed(lead_time - prior_lead)})"
+                    f"{_flag(lead_time, thresholds, 'lead_time_days')}"
+                )
+            elif metric == "throughput":
+                lines.append(
+                    f"- **Throughput**: {throughput} "
+                    f"(was {prior_throughput}, {_signed(throughput - prior_throughput)})"
+                    f"{_flag(throughput, thresholds, 'throughput')}"
+                )
+            elif metric == "wip_violations":
+                lines.append(
+                    f"- **WIP violations**: {wip_violations} "
+                    f"(was {prior_wip}, {_signed(wip_violations - prior_wip)})"
+                    f"{_flag(wip_violations, thresholds, 'wip_violations')}"
+                )
+            elif metric == "blocked_aging_days":
+                lines.append(
+                    f"- **Blocked aging**: {blocked_aging} days "
+                    f"(was {prior_blocked} days, {_signed(blocked_aging - prior_blocked)})"
+                    f"{_flag(blocked_aging, thresholds, 'blocked_aging_days')}"
+                )
+            elif metric == "escalation_rate_percent":
+                lines.append(
+                    f"- **Escalation rate**: {escalation_rate}% "
+                    f"(was {prior_escalation}%, {_signed(escalation_rate - prior_escalation)})"
+                    f"{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}"
+                )
+        return lines
+    lines = ["## Current Sprint", ""]
+    for metric in selected:
+        if metric == "cycle_time_days":
+            lines.append(
+                f"- **Cycle time**: {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')}"
+            )
+        elif metric == "lead_time_days":
+            lines.append(
+                f"- **Lead time**: {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')}"
+            )
+        elif metric == "throughput":
+            lines.append(
+                f"- **Throughput**: {throughput} cards{_flag(throughput, thresholds, 'throughput')}"
+            )
+        elif metric == "wip_violations":
+            lines.append(
+                f"- **WIP violations**: {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}"
+            )
+        elif metric == "blocked_aging_days":
+            lines.append(
+                f"- **Blocked aging**: {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}"
+            )
+        elif metric == "escalation_rate_percent":
+            lines.append(
+                f"- **Escalation rate**: {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}"
+            )
+    return lines
 
 
 def format_markdown_report(
@@ -196,6 +251,7 @@ def format_markdown_report(
     prior_sprint: str | None = None,
     prior_cards: Sequence[Card] | None = None,
     thresholds: Mapping[str, float] | None = None,
+    metrics: frozenset[str] | None = None,
 ) -> str:
     """Render the crew performance metrics as a markdown report for the standup issue.
 
@@ -210,6 +266,10 @@ def format_markdown_report(
 
     When ``thresholds`` is provided, a ⚠️ marker is appended to any metric line
     whose value exceeds its threshold.
+
+    When ``metrics`` is provided, only the requested metric lines are emitted in
+    the sprint section; the heading, report date, and summary section are always
+    present regardless of ``metrics``.
     """
     parsed = _as_cards(cards)
     report_date = as_of if as_of is not None else date.today()
@@ -224,7 +284,9 @@ def format_markdown_report(
             _prior_sprint_section(prior_cards, prior_sprint, wip_limits, escalations, as_of)
         )
     lines.append("")
-    lines.extend(_sprint_section(parsed, wip_limits, escalations, as_of, prior_cards, thresholds))
+    lines.extend(
+        _sprint_section(parsed, wip_limits, escalations, as_of, prior_cards, thresholds, metrics)
+    )
     lines.append("")
     lines.extend(_summary_section(parsed))
     return "\n".join(lines)

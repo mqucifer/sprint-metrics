@@ -155,7 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=str,
         default=None,
         metavar="METRICS",
-        help="Comma-separated list of metric names to include in the JSON output.",
+        help="Comma-separated list of metric names to include in the output.",
     )
     args = parser.parse_args(argv)
 
@@ -342,7 +342,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.markdown:
         print(
             format_markdown_report(
-                cards, wip_limits, args.escalations, sprint_date, thresholds=thresholds
+                cards,
+                wip_limits,
+                args.escalations,
+                sprint_date,
+                thresholds=thresholds,
+                metrics=metrics_set,
             )
         )
     elif args.json:
