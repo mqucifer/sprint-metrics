@@ -18,7 +18,8 @@ intent:
     - 'Reporting on anything beyond the projects the Sponsor has asked the crew to
       contribute to: today, one or more repositories in this GitHub organization''s
       crew project. Expanding past this organization and project is not planned.'
-    - An MCP server, for now. The crew invokes the tool directly.
+    - An MCP server, for now. The crew calls the tool directly, through its command line
+      or, once it runs as one, its service API.
   release:
     deploys: true
     where: A version tag on the sprint-metrics repo, which the crew installs as a
