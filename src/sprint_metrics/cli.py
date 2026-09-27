@@ -338,7 +338,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
 
     if args.prometheus:
-        print(format_prometheus_report(cards, wip_limits, args.escalations, sprint_date))
+        print(
+            format_prometheus_report(
+                cards, wip_limits, args.escalations, sprint_date, metrics=metrics_set
+            )
+        )
     elif args.markdown:
         print(
             format_markdown_report(
