@@ -12,3 +12,23 @@ follow.
 
 Only the scaffolding here was written by hand — enough that CI is green and the
 crew has something to branch from.
+
+## Installation
+
+Requires Python 3.12. No third-party runtime packages are needed — the tool
+uses only the standard library.
+
+```
+uv pip install git+https://github.com/mqucifer/sprint-metrics.git@v0.1.0
+```
+
+After installation the `sprint-metrics` command is available on the PATH.
+
+## Basic usage
+
+```
+sprint-metrics cards.json
+```
+
+`cards.json` is a JSON file of sprint cards. When no file argument is given,
+the tool reads the JSON from standard input and prints the default table.
