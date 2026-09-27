@@ -20,6 +20,9 @@ class Card:
     started: date | None = None
     completed: date | None = None
     blocked_since: date | None = None
+    attempts: int = 1
+    failure_class: str | None = None
+    failure_role: str | None = None
 
     @property
     def is_completed(self) -> bool:
@@ -58,11 +61,19 @@ def parse_card(raw: Mapping[str, object]) -> Card:
     created = _parse_date(raw.get("created"), "created")
     if created is None:
         raise ValueError("every card needs a 'created' date")
+    attempts = raw.get("attempts")
+    if attempts is None:
+        attempts = 1
+    elif attempts < 1:
+        raise ValueError(f"attempts must be >= 1, got {attempts!r}")
     return Card(
         created=created,
         started=_parse_date(raw.get("started"), "started"),
         completed=_parse_date(raw.get("completed"), "completed"),
         blocked_since=_parse_date(raw.get("blocked_since"), "blocked_since"),
+        attempts=attempts,
+        failure_class=raw.get("failure_class"),
+        failure_role=raw.get("failure_role"),
     )
 
 

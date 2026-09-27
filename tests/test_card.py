@@ -107,3 +107,47 @@ def test_as_cards_mixed():
     assert result[0] is card
     assert result[1].created == date(2024, 1, 1)
     assert result[1].completed == date(2024, 1, 5)
+
+
+def test_parse_card_with_attempts_and_failure_fields():
+    """AC1: a card with attempts, failure_class, and failure_role is parsed with all values."""
+    raw = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 3,
+        "failure_class": "parse",
+        "failure_role": "Developer",
+    }
+    card = parse_card(raw)
+    assert card.created == date(2024, 1, 1)
+    assert card.started == date(2024, 1, 3)
+    assert card.completed == date(2024, 1, 7)
+    assert card.attempts == 3
+    assert card.failure_class == "parse"
+    assert card.failure_role == "Developer"
+
+
+def test_parse_card_defaults_for_missing_new_fields():
+    """AC2: a card without the new keys gets attempts 1, failure_class None, failure_role None."""
+    raw = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    card = parse_card(raw)
+    assert card.attempts == 1
+    assert card.failure_class is None
+    assert card.failure_role is None
+
+
+def test_parse_card_zero_attempts_raises_value_error():
+    """AC3: a card with attempts 0 raises ValueError mentioning 'attempts'."""
+    raw = {"created": "2024-01-01", "attempts": 0}
+    with pytest.raises(ValueError, match="attempts"):
+        parse_card(raw)
+
+
+def test_parse_card_partial_failure_fields():
+    """AC4: a card with attempts and failure_class but no failure_role."""
+    raw = {"created": "2024-01-01", "attempts": 2, "failure_class": "edit"}
+    card = parse_card(raw)
+    assert card.attempts == 2
+    assert card.failure_class == "edit"
+    assert card.failure_role is None
