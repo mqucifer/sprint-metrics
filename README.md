@@ -1,8 +1,9 @@
 # sprint-metrics
 
 Reports how the crew is performing: cycle time, lead time, throughput per
-sprint, WIP-limit violations, blocked-card aging, and escalation rate — as a
-table, as JSON, and as markdown for the standup issue.
+sprint, WIP-limit violations, blocked-card aging, escalation rate,
+first-attempt rate, and failure breakdown — as a table, as JSON, and as
+markdown for the standup issue.
 
 **This repository is built by agents.** The Sponsor sets the goal; the crew
 proposes the epics, writes the stories, implements them, reviews, and merges.

@@ -146,3 +146,23 @@ def test_readme_worked_example_incomplete_card_excluded_from_metrics():
         f"throughput {cells[3]!r} should be {completed_count} (completed only), "
         f"not {total_count} (all cards)"
     )
+
+
+def test_readme_first_paragraph_includes_first_attempt_rate_and_failure_breakdown():
+    """AC5: the first paragraph of the README includes 'first-attempt rate' and
+    'failure breakdown' alongside the existing metric names."""
+    text = _readme()
+    lines = text.splitlines()
+    start_idx = next(i for i, line in enumerate(lines) if line.startswith("Reports how the crew"))
+    end_idx = start_idx
+    while end_idx + 1 < len(lines) and lines[end_idx + 1].strip():
+        end_idx += 1
+    paragraph = "\n".join(lines[start_idx : end_idx + 1])
+    assert "first-attempt rate" in paragraph
+    assert "failure breakdown" in paragraph
+    assert "cycle time" in paragraph
+    assert "lead time" in paragraph
+    assert "throughput" in paragraph
+    assert "WIP-limit violations" in paragraph
+    assert "blocked-card aging" in paragraph
+    assert "escalation rate" in paragraph

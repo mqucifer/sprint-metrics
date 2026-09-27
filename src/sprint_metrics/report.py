@@ -351,6 +351,8 @@ def format_prometheus_report(
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
+    first_attempt_rate = calculate_first_attempt_rate(parsed)
+    failure_breakdown = calculate_failure_breakdown(parsed)
 
     all_lines: list[tuple[str, str]] = [
         ("cycle_time_days", f"sprint_cycle_time_days {cycle_time}"),
@@ -359,11 +361,20 @@ def format_prometheus_report(
         ("wip_violations", f"sprint_wip_violations {wip_violations}"),
         ("blocked_aging_days", f"sprint_blocked_aging_days {blocked_aging}"),
         ("escalation_rate_percent", f"sprint_escalation_rate_percent {escalation_rate}"),
+        (
+            "first_attempt_rate_percent",
+            f"sprint_first_attempt_rate_percent {first_attempt_rate}",
+        ),
     ]
     if metrics is not None:
         selected = [line for name, line in all_lines if name in metrics]
     else:
         selected = [line for _, line in all_lines]
+
+    if metrics is None or "failure_breakdown" in metrics:
+        for cls, role, count in failure_breakdown:
+            selected.append(f'sprint_failure_count{{class="{cls}",role="{role}"}} {count}')
+
     return "\n".join(selected)
 
 

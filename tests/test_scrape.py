@@ -274,3 +274,70 @@ def test_scrape_json_endpoint_returns_500_when_cards_file_is_deleted(tmp_path, s
     assert status == 500
     data = json.loads(body)
     assert "error" in data
+
+
+def test_scrape_reports_first_attempt_rate_and_failure_count(tmp_path, start_scrape):
+    """AC3: 4 completed cards (2 first-attempt, 2 parse/Developer). The /metrics
+    endpoint returns HTTP 200 with sprint_first_attempt_rate_percent 50 and
+    sprint_failure_count{class="parse",role="Developer"} 2."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    url = start_scrape(_write_cards(tmp_path, cards))
+    status, body = _fetch(url)
+
+    assert status == 200
+    assert "sprint_first_attempt_rate_percent 50" in body
+    assert 'sprint_failure_count{class="parse",role="Developer"} 2' in body
+
+
+def test_scrape_json_reports_first_attempt_rate_and_failure_breakdown(tmp_path, start_scrape):
+    """AC4: 4 completed cards (2 first-attempt, 2 parse/Developer). GET /json
+    returns HTTP 200 with first_attempt_rate_percent 50 and failure_breakdown
+    containing one element with class parse, role Developer, count 2."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    url = start_scrape(_write_cards(tmp_path, cards))
+    json_url = url.replace("/metrics", "/json")
+    with urllib.request.urlopen(json_url, timeout=5) as response:
+        status = response.status
+        body = json.loads(response.read().decode())
+
+    assert status == 200
+    assert body["first_attempt_rate_percent"] == 50
+    assert body["failure_breakdown"] == [{"class": "parse", "role": "Developer", "count": 2}]
