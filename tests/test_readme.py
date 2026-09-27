@@ -1,6 +1,8 @@
 """Tests that the README documents installation and basic usage."""
 
+import json
 import re
+from datetime import date
 from pathlib import Path
 
 README = Path(__file__).parent.parent / "README.md"
@@ -182,3 +184,74 @@ def test_completed_card_exclusion_rule():
     assert "completed when it has a completion date" in section
     assert "in-flight" in section
     assert "excluded from cycle time, lead time, and throughput" in section
+
+
+def test_readme_worked_example_shows_input_command_and_output():
+    """AC1: the worked-example section shows a complete cards.json (a JSON array
+    containing at least two cards: at least one with a completed field set and
+    at least one without), the exact sprint-metrics command to run, and the full
+    resulting default-table output including the header row and the data row."""
+    section = _section(_readme(), "Worked example")
+    # A JSON array with at least two cards
+    assert section.count('"created"') >= 2
+    # At least one card has a completed field
+    assert '"completed"' in section
+    # The exact command
+    assert "sprint-metrics cards.json" in section
+    # The full table output: header row and data row
+    assert "| Sprint |" in section
+    assert "| Current |" in section
+
+
+def test_readme_worked_example_throughput_and_cycle_time_are_correct():
+    """AC2: the throughput value in the example table equals the count of cards in
+    the shown input that have a completed field set to a date, and the cycle time
+    value equals the average (rounded to nearest whole day) of the difference in
+    days between each completed card's completed date and its started date."""
+    section = _section(_readme(), "Worked example")
+    json_match = re.search(r"```json\n(.*?)```", section, re.DOTALL)
+    assert json_match is not None, "no JSON code block in worked example"
+    cards = json.loads(json_match.group(1))
+    completed_cards = [c for c in cards if c.get("completed")]
+    expected_throughput = len(completed_cards)
+    # Extract the data row from the table
+    data_rows = [line for line in section.splitlines() if line.startswith("| Current |")]
+    assert data_rows, "no data row in worked example table"
+    cells = [c.strip() for c in data_rows[0].split("|") if c.strip()]
+    # cells[0]=Sprint value, cells[1]=Cycle time, cells[2]=Lead time, cells[3]=Throughput
+    assert cells[3] == str(expected_throughput), (
+        f"throughput cell {cells[3]!r} != expected {expected_throughput}"
+    )
+    # Cycle time is the rounded average of (completed - started) days
+    cycle_times = [
+        (date.fromisoformat(c["completed"]) - date.fromisoformat(c["started"])).days
+        for c in completed_cards
+    ]
+    expected_cycle = round(sum(cycle_times) / len(cycle_times))
+    assert cells[1] == f"{expected_cycle} days", (
+        f"cycle time cell {cells[1]!r} != expected {expected_cycle} days"
+    )
+
+
+def test_readme_worked_example_incomplete_card_excluded_from_metrics():
+    """AC3: at least one card in the example input lacks a completed field, and the
+    example demonstrates that this card does not appear in the throughput count or
+    the cycle-time average."""
+    section = _section(_readme(), "Worked example")
+    json_match = re.search(r"```json\n(.*?)```", section, re.DOTALL)
+    assert json_match is not None
+    cards = json.loads(json_match.group(1))
+    # At least one card lacks a completed field
+    incomplete = [c for c in cards if not c.get("completed")]
+    assert incomplete, "no card without completed field in example input"
+    # Throughput equals the count of completed cards only (not total cards)
+    completed_count = sum(1 for c in cards if c.get("completed"))
+    total_count = len(cards)
+    assert completed_count < total_count
+    data_rows = [line for line in section.splitlines() if line.startswith("| Current |")]
+    assert data_rows
+    cells = [c.strip() for c in data_rows[0].split("|") if c.strip()]
+    assert cells[3] == str(completed_count), (
+        f"throughput {cells[3]!r} should be {completed_count} (completed only), "
+        f"not {total_count} (all cards)"
+    )

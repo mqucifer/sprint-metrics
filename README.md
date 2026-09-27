@@ -135,3 +135,43 @@ The number of escalations divided by the number of completed cards, expressed as
 | JSON key | `escalation_rate_percent` |
 | Markdown label | `Escalation rate` |
 | Prometheus | `sprint_escalation_rate_percent` |
+
+## Worked example
+
+Save the following as `cards.json`:
+
+```json
+[
+  {
+    "created": "2024-01-03",
+    "started": "2024-01-05",
+    "completed": "2024-01-10"
+  },
+  {
+    "created": "2024-01-04",
+    "started": "2024-01-08"
+  }
+]
+```
+
+Run:
+
+```
+sprint-metrics cards.json
+```
+
+The full default-table output:
+
+```
+| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First attempt | Top causes |
+|--------|------------|-----------|------------|----------------|---------------|-----------------|---------------|------------|
+| Current | 5 days | 7 days | 1 | 0 | 0 days | 0% | 100% | — |
+```
+
+The second card has no `completed` field, so it does not count toward throughput or cycle time. Only the first (completed) card contributes to those averages.
+
+- **Cycle time** and **Lead time** are averages over completed cards only.
+- **Throughput** is the count of completed cards.
+- **WIP violations** counts configured states whose limit was exceeded.
+- **Blocked aging** is the maximum blocked duration in the sprint.
+- **Escalation rate** is the percentage derived from the supplied escalation count.
