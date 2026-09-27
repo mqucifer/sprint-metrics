@@ -63,3 +63,75 @@ and three optional fields, each an ISO-8601 date string or omitted:
 ```
 
 An empty JSON array (`[]`) is valid input and produces a report in which every metric is zero.
+
+## Metrics
+
+The six delivery metrics reported by `sprint-metrics` and their precise computations:
+
+**Completed card.** A card is completed when it has a completion date. Cards without a completion date (in-flight cards) are excluded from cycle time, lead time, and throughput calculations.
+
+### Cycle time
+
+The mean (average) of the difference between each completed card's completion date and its start date, expressed in whole days and rounded to the nearest whole day, calculated only over cards that have a completion date.
+
+| Output format | Name |
+|---|---|
+| Table column | `Cycle time` |
+| JSON key | `cycle_time_days` |
+| Markdown label | `Cycle time` |
+| Prometheus | `sprint_cycle_time_days` |
+
+### Lead time
+
+The mean of (completion date minus creation date) in whole days, calculated over completed cards only.
+
+| Output format | Name |
+|---|---|
+| Table column | `Lead time` |
+| JSON key | `lead_time_days` |
+| Markdown label | `Lead time` |
+| Prometheus | `sprint_lead_time_days` |
+
+### Throughput
+
+The count of cards with a completion date.
+
+| Output format | Name |
+|---|---|
+| Table column | `Throughput` |
+| JSON key | `throughput` |
+| Markdown label | `Throughput` |
+| Prometheus | `sprint_throughput_cards` |
+
+### WIP violations
+
+The count of board states in which the maximum number of cards present simultaneously at any point during the sprint exceeded that state's configured limit. Only states with a configured limit can be in violation.
+
+| Output format | Name |
+|---|---|
+| Table column | `WIP violations` |
+| JSON key | `wip_violations` |
+| Markdown label | `WIP violations` |
+| Prometheus | `sprint_wip_violations` |
+
+### Blocked aging
+
+The maximum days any single card has been blocked.
+
+| Output format | Name |
+|---|---|
+| Table column | `Blocked aging` |
+| JSON key | `blocked_aging_days` |
+| Markdown label | `Blocked aging` |
+| Prometheus | `sprint_blocked_aging_days` |
+
+### Escalation rate
+
+The number of escalations divided by the number of completed cards, expressed as a whole-number percentage.
+
+| Output format | Name |
+|---|---|
+| Table column | `Escalation rate` |
+| JSON key | `escalation_rate_percent` |
+| Markdown label | `Escalation rate` |
+| Prometheus | `sprint_escalation_rate_percent` |

@@ -73,3 +73,112 @@ def test_readme_input_format_states_empty_array_is_valid():
     section = _section(_readme(), "Input format (cards.json)")
     assert "[]" in section
     assert "zero" in section
+
+
+def _metrics_section() -> str:
+    """Find the metrics section: a ## heading whose text contains 'metric' (case-insensitive)."""
+    text = _readme()
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("## ") and "metric" in line.lower():
+            end = len(lines)
+            for j in range(i + 1, len(lines)):
+                if lines[j].startswith("## "):
+                    end = j
+                    break
+            return "\n".join(lines[i + 1 : end])
+    raise AssertionError("README.md has no ## heading containing 'metric' (case-insensitive)")
+
+
+def test_metrics_heading_contains_all_six_names():
+    """AC1: a ## heading containing 'metric' exists, and beneath it all six metric names appear."""
+    section = _metrics_section()
+    section_lower = section.lower()
+    for name in (
+        "cycle time",
+        "lead time",
+        "throughput",
+        "wip violations",
+        "blocked aging",
+        "escalation rate",
+    ):
+        assert name in section_lower, f"missing metric name {name!r} in the metrics section"
+
+
+def test_cycle_time_computation_and_names():
+    """AC2: the cycle time entry states its computation and lists all four output names."""
+    section_raw = _metrics_section()
+    section = section_raw.lower()
+    for phrase in (
+        "mean",
+        "average",
+        "completion date",
+        "start date",
+        "whole days",
+        "rounded",
+        "nearest whole day",
+        "calculated only over cards that have a completion date",
+    ):
+        assert phrase in section, f"cycle time entry missing: {phrase!r}"
+    assert "Cycle time" in section_raw
+    assert "cycle_time_days" in section_raw
+    assert "sprint_cycle_time_days" in section_raw
+
+
+def test_wip_violations_computation_and_names():
+    """AC3: the WIP violations entry states its computation and lists all four output names."""
+    section_raw = _metrics_section()
+    section = section_raw.lower()
+    for phrase in (
+        "count of board states",
+        "maximum number of cards",
+        "simultaneously",
+        "exceeded",
+        "configured limit",
+        "only states with a configured limit can be in violation",
+    ):
+        assert phrase in section, f"WIP violations entry missing: {phrase!r}"
+    assert "WIP violations" in section_raw
+    assert "wip_violations" in section_raw
+    assert "sprint_wip_violations" in section_raw
+
+
+def test_throughput_lead_time_blocked_aging_escalation_computations():
+    """AC4: throughput, lead time, blocked aging, and escalation rate each state their
+    computation and list their table column, JSON key, markdown label, and Prometheus name."""
+    section_raw = _metrics_section()
+    section = section_raw.lower()
+
+    # Throughput
+    assert "count of cards with a completion date" in section
+    assert "Throughput" in section_raw
+    assert "throughput" in section_raw
+    assert "sprint_throughput_cards" in section_raw
+
+    # Lead time
+    assert "completion date minus creation date" in section
+    assert "Lead time" in section_raw
+    assert "lead_time_days" in section_raw
+    assert "sprint_lead_time_days" in section_raw
+
+    # Blocked aging
+    assert "maximum days any single card has been blocked" in section
+    assert "Blocked aging" in section_raw
+    assert "blocked_aging_days" in section_raw
+    assert "sprint_blocked_aging_days" in section_raw
+
+    # Escalation rate
+    assert "number of escalations divided by the number of completed cards" in section
+    assert "whole-number percentage" in section
+    assert "Escalation rate" in section_raw
+    assert "escalation_rate_percent" in section_raw
+    assert "sprint_escalation_rate_percent" in section_raw
+
+
+def test_completed_card_exclusion_rule():
+    """AC5: states that a card is completed when it has a completion date, and that
+    in-flight cards are excluded from cycle time, lead time, and throughput."""
+    section = _metrics_section().lower()
+    assert "completed when it has a completion date" in section
+    assert "in-flight" in section
+    assert "excluded from cycle time, lead time, and throughput" in section
