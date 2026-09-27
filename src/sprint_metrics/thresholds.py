@@ -11,6 +11,7 @@ from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
+    calculate_first_attempt_rate,
     calculate_throughput,
     calculate_wip_violations,
 )
@@ -24,6 +25,7 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "wip_violations": 0,
     "blocked_aging_days": 5,
     "escalation_rate_percent": 10,
+    "first_attempt_rate_percent": 80,
 }
 
 
@@ -39,7 +41,7 @@ def calculate_flags(
     The thresholds are the user-supplied ``thresholds`` merged over
     ``DEFAULT_THRESHOLDS``: a metric the user did not specify falls back to its
     default. A metric is flagged as breached when its value exceeds (or, for
-    throughput, falls below) the threshold.
+    throughput and first_attempt_rate_percent, falls below) the threshold.
     """
     effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     parsed = _as_cards(cards)
@@ -48,6 +50,7 @@ def calculate_flags(
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
+    first_attempt_rate = calculate_first_attempt_rate(parsed)
 
     return {
         "cycle_time_days": cycle_time > effective["cycle_time_days"],
@@ -56,6 +59,7 @@ def calculate_flags(
         "wip_violations": wip_violations > effective["wip_violations"],
         "blocked_aging_days": blocked_aging > effective["blocked_aging_days"],
         "escalation_rate_percent": escalation_rate > effective["escalation_rate_percent"],
+        "first_attempt_rate_percent": first_attempt_rate < effective["first_attempt_rate_percent"],
     }
 
 

@@ -378,7 +378,7 @@ def test_sprint_range_json_flags_cycle_time_breached(tmp_path, capsys):
     and sprint 2024-02 has a card with cycle time 4 days (does not exceed threshold).
     Running with --sprint-range 2024-01..2024-02 --json produces flags where
     cycle_time_days is true for 2024-01 and false for 2024-02, and both sprints
-    include all six flag keys."""
+    include all flag keys."""
     sprints = {
         "2024-01": [{"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}],
         "2024-02": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
@@ -401,6 +401,7 @@ def test_sprint_range_json_flags_cycle_time_breached(tmp_path, capsys):
             "wip_violations",
             "blocked_aging_days",
             "escalation_rate_percent",
+            "first_attempt_rate_percent",
         }
 
 

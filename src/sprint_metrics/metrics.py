@@ -157,5 +157,42 @@ ALL_METRICS: frozenset[str] = frozenset(
         "wip_violations",
         "blocked_aging_days",
         "escalation_rate_percent",
+        "first_attempt_rate_percent",
+        "failure_breakdown",
     }
 )
+
+
+def calculate_first_attempt_rate(cards: Iterable[Card | Mapping[str, object]]) -> int:
+    """Return the percentage of completed cards that succeeded on the first attempt.
+
+    A card succeeded on its first attempt when its ``attempts`` field is 1.
+    Cards still in flight are ignored. When no cards are completed the rate is 0.
+    """
+    completed = [card for card in _as_cards(cards) if card.is_completed]
+    if not completed:
+        return 0
+    first_attempt = sum(1 for card in completed if card.attempts == 1)
+    return round(100 * first_attempt / len(completed))
+
+
+def calculate_failure_breakdown(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> list[tuple[str, str, int]]:
+    """Return the failure causes grouped by (class, role), sorted by count descending.
+
+    Only completed cards with ``attempts > 1`` contribute to the breakdown.
+    Ties in count preserve first-encounter order (stable sort). When no completed
+    card has attempts greater than 1 the result is an empty list.
+    """
+    completed = [card for card in _as_cards(cards) if card.is_completed and card.attempts > 1]
+    if not completed:
+        return []
+    counts: dict[tuple[str, str], int] = {}
+    for card in completed:
+        key = (card.failure_class or "", card.failure_role or "")
+        counts[key] = counts.get(key, 0) + 1
+    return [
+        (cls, role, count)
+        for (cls, role), count in sorted(counts.items(), key=lambda item: -item[1])
+    ]
