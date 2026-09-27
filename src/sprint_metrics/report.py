@@ -154,13 +154,13 @@ def _sprint_section(
 ) -> list[str]:
     """The current sprint's delivery metrics.
 
-    Only rendered when there are cards: with none, the metrics are all zero for
-    want of data rather than because the sprint went that way.
+    When cards is empty, emits 'No performance data available' followed by the
+    first-attempt rate line (always 0%) so the standup report shows both.
 
     When ``prior_cards`` is provided, each metric line includes the prior
     sprint's value and the signed change from prior to current.
 
-    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric line
+    When ``thresholds`` is provided, a \u26a0\ufe0f marker is appended to any metric line
     whose value exceeds its threshold (strict greater-than; meeting the
     threshold exactly is not a breach).
 
@@ -168,12 +168,14 @@ def _sprint_section(
     the section heading is always present when cards exist.
     """
     if not cards:
-        return ["No performance data available"]
+        return ["No performance data available", "", "- **First attempt rate**: 0%"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
+    first_attempt_rate = calculate_first_attempt_rate(cards)
+    failure_breakdown = calculate_failure_breakdown(cards)
 
     if metrics is not None:
         selected = [m for m in _CANONICAL_ORDER if m in metrics]
@@ -186,6 +188,7 @@ def _sprint_section(
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
+        prior_first_attempt = calculate_first_attempt_rate(prior_cards)
         lines: list[str] = ["## Current Sprint", ""]
         for metric in selected:
             if metric == "cycle_time_days":
@@ -224,6 +227,21 @@ def _sprint_section(
                     f"(was {prior_escalation}%, {_signed(escalation_rate - prior_escalation)})"
                     f"{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}"
                 )
+            elif metric == "first_attempt_rate_percent":
+                lines.append(
+                    f"- **First attempt rate**: {first_attempt_rate}% "
+                    f"(was {prior_first_attempt}%, "
+                    f"{_signed(first_attempt_rate - prior_first_attempt)})"
+                    f"{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
+                )
+        if "failure_breakdown" in selected and failure_breakdown:
+            lines.append("")
+            lines.append("Top failure causes")
+            for cls, role, count in failure_breakdown:
+                if role:
+                    lines.append(f"- {count}\u00d7 {cls} ({role})")
+                else:
+                    lines.append(f"- {count}\u00d7 {cls}")
         return lines
     lines = ["## Current Sprint", ""]
     for metric in selected:
@@ -251,6 +269,18 @@ def _sprint_section(
             lines.append(
                 f"- **Escalation rate**: {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}"
             )
+        elif metric == "first_attempt_rate_percent":
+            lines.append(
+                f"- **First attempt rate**: {first_attempt_rate}%{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
+            )
+    if "failure_breakdown" in selected and failure_breakdown:
+        lines.append("")
+        lines.append("Top failure causes")
+        for cls, role, count in failure_breakdown:
+            if role:
+                lines.append(f"- {count}\u00d7 {cls} ({role})")
+            else:
+                lines.append(f"- {count}\u00d7 {cls}")
     return lines
 
 
@@ -434,6 +464,7 @@ def _prior_sprint_section(
     if not cards:
         return ["No performance data available"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+    first_attempt_rate = calculate_first_attempt_rate(cards)
     return [
         f"## Prior Sprint {label}",
         "",
@@ -443,6 +474,7 @@ def _prior_sprint_section(
         f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
         f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
         f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
+        f"- **First attempt rate**: {first_attempt_rate}%",
     ]
 
 

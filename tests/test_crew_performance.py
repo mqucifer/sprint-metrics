@@ -1621,3 +1621,161 @@ def test_json_empty_cards_first_attempt_rate_zero_and_breakdown_empty(tmp_path, 
     data = json.loads(captured.out)
     assert data["first_attempt_rate_percent"] == 0
     assert data["failure_breakdown"] == []
+
+
+def test_markdown_shows_first_attempt_rate_and_top_failure_causes(tmp_path, capsys):
+    """AC1: 5 completed cards (3 first-attempt, 1 parse/Developer, 1 check/Code Reviewer)
+    with --markdown shows '- **First attempt rate**: 60%' and a 'Top failure causes'
+    section with '1\u00d7 parse (Developer)' before '1\u00d7 check (Code Reviewer)'."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First attempt rate**: 60%" in captured.out
+    assert "Top failure causes" in captured.out
+    parse_idx = captured.out.index("1\u00d7 parse (Developer)")
+    check_idx = captured.out.index("1\u00d7 check (Code Reviewer)")
+    assert parse_idx < check_idx
+
+
+def test_markdown_omits_top_failure_causes_when_all_first_attempt(tmp_path, capsys):
+    """AC2: 3 completed cards all first-attempt with --markdown shows
+    '- **First attempt rate**: 100%' and does NOT include 'Top failure causes'."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First attempt rate**: 100%" in captured.out
+    assert "Top failure causes" not in captured.out
+
+
+def test_markdown_flags_first_attempt_rate_below_threshold(tmp_path, capsys):
+    """AC3: 4 completed cards (1 first-attempt, 2 parse/Developer, 1 edit/Developer)
+    with --thresholds {"first_attempt_rate_percent": 50} shows
+    '- **First attempt rate**: 25% \u26a0\ufe0f'."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "edit",
+            "failure_role": "Developer",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"first_attempt_rate_percent": 50}))
+    exit_code = main([str(cards_path), "--markdown", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First attempt rate**: 25% \u26a0\ufe0f" in captured.out
+
+
+def test_markdown_empty_cards_shows_zero_rate_and_no_data(tmp_path, capsys):
+    """AC4: an empty cards list with --markdown shows '- **First attempt rate**: 0%'
+    and 'No performance data available'."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First attempt rate**: 0%" in captured.out
+    assert "No performance data available" in captured.out
+
+
+def test_markdown_prior_sprint_shows_first_attempt_rate_with_change(tmp_path, capsys):
+    """AC5: sprint 2024-01 has 4 cards (2 first-attempt) and sprint 2024-02 has
+    4 cards (3 first-attempt, 1 parse/Developer). --prior-sprint 2024-01 --markdown
+    shows '- **First attempt rate**: 75% (was 50%, +25)' in the current sprint section."""
+    prior_cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    current_cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    sprints = {"2024-01": prior_cards, "2024-02": current_cards}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First attempt rate**: 75% (was 50%, +25)" in captured.out
