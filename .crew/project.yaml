@@ -21,7 +21,8 @@ intent:
     - An MCP server, for now. The crew calls the tool directly, through its command line
       or, once it runs as one, its service API.
   release:
-    deploys: true
+    deploys: false
+    publishes: true
     where: A version tag on the sprint-metrics repo, which the crew installs as a
       git dependency.
   done:
