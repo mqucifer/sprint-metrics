@@ -174,6 +174,7 @@ def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
         "wip_violations": 0,
         "blocked_aging_days": 0,
         "escalation_rate_percent": 0,
+        "first_attempt_rate_percent": 100,
     }
     assert data["delta"] == {
         "cycle_time_days": 2,
@@ -182,6 +183,7 @@ def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
         "wip_violations": 0,
         "blocked_aging_days": 0,
         "escalation_rate_percent": 0,
+        "first_attempt_rate_percent": 0,
     }
 
 
