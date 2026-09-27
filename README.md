@@ -32,3 +32,34 @@ sprint-metrics cards.json
 
 `cards.json` is a JSON file of sprint cards. When no file argument is given,
 the tool reads the JSON from standard input and prints the default table.
+## Input format (cards.json)
+
+For the default single-sprint invocation, the top-level JSON value in `cards.json` must be an array (list), not an object.
+
+Each card object has one required field:
+
+- `created` — an ISO-8601 date string, e.g. `"2024-01-03"`
+
+and three optional fields, each an ISO-8601 date string or omitted:
+
+- `started`
+- `completed`
+- `blocked_since`
+
+`created` is the only required field per card.
+
+```json
+[
+  {
+    "created": "2024-01-03",
+    "started": "2024-01-05",
+    "completed": "2024-01-10",
+    "blocked_since": "2024-01-06"
+  },
+  {
+    "created": "2024-01-04"
+  }
+]
+```
+
+An empty JSON array (`[]`) is valid input and produces a report in which every metric is zero.
