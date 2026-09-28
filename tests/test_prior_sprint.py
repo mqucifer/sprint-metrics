@@ -141,13 +141,14 @@ def test_prior_sprint_identical_dates_show_zero_change(tmp_path, capsys):
 
 
 def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
-    """AC1: a JSON object with sprint labels 2024-01 and 2024-02, where 2024-01
+    """AC4: a JSON object with sprint labels 2024-01 and 2024-02, where 2024-01
     contains one card (created 2024-01-01, started 2024-01-03, completed 2024-01-07)
     and 2024-02 contains one card (created 2024-01-01, started 2024-01-02,
     completed 2024-01-08). Running with --prior-sprint 2024-01 --json exits 0 and
-    stdout is a JSON object with api_version "1", the current sprint's six metrics,
-    a flags object, a "prior" object with the prior sprint's six metrics, and a
-    "delta" object with the signed change for each metric."""
+    stdout is a JSON object with api_version "1", the current sprint's metrics,
+    a flags object, a "prior" object with the prior sprint's metrics including
+    first_attempt_rate_percent and top_failure_causes, and a "delta" object with
+    the signed change for each metric including first_attempt_rate_percent."""
     sprints = {
         "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
         "2024-02": [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-08"}],
@@ -175,6 +176,7 @@ def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
         "blocked_aging_days": 0,
         "escalation_rate_percent": 0,
         "first_attempt_rate_percent": 100,
+        "top_failure_causes": {},
     }
     assert data["delta"] == {
         "cycle_time_days": 2,
@@ -291,3 +293,60 @@ def test_prior_sprint_markdown_first_attempt_rate_zero_change(tmp_path, capsys):
 
     assert exit_code == 0
     assert "- **First-attempt rate**: 0% (was 0%, 0)" in captured.out
+
+
+def test_prior_sprint_json_top_level_first_attempt_and_top_causes(tmp_path, capsys):
+    """AC1: 2024-01 has 3 completed cards (2 first-attempt, 1 with attempts=2
+    failure_class='bug') and 2024-02 has 5 completed cards (4 first-attempt, 1 with
+    attempts=2 failure_class='requirement'). --prior-sprint 2024-01 --json exits 0,
+    top-level first_attempt_rate_percent is 80, top_failure_causes is {'requirement': 1},
+    prior first_attempt_rate_percent is 67, prior top_failure_causes is {'bug': 1},
+    and delta first_attempt_rate_percent is 13."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    bug_card = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    requirement_card = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "requirement",
+    }
+    sprints = {
+        "2024-01": [first_attempt, first_attempt, bug_card],
+        "2024-02": [first_attempt] * 4 + [requirement_card],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["first_attempt_rate_percent"] == 80
+    assert data["top_failure_causes"] == {"requirement": 1}
+    assert data["prior"]["first_attempt_rate_percent"] == 67
+    assert data["prior"]["top_failure_causes"] == {"bug": 1}
+    assert data["delta"]["first_attempt_rate_percent"] == 13
+
+
+def test_prior_sprint_json_delta_zero_when_identical_first_attempt(tmp_path, capsys):
+    """AC3: 2024-01 and 2024-02 each have one completed card with attempts=1.
+    --prior-sprint 2024-01 --json exits 0, delta first_attempt_rate_percent is 0,
+    and prior first_attempt_rate_percent is 100."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [card], "2024-02": [card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["delta"]["first_attempt_rate_percent"] == 0
+    assert data["prior"]["first_attempt_rate_percent"] == 100
