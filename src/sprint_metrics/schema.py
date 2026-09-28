@@ -71,9 +71,18 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
             "type": "object",
             "additionalProperties": {
                 "type": "object",
-                "required": [*METRIC_KEYS, "flags", "prior", "delta"],
+                "required": [
+                    *METRIC_KEYS,
+                    "first_attempt_rate_percent",
+                    "top_failure_causes",
+                    "flags",
+                    "prior",
+                    "delta",
+                ],
                 "properties": {
                     **{key: {"type": "integer"} for key in METRIC_KEYS},
+                    "first_attempt_rate_percent": {"type": "integer"},
+                    "top_failure_causes": {"type": "object"},
                     "flags": {"type": "object"},
                     "prior": {"type": ["object", "null"]},
                     "delta": {"type": ["object", "null"]},
