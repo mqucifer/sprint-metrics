@@ -215,3 +215,79 @@ def test_prior_sprint_json_cannot_be_most_recent(tmp_path, capsys):
     assert exit_code == 2
     assert "most recent" in captured.err
     assert captured.out == ""
+
+
+def test_prior_sprint_markdown_first_attempt_rate_with_change(tmp_path, capsys):
+    """AC1: 2024-01 has 3 completed cards (2 first-attempt, 1 not) and 2024-02 has
+    5 completed cards (4 first-attempt, 1 not). --prior-sprint 2024-01 --markdown
+    exits 0 and stdout contains '- **First-attempt rate**: 80% (was 67%, +13)'."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    not_first = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    sprints = {
+        "2024-01": [first_attempt, first_attempt, not_first],
+        "2024-02": [first_attempt] * 4 + [not_first],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First-attempt rate**: 80% (was 67%, +13)" in captured.out
+
+
+def test_single_sprint_markdown_first_attempt_rate_no_prior(tmp_path, capsys):
+    """AC2: a single-sprint JSON list with one completed card with attempts=1, run
+    with --markdown and without --prior-sprint, exits 0 and stdout contains
+    '- **First-attempt rate**: 100%' and does not contain the substring 'was'."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First-attempt rate**: 100%" in captured.out
+    assert "was" not in captured.out
+
+
+def test_prior_sprint_markdown_first_attempt_rate_empty_prior(tmp_path, capsys):
+    """AC3: 2024-01 is an empty list and 2024-02 has one completed card with
+    attempts=1. --prior-sprint 2024-01 --markdown exits 0 and stdout contains
+    '- **First-attempt rate**: 100% (was 0%, +100)'."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [], "2024-02": [card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First-attempt rate**: 100% (was 0%, +100)" in captured.out
+
+
+def test_prior_sprint_markdown_first_attempt_rate_zero_change(tmp_path, capsys):
+    """AC4: 2024-01 and 2024-02 each have one completed card with attempts=2 and
+    failure_class='bug'. --prior-sprint 2024-01 --markdown exits 0 and stdout
+    contains '- **First-attempt rate**: 0% (was 0%, 0)'."""
+    card = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    sprints = {"2024-01": [card], "2024-02": [card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First-attempt rate**: 0% (was 0%, 0)" in captured.out

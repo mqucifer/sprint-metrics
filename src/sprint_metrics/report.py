@@ -168,7 +168,7 @@ def _sprint_section(
     the section heading is always present when cards exist.
     """
     if not cards:
-        return ["No performance data available", "", "- **First attempt rate**: 0%"]
+        return ["No performance data available", "", "- **First-attempt rate**: 0%"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
@@ -229,7 +229,7 @@ def _sprint_section(
                 )
             elif metric == "first_attempt_rate_percent":
                 lines.append(
-                    f"- **First attempt rate**: {first_attempt_rate}% "
+                    f"- **First-attempt rate**: {first_attempt_rate}% "
                     f"(was {prior_first_attempt}%, "
                     f"{_signed(first_attempt_rate - prior_first_attempt)})"
                     f"{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
@@ -271,7 +271,7 @@ def _sprint_section(
             )
         elif metric == "first_attempt_rate_percent":
             lines.append(
-                f"- **First attempt rate**: {first_attempt_rate}%{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
+                f"- **First-attempt rate**: {first_attempt_rate}%{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
             )
     if "failure_breakdown" in selected and failure_breakdown:
         lines.append("")
@@ -485,7 +485,7 @@ def _prior_sprint_section(
         f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
         f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
         f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
-        f"- **First attempt rate**: {first_attempt_rate}%",
+        f"- **First-attempt rate**: {first_attempt_rate}%",
     ]
 
 
