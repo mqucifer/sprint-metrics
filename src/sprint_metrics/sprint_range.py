@@ -239,6 +239,13 @@ def format_sprint_range_markdown(
             lines.append(f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}")
             lines.append(f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days")
             lines.append(f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%")
+            lines.append(f"- **First-attempt rate**: {calculate_first_attempt_rate(cards)}%")
+            top_causes = calculate_top_failure_causes(cards)
+            if top_causes:
+                parts = [f"{cause} ({count})" for cause, count in top_causes.items()]
+                lines.append(f"- **Top failure causes**: {', '.join(parts)}")
+            else:
+                lines.append("- **Top failure causes**: \u2014")
         lines.append("")
         lines.extend(_summary_section(cards))
     return "\n".join(lines)
