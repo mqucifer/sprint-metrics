@@ -23,8 +23,9 @@ intent:
   release:
     deploys: false
     publishes: true
-    where: A version tag on the sprint-metrics repo, which the crew installs as a
-      git dependency.
+    where: A version tag vX.Y.Z on the sprint-metrics repo, with a GitHub Release,
+      and a container image at ghcr.io/mqucifer/sprint-metrics:X.Y.Z. The crew installs
+      the tool as a git dependency pinned to the tag, or runs the image by its tag.
   done:
     bar: A change is done when its acceptance criteria are met and every check the
       project's CI runs passes.
