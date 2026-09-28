@@ -1625,7 +1625,7 @@ def test_json_empty_cards_first_attempt_rate_zero_and_breakdown_empty(tmp_path, 
 
 def test_markdown_shows_first_attempt_rate_and_top_failure_causes(tmp_path, capsys):
     """AC1: 5 completed cards (3 first-attempt, 1 parse/Developer, 1 check/Code Reviewer)
-    with --markdown shows '- **First attempt rate**: 60%' and a 'Top failure causes'
+    with --markdown shows '- **First-attempt rate**: 60%' and a 'Top failure causes'
     section with '1\u00d7 parse (Developer)' before '1\u00d7 check (Code Reviewer)'."""
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
@@ -1654,7 +1654,7 @@ def test_markdown_shows_first_attempt_rate_and_top_failure_causes(tmp_path, caps
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First attempt rate**: 60%" in captured.out
+    assert "- **First-attempt rate**: 60%" in captured.out
     assert "Top failure causes" in captured.out
     parse_idx = captured.out.index("1\u00d7 parse (Developer)")
     check_idx = captured.out.index("1\u00d7 check (Code Reviewer)")
@@ -1663,7 +1663,7 @@ def test_markdown_shows_first_attempt_rate_and_top_failure_causes(tmp_path, caps
 
 def test_markdown_omits_top_failure_causes_when_all_first_attempt(tmp_path, capsys):
     """AC2: 3 completed cards all first-attempt with --markdown shows
-    '- **First attempt rate**: 100%' and does NOT include 'Top failure causes'."""
+    '- **First-attempt rate**: 100%' and does NOT include 'Top failure causes'."""
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
@@ -1675,14 +1675,14 @@ def test_markdown_omits_top_failure_causes_when_all_first_attempt(tmp_path, caps
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First attempt rate**: 100%" in captured.out
+    assert "- **First-attempt rate**: 100%" in captured.out
     assert "Top failure causes" not in captured.out
 
 
 def test_markdown_flags_first_attempt_rate_below_threshold(tmp_path, capsys):
     """AC3: 4 completed cards (1 first-attempt, 2 parse/Developer, 1 edit/Developer)
     with --thresholds {"first_attempt_rate_percent": 50} shows
-    '- **First attempt rate**: 25% \u26a0\ufe0f'."""
+    '- **First-attempt rate**: 25% \u26a0\ufe0f'."""
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {
@@ -1718,11 +1718,11 @@ def test_markdown_flags_first_attempt_rate_below_threshold(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First attempt rate**: 25% \u26a0\ufe0f" in captured.out
+    assert "- **First-attempt rate**: 25% \u26a0\ufe0f" in captured.out
 
 
 def test_markdown_empty_cards_shows_zero_rate_and_no_data(tmp_path, capsys):
-    """AC4: an empty cards list with --markdown shows '- **First attempt rate**: 0%'
+    """AC4: an empty cards list with --markdown shows '- **First-attempt rate**: 0%'
     and 'No performance data available'."""
     path = tmp_path / "cards.json"
     path.write_text(json.dumps([]))
@@ -1730,14 +1730,14 @@ def test_markdown_empty_cards_shows_zero_rate_and_no_data(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First attempt rate**: 0%" in captured.out
+    assert "- **First-attempt rate**: 0%" in captured.out
     assert "No performance data available" in captured.out
 
 
 def test_markdown_prior_sprint_shows_first_attempt_rate_with_change(tmp_path, capsys):
     """AC5: sprint 2024-01 has 4 cards (2 first-attempt) and sprint 2024-02 has
     4 cards (3 first-attempt, 1 parse/Developer). --prior-sprint 2024-01 --markdown
-    shows '- **First attempt rate**: 75% (was 50%, +25)' in the current sprint section."""
+    shows '- **First-attempt rate**: 75% (was 50%, +25)' in the current sprint section."""
     prior_cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
@@ -1778,7 +1778,7 @@ def test_markdown_prior_sprint_shows_first_attempt_rate_with_change(tmp_path, ca
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First attempt rate**: 75% (was 50%, +25)" in captured.out
+    assert "- **First-attempt rate**: 75% (was 50%, +25)" in captured.out
 
 
 def test_prometheus_reports_first_attempt_rate_and_failure_count(tmp_path, capsys):
