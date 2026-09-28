@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from sprint_metrics.cli import main
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 
 DOCS_DIR = Path(__file__).parent.parent / "docs"
+README = Path(__file__).parent.parent / "README.md"
 
 ALL_DOCS = [
     "usage.md",
@@ -217,3 +219,230 @@ def test_completed_card_excluded_from_throughput_and_cycle_time(tmp_path, capsys
         f"throughput cell is {cells[3]!r}, expected '1' (in-flight card excluded)"
     )
     assert cells[1] == "5 days", f"cycle time cell is {cells[1]!r}, expected '5 days'"
+
+
+def _readme_section(text: str, heading: str) -> str:
+    """Return the body of a level-2 section in README.md, up to the next level-2 heading or EOF."""
+    pattern = rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)"
+    match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+    assert match is not None, f"README.md has no section '## {heading}'"
+    return match.group(1)
+
+
+def test_installation_states_python_312_and_no_third_party_packages():
+    """AC1 (migrated): the README's installation section states Python 3.12 is required
+    and that no third-party runtime packages are needed."""
+    text = README.read_text()
+    section = _readme_section(text, "Installation")
+    assert "3.12" in section
+    assert "no third-party" in section.lower()
+
+
+def test_input_format_shows_json_array_with_complete_and_partial_cards():
+    """AC3 (migrated): docs/cards.md's marked section shows a JSON array of card objects
+    with at least one complete example card and at least one card showing an omitted key."""
+    text = (DOCS_DIR / "cards.md").read_text()
+    section = _extract_marked_section(text, "input-format")
+    assert '"created"' in section
+    assert '"started"' in section
+    assert '"completed"' in section
+    assert '"blocked_since"' in section
+    assert section.count('"created"') >= 2
+
+
+def test_input_format_states_empty_array_is_valid():
+    """AC3 (migrated): docs/cards.md states that an empty JSON array ([]) is valid input
+    and produces a report in which every metric is zero."""
+    text = (DOCS_DIR / "cards.md").read_text()
+    before = text.split("BEGIN:input-format")[0]
+    assert "[]" in before
+    assert "zero" in before
+
+
+def test_worked_example_incomplete_card_excluded_from_metrics(tmp_path, capsys):
+    """AC (migrated): the docs/cards.md example has an incomplete card that does not
+    appear in the throughput count."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(cards_text)
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    incomplete = [c for c in cards if not c.get("completed")]
+    assert incomplete, "no card without completed field in docs/cards.md example"
+    completed_count = sum(1 for c in cards if c.get("completed"))
+    total_count = len(cards)
+    assert completed_count < total_count
+    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
+    cells = [c.strip() for c in current_row.split("|") if c.strip()]
+    assert cells[3] == str(completed_count)
+
+
+def test_worked_example_shows_input_json_and_produces_table(tmp_path, capsys):
+    """AC (migrated): the docs/cards.md worked-example JSON, run through cli.main(),
+    produces a table with a header row and a Current data row."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(cards_text)
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "| Sprint |" in captured.out
+    assert "| Current |" in captured.out
+
+
+def test_worked_example_throughput_and_cycle_time_are_correct(tmp_path, capsys):
+    """AC (migrated): the throughput value equals the count of completed cards in the
+    docs/cards.md example, and cycle time equals the average over completed cards."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(cards_text)
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    completed_cards = [c for c in cards if c.get("completed") and c.get("started")]
+    expected_throughput = len([c for c in cards if c.get("completed")])
+    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
+    cells = [c.strip() for c in current_row.split("|") if c.strip()]
+    assert cells[3] == str(expected_throughput)
+    cycle_times = [
+        (date.fromisoformat(c["completed"]) - date.fromisoformat(c["started"])).days
+        for c in completed_cards
+    ]
+    if cycle_times:
+        expected_cycle = round(sum(cycle_times) / len(cycle_times))
+        assert cells[1] == f"{expected_cycle} days"
+
+
+def test_metrics_contains_all_six_display_names():
+    """AC (migrated): docs/metrics.md contains all six original metric display names."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    section_lower = section.lower()
+    for name in (
+        "cycle time",
+        "lead time",
+        "throughput",
+        "wip violations",
+        "blocked aging",
+        "escalation rate",
+    ):
+        assert name in section_lower, f"missing metric name {name!r} in docs/metrics.md"
+
+
+def test_metrics_reference_completed_cards_for_exclusion():
+    """AC (migrated): docs/metrics.md's metric descriptions reference completed cards,
+    conveying that in-flight cards are excluded from the metrics."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    assert "completed" in section.lower()
+
+
+def test_cycle_time_entry_has_display_name_key_and_prometheus():
+    """AC (migrated): docs/metrics.md's cycle time entry lists the display name,
+    metric key, and Prometheus name, and mentions whole days."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    assert "Cycle time" in section
+    assert "cycle_time_days" in section
+    assert "sprint_cycle_time_days" in section
+    assert "whole days" in section.lower()
+
+
+def test_metrics_list_throughput_lead_time_blocked_aging_escalation():
+    """AC (migrated): docs/metrics.md lists throughput, lead time, blocked aging, and
+    escalation rate each with their display name, metric key, and Prometheus name."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+
+    assert "Throughput" in section
+    assert "throughput" in section
+    assert "sprint_throughput" in section
+
+    assert "Lead time" in section
+    assert "lead_time_days" in section
+    assert "sprint_lead_time_days" in section
+
+    assert "Blocked aging" in section
+    assert "blocked_aging_days" in section
+    assert "sprint_blocked_aging_days" in section
+
+    assert "Escalation rate" in section
+    assert "escalation_rate_percent" in section
+    assert "sprint_escalation_rate_percent" in section
+
+
+def test_wip_violations_entry_has_display_name_key_and_prometheus():
+    """AC (migrated): docs/metrics.md's WIP violations entry lists the display name,
+    metric key, and Prometheus name."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    assert "WIP violations" in section
+    assert "wip_violations" in section
+    assert "sprint_wip_violations" in section
+
+
+def test_installation_shows_uv_pip_install_with_version_tag():
+    """AC1 (migrated): the README's installation section contains a uv pip install command
+    with the git URL followed by a version tag."""
+    text = README.read_text()
+    section = _readme_section(text, "Installation")
+    assert "uv pip install" in section
+    assert "git+https://github.com/mqucifer/sprint-metrics.git@" in section
+    match = re.search(r"sprint-metrics\.git@v\d+\.\d+\.\d+", section)
+    assert match is not None, "expected a version tag like v0.1.0 after the git URL"
+    assert "PATH" in section
+
+
+def test_basic_usage_shows_minimal_invocation_and_stdin():
+    """AC1 (migrated): the README's basic-usage section shows sprint-metrics cards.json
+    and states that omitting the file argument makes the tool read JSON from standard input."""
+    text = README.read_text()
+    section = _readme_section(text, "Basic usage")
+    assert "sprint-metrics cards.json" in section
+    assert "standard input" in section.lower()
+
+
+def test_first_paragraph_includes_first_attempt_rate_and_failure_breakdown():
+    """AC1 (migrated): the first paragraph of the README includes 'first-attempt rate'
+    and 'failure breakdown'."""
+    text = README.read_text()
+    lines = text.splitlines()
+    title_idx = next(i for i, line in enumerate(lines) if line.startswith("# "))
+    start_idx = None
+    for j in range(title_idx + 1, len(lines)):
+        if lines[j].strip():
+            start_idx = j
+            break
+    assert start_idx is not None, "no content after title in README.md"
+    end_idx = start_idx
+    while end_idx + 1 < len(lines) and lines[end_idx + 1].strip():
+        end_idx += 1
+    paragraph = "\n".join(lines[start_idx : end_idx + 1])
+    assert "first-attempt rate" in paragraph
+    assert "failure breakdown" in paragraph
+
+
+def test_readme_trimmed_has_no_removed_sections():
+    """AC1 (migrated): README.md does not contain the removed sections or definitions."""
+    text = README.read_text()
+    assert "the mean (average) of the difference" not in text
+    assert "## Input format" not in text
+    assert "## Worked example" not in text
+
+
+def test_input_format_states_created_only_required_and_top_level_array():
+    """AC3 (migrated): docs/cards.md states that created is the only required field per card
+    and that the top-level JSON value must be an array."""
+    text = (DOCS_DIR / "cards.md").read_text()
+    before = text.split("BEGIN:input-format")[0]
+    assert "only" in before.lower()
+    assert "created" in before
+    assert "required" in before
+    assert "array" in before.lower()
