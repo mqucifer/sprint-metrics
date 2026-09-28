@@ -45,24 +45,28 @@ design:
     installs the tool as a git dependency pinned to that tag (e.g. uv pip install
     git+https://github.com/mqucifer/sprint-metrics.git@v0.1.0). The version in pyproject.toml
     is updated to match the tag before it is cut.
-  structure: The package is divided by concern so that parallel stories land in different
+  structure: 'The package is divided by concern so that parallel stories land in different
     files. card.py owns the Card dataclass and card parsing (parse_card, _load_cards,
     _as_cards, _parse_date). metrics.py owns the pure metric calculations (cycle time,
     lead time, throughput, WIP-limit violations, blocked-card aging, escalation rate,
-    first-attempt rate, failure breakdown) and their helpers (_mean_days, _state_windows,
-    _peak_occupancy, _load_wip_limits, ALL_METRICS). thresholds.py owns the default
-    thresholds (DEFAULT_THRESHOLDS), calculate_flags, _load_thresholds, and _flag.
-    report.py owns the single-sprint formatters (table, markdown, Prometheus, JSON),
-    the markdown section and display helpers (_summary_section, _summary_counts, _sprint_section,
-    _prior_sprint_section, _signed, _format_failure_breakdown, _METRIC_COLUMNS, _CANONICAL_ORDER,
-    API_VERSION). sprint_range.py owns sprint-label and range parsing (_parse_sprint_label,
-    _parse_sprint_range, _load_sprints) and the per-sprint range formatters (table,
-    JSON, markdown). schema.py owns the JSON Schema documents for the API response
-    (SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA, METRIC_KEYS), used by the --schema
-    flag. serve.py owns the scrape HTTP server (serve_metrics and its handler). cli.py
-    owns main, argument parsing, and file I/O (_read). __init__.py re-exports the
-    public API (Card, the calculate_* and format_* functions, main) from these modules;
-    __main__.py is the python -m entry point.
+    first-attempt rate, failure breakdown, top failure causes) and their helpers (_mean_days,
+    _state_windows, _peak_occupancy, _load_wip_limits, ALL_METRICS). thresholds.py
+    owns the default thresholds (DEFAULT_THRESHOLDS), calculate_flags, _load_thresholds,
+    and _flag. report.py owns the single-sprint formatters (table, markdown, Prometheus,
+    JSON), the markdown section and display helpers (_summary_section, _summary_counts,
+    _sprint_section, _prior_sprint_section, _signed, _format_failure_breakdown, _METRIC_COLUMNS,
+    _CANONICAL_ORDER, API_VERSION). sprint_range.py owns sprint-label and range parsing
+    (_parse_sprint_label, _parse_sprint_range, _load_sprints) and the per-sprint range
+    formatters (table, JSON, markdown). schema.py owns the JSON Schema documents for
+    the API response (SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA, METRIC_KEYS), used
+    by the --schema flag. serve.py owns the scrape HTTP server (serve_metrics and
+    its handler). cli.py owns main, argument parsing, and file I/O (_read). _docs_gen.py
+    owns the generation of the marked (generated) sections for each docs/ file: it
+    reads the code (calculate_* docstrings, _METRIC_COLUMNS, ALL_METRICS, schema documents,
+    parse_card, cli argument help) and produces the text written between BEGIN/END
+    markers in each docs/ file. It is a dev tool, not part of the public API. __init__.py
+    re-exports the public API (Card, the calculate_* and format_* functions, main)
+    from these modules; __main__.py is the python -m entry point.'
   docs:
   - README.md
   - docs/usage.md
