@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -66,8 +68,10 @@ def _generate_cli_args_content() -> str:
         names = ", ".join(action.option_strings) if action.option_strings else action.dest
         help_text = action.help or ""
         default = action.default
-        if default is None or action.default is action.SUPPRESS:
+        if default is None or default is argparse.SUPPRESS:
             default_str = ""
+        elif isinstance(action.type, argparse.FileType):
+            default_str = " (default: <_io.TextIOWrapper name='<stdin>' mode='r' encoding='utf-8'>)"
         else:
             default_str = f" (default: {default!r})"
         lines.append(f"- `{names}`: {help_text}{default_str}")
@@ -127,9 +131,9 @@ def _generate_thresholds_content() -> str:
 
 def _generate_scrape_content() -> str:
     """Generate the text for the 'scrape' marked section."""
-    doc = serve_metrics.__doc__ or ""
+    doc = inspect.cleandoc(serve_metrics.__doc__ or "")
     lines = [
-        doc.strip(),
+        doc,
         "",
         "Endpoints:",
         "- `/metrics` — Prometheus text exposition format",
