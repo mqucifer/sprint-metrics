@@ -1,11 +1,13 @@
 """Tests for the docs/ files structure and content."""
 
+import json
 import re
 from pathlib import Path
 
 import pytest
 
 from sprint_metrics._docs_gen import _generate_section_content
+from sprint_metrics.cli import main
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 
 DOCS_DIR = Path(__file__).parent.parent / "docs"
@@ -154,3 +156,64 @@ def test_drift_check_detects_empty_section(tmp_path):
     doc_path.write_text("Intro text\nBEGIN:metrics\nEND:metrics\nOutro text\n")
     with pytest.raises(AssertionError, match=r"test_doc\.md.*marked section is empty"):
         _check_no_drift(doc_path, "metrics", "test_doc.md")
+
+
+def _extract_json_block(text: str) -> list[dict]:
+    """Extract the first ```json code block from markdown text."""
+    match = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
+    assert match is not None, "no ```json code block found"
+    return json.loads(match.group(1))
+
+
+def test_worked_example_output_matches_doc(tmp_path, capsys):
+    """AC1: the worked-example JSON in docs/cards.md, run through cli.main(),
+    produces a Current row byte-identical to the expected table output."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(cards_text)
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
+    assert current_row == "| Current | 5 days | 7 days | 1 | 0 | 4 days | 0% | 100% | \u2014 |"
+
+
+def test_input_format_example_produces_valid_table(tmp_path, capsys):
+    """AC2: the input-format example in docs/cards.md, run through cli.main() with
+    default output, exits 0 and stdout contains a table header with 'Sprint' and
+    a data row with 'Current'."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(cards_text)
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    header_rows = [line for line in captured.out.splitlines() if line.startswith("| Sprint")]
+    assert header_rows, "no header row starting with '| Sprint' found"
+    assert "Sprint" in header_rows[0]
+    data_rows = [line for line in captured.out.splitlines() if "Current" in line]
+    assert data_rows, "no data row containing 'Current' found"
+
+
+def test_completed_card_excluded_from_throughput_and_cycle_time(tmp_path, capsys):
+    """AC3: the worked-example input has one completed card and one in-flight card.
+    The throughput cell reads '1' (not 2) and the cycle time cell reads '5 days',
+    confirming the in-flight card is excluded."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(cards_text)
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
+    cells = [c.strip() for c in current_row.split("|") if c.strip()]
+    assert cells[3] == "1", (
+        f"throughput cell is {cells[3]!r}, expected '1' (in-flight card excluded)"
+    )
+    assert cells[1] == "5 days", f"cycle time cell is {cells[1]!r}, expected '5 days'"
