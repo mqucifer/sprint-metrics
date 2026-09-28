@@ -14,6 +14,7 @@ from sprint_metrics.metrics import (
     calculate_failure_breakdown,
     calculate_first_attempt_rate,
     calculate_throughput,
+    calculate_top_failure_causes,
     calculate_wip_violations,
 )
 from sprint_metrics.report import API_VERSION, _summary_section
@@ -154,6 +155,7 @@ def format_sprint_range_json(
             "wip_violations": calculate_wip_violations(cards, wip_limits),
             "blocked_aging_days": calculate_blocked_aging(cards, as_of),
             "escalation_rate_percent": calculate_escalation_rate(cards, escalations),
+            "first_attempt_rate_percent": calculate_first_attempt_rate(cards),
         }
         if index == 0:
             prior = None
@@ -169,6 +171,7 @@ def format_sprint_range_json(
                 "wip_violations": calculate_wip_violations(prior_cards, wip_limits),
                 "blocked_aging_days": calculate_blocked_aging(prior_cards, as_of),
                 "escalation_rate_percent": calculate_escalation_rate(prior_cards, escalations),
+                "first_attempt_rate_percent": calculate_first_attempt_rate(prior_cards),
             }
             delta = {
                 "cycle_time_days": sprint_metrics["cycle_time_days"] - prior["cycle_time_days"],
@@ -180,9 +183,14 @@ def format_sprint_range_json(
                 "escalation_rate_percent": (
                     sprint_metrics["escalation_rate_percent"] - prior["escalation_rate_percent"]
                 ),
+                "first_attempt_rate_percent": (
+                    sprint_metrics["first_attempt_rate_percent"]
+                    - prior["first_attempt_rate_percent"]
+                ),
             }
         per_sprint[label] = {
             **sprint_metrics,
+            "top_failure_causes": calculate_top_failure_causes(cards),
             "flags": calculate_flags(cards, wip_limits, escalations, as_of, thresholds),
             "prior": prior,
             "delta": delta,

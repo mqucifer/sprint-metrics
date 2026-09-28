@@ -196,3 +196,22 @@ def calculate_failure_breakdown(
         (cls, role, count)
         for (cls, role), count in sorted(counts.items(), key=lambda item: -item[1])
     ]
+
+
+def calculate_top_failure_causes(cards: Iterable[Card | Mapping[str, object]]) -> dict[str, int]:
+    """Return the top 3 failure causes among completed cards, as a dict mapping cause to count.
+
+    Only completed cards with a non-None failure_class contribute. Ties in count are
+    broken alphabetically. Returns an empty dict when no completed card has a failure_class.
+    """
+    completed = [
+        card for card in _as_cards(cards) if card.is_completed and card.failure_class is not None
+    ]
+    if not completed:
+        return {}
+    counts: dict[str, int] = {}
+    for card in completed:
+        key = card.failure_class
+        counts[key] = counts.get(key, 0) + 1
+    sorted_items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return dict(sorted_items[:3])

@@ -1034,3 +1034,98 @@ def test_sprint_range_table_new_columns_have_no_flag_without_thresholds(tmp_path
             top_causes_cell = cells[-2]
             assert "\u26a0\ufe0f" not in first_attempt_cell
             assert "\u26a0\ufe0f" not in top_causes_cell
+
+
+def test_sprint_range_json_first_attempt_rate_and_top_failure_causes(tmp_path, capsys):
+    """AC1: sprint 2024-01 has 3 completed cards (2 first-attempt, 1 with attempts=2,
+    failure_class='bug') and sprint 2024-02 has 5 completed cards (all first-attempt).
+    --sprint-range 2024-01..2024-02 --json exits 0, 2024-01 shows
+    first_attempt_rate_percent 67 and top_failure_causes {'bug': 1}, and 2024-02 shows
+    first_attempt_rate_percent 100 and top_failure_causes {}."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    failed = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    sprints = {"2024-01": [first_attempt, first_attempt, failed], "2024-02": [first_attempt] * 5}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["first_attempt_rate_percent"] == 67
+    assert data["sprints"]["2024-01"]["top_failure_causes"] == {"bug": 1}
+    assert data["sprints"]["2024-02"]["first_attempt_rate_percent"] == 100
+    assert data["sprints"]["2024-02"]["top_failure_causes"] == {}
+
+
+def test_sprint_range_json_prior_and_delta_first_attempt_rate(tmp_path, capsys):
+    """AC2: same sprints as AC1. 2024-01.prior is null, 2024-02.prior
+    first_attempt_rate_percent is 67, and 2024-02.delta first_attempt_rate_percent is 33."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    failed = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    sprints = {"2024-01": [first_attempt, first_attempt, failed], "2024-02": [first_attempt] * 5}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["prior"] is None
+    assert data["sprints"]["2024-02"]["prior"]["first_attempt_rate_percent"] == 67
+    assert data["sprints"]["2024-02"]["delta"]["first_attempt_rate_percent"] == 33
+
+
+def test_sprint_range_json_single_sprint_first_attempt_and_failure(tmp_path, capsys):
+    """AC3: a sprints JSON with a single key '2024-01' containing one completed card with
+    attempts=2 and failure_class='integration'. --sprint-range 2024-01..2024-01 --json
+    exits 0, first_attempt_rate_percent is 0, top_failure_causes is {'integration': 1},
+    prior is null, and delta is null."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+                "attempts": 2,
+                "failure_class": "integration",
+            }
+        ]
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["first_attempt_rate_percent"] == 0
+    assert data["sprints"]["2024-01"]["top_failure_causes"] == {"integration": 1}
+    assert data["sprints"]["2024-01"]["prior"] is None
+    assert data["sprints"]["2024-01"]["delta"] is None
+
+
+def test_sprint_range_schema_includes_first_attempt_and_top_failure_causes(capsys):
+    """AC4: --schema --sprint-range 2024-01..2024-02 --json exits 0 and the emitted
+    JSON Schema's sprint-value required array includes 'first_attempt_rate_percent'
+    and 'top_failure_causes'."""
+    exit_code = main(["--schema", "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    sprint_schema = schema["properties"]["sprints"]["additionalProperties"]
+    assert "first_attempt_rate_percent" in sprint_schema["required"]
+    assert "top_failure_causes" in sprint_schema["required"]
