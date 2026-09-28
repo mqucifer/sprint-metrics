@@ -35,8 +35,6 @@ from sprint_metrics.thresholds import _load_thresholds
 
 __all__ = ["build_parser", "main"]
 
-__all__ = ["build_parser", "main"]
-
 
 def _read(handle) -> str:
     """Read a command-line file argument, closing it afterwards."""
