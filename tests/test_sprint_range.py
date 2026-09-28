@@ -1129,3 +1129,52 @@ def test_sprint_range_schema_includes_first_attempt_and_top_failure_causes(capsy
     sprint_schema = schema["properties"]["sprints"]["additionalProperties"]
     assert "first_attempt_rate_percent" in sprint_schema["required"]
     assert "top_failure_causes" in sprint_schema["required"]
+
+
+def test_sprint_range_markdown_shows_first_attempt_rate_and_top_causes(run_range_command):
+    """AC1: sprint 2024-01 has three completed cards (two first-attempt, one with
+    attempts=2 and failure_class='bug') and sprint 2024-02 has five completed cards
+    (all first-attempt). --sprint-range 2024-01..2024-02 --markdown exits 0, the
+    2024-01 section contains '- **First-attempt rate**: 67%' and
+    '- **Top failure causes**: bug (1)', and the 2024-02 section contains
+    '- **First-attempt rate**: 100%' and '- **Top failure causes**: \u2014'."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    failed = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    sprints = {"2024-01": [first_attempt, first_attempt, failed], "2024-02": [first_attempt] * 5}
+    exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02", markdown=True)
+
+    assert exit_code == 0
+    idx_01 = output.index("## Sprint 2024-01")
+    idx_02 = output.index("## Sprint 2024-02")
+    section_01 = output[idx_01:idx_02]
+    section_02 = output[idx_02:]
+    assert "- **First-attempt rate**: 67%" in section_01
+    assert "- **Top failure causes**: bug (1)" in section_01
+    assert "- **First-attempt rate**: 100%" in section_02
+    assert "- **Top failure causes**: \u2014" in section_02
+
+
+def test_sprint_range_markdown_empty_sprint_omits_first_attempt_lines(run_range_command):
+    """AC2: sprint 2024-01 is an empty list and sprint 2024-02 has one completed
+    first-attempt card. --sprint-range 2024-01..2024-02 --markdown exits 0, the
+    2024-01 section contains 'No performance data available' and does NOT contain
+    '- **First-attempt rate**', and the 2024-02 section contains
+    '- **First-attempt rate**: 100%'."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [], "2024-02": [first_attempt]}
+    exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02", markdown=True)
+
+    assert exit_code == 0
+    idx_01 = output.index("## Sprint 2024-01")
+    idx_02 = output.index("## Sprint 2024-02")
+    section_01 = output[idx_01:idx_02]
+    section_02 = output[idx_02:]
+    assert "No performance data available" in section_01
+    assert "- **First-attempt rate**" not in section_01
+    assert "- **First-attempt rate**: 100%" in section_02
