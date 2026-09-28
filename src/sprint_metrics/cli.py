@@ -33,7 +33,7 @@ from sprint_metrics.sprint_range import (
 )
 from sprint_metrics.thresholds import _load_thresholds
 
-__all__ = ["main"]
+__all__ = ["build_parser", "main"]
 
 
 def _read(handle) -> str:
@@ -44,119 +44,7 @@ def _read(handle) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the crew performance command."""
-    parser = argparse.ArgumentParser(
-        prog="sprint-metrics",
-        description=(
-            "Report cycle time, lead time, throughput, and WIP-limit violations "
-            "for the current sprint."
-        ),
-    )
-    parser.add_argument(
-        "cards",
-        nargs="?",
-        type=argparse.FileType("r"),
-        default=sys.stdin,
-        help="JSON file of sprint cards; reads stdin when omitted.",
-    )
-    parser.add_argument(
-        "--wip-limits",
-        type=argparse.FileType("r"),
-        default=None,
-        metavar="FILE",
-        help='JSON file of WIP limits keyed by state, e.g. {"In Progress": 3}; '
-        "without it no limits apply.",
-    )
-    parser.add_argument(
-        "--escalations",
-        type=int,
-        default=0,
-        metavar="N",
-        help="Number of escalations to apply to each sprint in the range.",
-    )
-    parser.add_argument(
-        "--sprint-date",
-        type=str,
-        default=None,
-        metavar="DATE",
-        help="ISO-8601 date to measure blocked aging against (default: today).",
-    )
-    parser.add_argument(
-        "--sprint-range",
-        type=str,
-        default=None,
-        metavar="START..END",
-        help=(
-            "Inclusive range of YYYY-MM sprint labels, e.g. 2024-01..2024-03. "
-            "The cards file must be a JSON object keyed by sprint label."
-        ),
-    )
-    parser.add_argument(
-        "--prior-sprint",
-        type=str,
-        default=None,
-        metavar="LABEL",
-        help=(
-            "A prior sprint label (YYYY-MM) to compare against in the markdown report. "
-            "The cards file must be a JSON object keyed by sprint label."
-        ),
-    )
-    parser.add_argument(
-        "--prior",
-        type=argparse.FileType("r"),
-        default=None,
-        metavar="FILE",
-        help="JSON file of prior-period cards, shown as a second row in the default table.",
-    )
-    parser.add_argument(
-        "--markdown",
-        action="store_true",
-        help="Output the report as markdown instead of the default table format.",
-    )
-    parser.add_argument(
-        "--prometheus",
-        action="store_true",
-        help="Output the report in Prometheus text exposition format.",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output the report as a JSON object.",
-    )
-    parser.add_argument(
-        "--schema",
-        action="store_true",
-        help="Output the JSON Schema for the API response (requires --json).",
-    )
-    parser.add_argument(
-        "--scrape",
-        action="store_true",
-        help="Start an HTTP server that serves the metrics at /metrics for scraping.",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=9100,
-        metavar="PORT",
-        help="Port for the scrape server (default: 9100). Use 0 for an ephemeral port.",
-    )
-    parser.add_argument(
-        "--thresholds",
-        type=argparse.FileType("r"),
-        default=None,
-        metavar="FILE",
-        help=(
-            "JSON file of metric thresholds keyed by metric name, e.g. "
-            '{"cycle_time_days": 3}; overrides the built-in defaults for the '
-            "metrics it specifies."
-        ),
-    )
-    parser.add_argument(
-        "--metrics",
-        type=str,
-        default=None,
-        metavar="METRICS",
-        help="Comma-separated list of metric names to include in the output.",
-    )
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.sprint_date is not None:
@@ -379,3 +267,121 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
     return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build and return the argument parser for sprint-metrics."""
+    parser = argparse.ArgumentParser(
+        prog="sprint-metrics",
+        description=(
+            "Report cycle time, lead time, throughput, and WIP-limit violations "
+            "for the current sprint."
+        ),
+    )
+    parser.add_argument(
+        "cards",
+        nargs="?",
+        type=argparse.FileType("r"),
+        default=sys.stdin,
+        help="JSON file of sprint cards; reads stdin when omitted.",
+    )
+    parser.add_argument(
+        "--wip-limits",
+        type=argparse.FileType("r"),
+        default=None,
+        metavar="FILE",
+        help='JSON file of WIP limits keyed by state, e.g. {"In Progress": 3}; '
+        "without it no limits apply.",
+    )
+    parser.add_argument(
+        "--escalations",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Number of escalations to apply to each sprint in the range.",
+    )
+    parser.add_argument(
+        "--sprint-date",
+        type=str,
+        default=None,
+        metavar="DATE",
+        help="ISO-8601 date to measure blocked aging against (default: today).",
+    )
+    parser.add_argument(
+        "--sprint-range",
+        type=str,
+        default=None,
+        metavar="START..END",
+        help=(
+            "Inclusive range of YYYY-MM sprint labels, e.g. 2024-01..2024-03. "
+            "The cards file must be a JSON object keyed by sprint label."
+        ),
+    )
+    parser.add_argument(
+        "--prior-sprint",
+        type=str,
+        default=None,
+        metavar="LABEL",
+        help=(
+            "A prior sprint label (YYYY-MM) to compare against in the markdown report. "
+            "The cards file must be a JSON object keyed by sprint label."
+        ),
+    )
+    parser.add_argument(
+        "--prior",
+        type=argparse.FileType("r"),
+        default=None,
+        metavar="FILE",
+        help="JSON file of prior-period cards, shown as a second row in the default table.",
+    )
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="Output the report as markdown instead of the default table format.",
+    )
+    parser.add_argument(
+        "--prometheus",
+        action="store_true",
+        help="Output the report in Prometheus text exposition format.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output the report as a JSON object.",
+    )
+    parser.add_argument(
+        "--schema",
+        action="store_true",
+        help="Output the JSON Schema for the API response (requires --json).",
+    )
+    parser.add_argument(
+        "--scrape",
+        action="store_true",
+        help="Start an HTTP server that serves the metrics at /metrics for scraping.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=9100,
+        metavar="PORT",
+        help="Port for the scrape server (default: 9100). Use 0 for an ephemeral port.",
+    )
+    parser.add_argument(
+        "--thresholds",
+        type=argparse.FileType("r"),
+        default=None,
+        metavar="FILE",
+        help=(
+            "JSON file of metric thresholds keyed by metric name, e.g. "
+            '{"cycle_time_days": 3}; overrides the built-in defaults for the '
+            "metrics it specifies."
+        ),
+    )
+    parser.add_argument(
+        "--metrics",
+        type=str,
+        default=None,
+        metavar="METRICS",
+        help="Comma-separated list of metric names to include in the output.",
+    )
+    return parser
