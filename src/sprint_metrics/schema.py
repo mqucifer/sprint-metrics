@@ -19,6 +19,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         *METRIC_KEYS,
         "first_attempt_rate_percent",
         "failure_breakdown",
+        "top_failure_causes",
         "flags",
     ],
     "properties": {
@@ -42,6 +43,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
                 "required": ["class", "role", "count"],
             },
         },
+        "top_failure_causes": {"type": "object"},
         "flags": {"type": "object"},
         "sprint_date": {"type": "string"},
         "prior": {
@@ -49,6 +51,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
             "properties": {
                 **{key: {"type": "integer"} for key in METRIC_KEYS},
                 "first_attempt_rate_percent": {"type": "integer"},
+                "top_failure_causes": {"type": "object"},
             },
         },
         "delta": {
