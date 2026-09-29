@@ -136,3 +136,98 @@ BEGIN:formats
 }
 ```
 END:formats
+
+## Worked examples
+
+The examples below all use the same input to show what each output format produces. The input contains one completed card (created 2024-01-01, started 2024-01-03, completed 2024-01-07) and one in-flight card (created 2024-01-04).
+
+**Input** (`cards.json`):
+
+```json
+[
+  {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+  {"created": "2024-01-04"}
+]
+```
+
+### Table
+
+```
+sprint-metrics cards.json
+```
+
+```
+| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First attempt | Top causes |
+|--------|------------|-----------|------------|----------------|---------------|-----------------|---------------|------------|
+| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | — |
+```
+
+### JSON
+
+```
+sprint-metrics cards.json --json
+```
+
+```json
+{"api_version": "1", "cycle_time_days": 4, "lead_time_days": 6, "throughput": 1, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "first_attempt_rate_percent": 100, "failure_breakdown": [], "top_failure_causes": {}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": false, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": false}}
+```
+
+### Markdown
+
+```
+sprint-metrics cards.json --markdown
+```
+
+```markdown
+# Crew Performance Report
+
+Report date: 2024-01-15
+
+## Current Sprint
+
+- **Cycle time**: 4 days
+- **Lead time**: 6 days
+- **Throughput**: 1 cards
+- **WIP violations**: 0
+- **Blocked aging**: 0 days
+- **Escalation rate**: 0%
+- **First-attempt rate**: 100%
+
+## Crew Performance Summary
+
+- **Completed**: 1
+- **In progress**: 0
+- **Blocked**: 0
+```
+
+> The report date reflects the day the example was captured.
+
+### Prometheus
+
+```
+sprint-metrics cards.json --prometheus
+```
+
+```
+sprint_cycle_time_days 4
+sprint_lead_time_days 6
+sprint_throughput_cards 1
+sprint_wip_violations 0
+sprint_blocked_aging_days 0
+sprint_escalation_rate_percent 0
+sprint_first_attempt_rate_percent 100
+```
+
+### Error: invalid input
+
+```
+sprint-metrics bad.json --json
+```
+
+Exit code: `2`
+
+```
+sprint-metrics: Expecting value: line 1 column 1 (char 0)
+```
+
+stdout is empty.

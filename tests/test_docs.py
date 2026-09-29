@@ -494,3 +494,98 @@ def test_readme_unchanged_by_docs_gen():
 
     after = readme_path.read_bytes()
     assert before == after, "_docs_gen modified README.md"
+
+
+def _extract_formats_cards() -> list[dict]:
+    """Extract the input cards JSON from the Worked examples section of docs/formats.md."""
+    text = (DOCS_DIR / "formats.md").read_text()
+    section_start = text.index("## Worked examples")
+    section_text = text[section_start:]
+    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
+    assert match is not None, "no input cards JSON block found in docs/formats.md Worked examples"
+    return json.loads(match.group(1))
+
+
+def test_formats_worked_example_table_output(tmp_path, capsys):
+    """AC2: the cards JSON in docs/formats.md, run with default table output,
+    exits 0 and stdout contains the header row and a Current data row whose
+    cells match the values shown in the doc's fenced block."""
+    cards = _extract_formats_cards()
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    assert any(line.startswith("| Sprint |") for line in lines), (
+        "no header row starting with '| Sprint |'"
+    )
+    current_rows = [line for line in lines if line.startswith("| Current |")]
+    assert len(current_rows) == 1, f"expected exactly one Current row, got {len(current_rows)}"
+    cells = [c.strip() for c in current_rows[0].split("|") if c.strip()]
+    assert cells == ["Current", "4 days", "6 days", "1", "0", "0 days", "0%", "100%", "\u2014"]
+
+
+def test_formats_worked_example_json_output(tmp_path, capsys):
+    """AC3: the same cards JSON with --json exits 0 and stdout parses as a JSON
+    object with the expected top-level keys and values matching the doc's sample."""
+    cards = _extract_formats_cards()
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["api_version"] == "1"
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+    assert data["first_attempt_rate_percent"] == 100
+    assert data["failure_breakdown"] == []
+    assert data["top_failure_causes"] == {}
+    assert all(v is False for v in data["flags"].values())
+
+
+def test_formats_worked_example_markdown_output(tmp_path, capsys):
+    """AC4: the same cards JSON with --markdown exits 0 and stdout contains the
+    expected structural elements: heading, report date, sprint section, and
+    summary section with Completed/In progress/Blocked lines."""
+    cards = _extract_formats_cards()
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "# Crew Performance Report" in captured.out
+    assert "Report date:" in captured.out
+    assert "## Current Sprint" in captured.out
+    assert "## Crew Performance Summary" in captured.out
+    assert "- **Completed**: 1" in captured.out
+    assert "- **In progress**: 0" in captured.out
+    assert "- **Blocked**: 0" in captured.out
+
+
+def test_formats_worked_example_prometheus_output(tmp_path, capsys):
+    """AC5: the same cards JSON with --prometheus exits 0 and stdout contains
+    the expected metric lines with numeric values matching the doc's sample."""
+    cards = _extract_formats_cards()
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    assert "sprint_cycle_time_days 4" in lines
+    assert "sprint_lead_time_days 6" in lines
+    assert "sprint_throughput_cards 1" in lines
+    assert "sprint_wip_violations 0" in lines
+    assert "sprint_blocked_aging_days 0" in lines
+    assert "sprint_escalation_rate_percent 0" in lines
+    assert "sprint_first_attempt_rate_percent 100" in lines
