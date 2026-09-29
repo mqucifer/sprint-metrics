@@ -94,3 +94,58 @@ def _image_available():
         capture_output=True,
     )
     return result.returncode == 0
+
+
+def test_dockerfile_from_line_has_valid_sha256_digest():
+    """AC1: The FROM line's @sha256: digest is exactly 64 hex characters,
+    and the FROM line contains 'python' and '3.12' before the '@'."""
+    content = DOCKERFILE.read_text()
+    from_lines = [line.strip() for line in content.splitlines() if line.strip().startswith("FROM")]
+    assert len(from_lines) == 1, f"Expected exactly one FROM line, found {len(from_lines)}"
+    from_line = from_lines[0]
+    assert "@" in from_line, f"FROM line has no digest: {from_line}"
+    before_at, after_at = from_line.split("@", 1)
+    assert "python" in before_at, f"FROM line before '@' missing 'python': {from_line}"
+    assert "3.12" in before_at, f"FROM line before '@' missing '3.12': {from_line}"
+    assert after_at.startswith("sha256:"), f"Digest prefix is not sha256: {after_at[:10]}"
+    digest = after_at.removeprefix("sha256:")
+    assert len(digest) == 64, f"Digest length is {len(digest)}, expected 64"
+    assert all(c in "0123456789abcdef" for c in digest), f"Digest contains non-hex chars: {digest}"
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
+def test_docker_build_and_help_with_digest():
+    """AC2: docker build exits 0 and docker run sprint-metrics-digest sprint-metrics --help
+    exits 0 with stdout containing 'usage:'."""
+    repo_root = Path(__file__).parent.parent
+    build = subprocess.run(
+        ["docker", "build", "-t", "sprint-metrics-digest", "."],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert build.returncode == 0, f"docker build failed: {build.stderr}"
+
+    run = subprocess.run(
+        ["docker", "run", "--rm", "sprint-metrics-digest", "sprint-metrics", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, f"docker run --help failed: {run.stderr}"
+    assert "usage:" in run.stdout
+
+
+def test_dockerfile_from_line_no_bare_tag():
+    """AC3: The FROM line's image reference ends with @sha256:<64-hex>,
+    with no bare-tag reference (pattern ':<tag>' with no subsequent '@sha256:')."""
+    content = DOCKERFILE.read_text()
+    from_lines = [line.strip() for line in content.splitlines() if line.strip().startswith("FROM")]
+    assert len(from_lines) == 1, f"Expected exactly one FROM line, found {len(from_lines)}"
+    from_line = from_lines[0]
+    image_ref = from_line.split(" ", 1)[1] if " " in from_line else from_line
+    assert "@sha256:" in image_ref, f"FROM line has no @sha256: digest: {from_line}"
+    digest_part = image_ref.split("@sha256:")[1]
+    assert len(digest_part) == 64, (
+        f"Digest after @sha256: has length {len(digest_part)}, expected 64"
+    )
+    assert all(c in "0123456789abcdef" for c in digest_part), "Digest contains non-hex characters"
