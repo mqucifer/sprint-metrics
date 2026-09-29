@@ -589,3 +589,44 @@ def test_formats_worked_example_prometheus_output(tmp_path, capsys):
     assert "sprint_blocked_aging_days 0" in lines
     assert "sprint_escalation_rate_percent 0" in lines
     assert "sprint_first_attempt_rate_percent 100" in lines
+
+
+def test_sprint_range_doc_output_matches(tmp_path, capsys):
+    """AC2: the sprints JSON in the --sprint-range section of docs/usage.md, run through
+    cli.main() with --sprint-range 2024-01..2024-02, exits 0 and stdout contains a row
+    for each sprint label whose cells match the doc's fenced table."""
+    text = (DOCS_DIR / "usage.md").read_text()
+    section_start = text.index("## --sprint-range")
+    section_text = text[section_start:]
+    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
+    assert match is not None, "no sprints JSON block found in --sprint-range section"
+    sprints = json.loads(match.group(1))
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    row_01 = [line for line in lines if line.startswith("| 2024-01 |")][0]
+    row_02 = [line for line in lines if line.startswith("| 2024-02 |")][0]
+    cells_01 = [c.strip() for c in row_01.split("|") if c.strip()]
+    cells_02 = [c.strip() for c in row_02.split("|") if c.strip()]
+    assert cells_01 == ["2024-01", "4 days", "6 days", "1", "0", "0 days", "0%", "100%", "\u2014"]
+    assert cells_02 == ["2024-02", "4 days", "6 days", "1", "0", "0 days", "0%", "100%", "\u2014"]
+
+
+def test_sprint_range_doc_error_missing_sprint(tmp_path, capsys):
+    """AC3: a sprints file with data only for 2024-01, run with --sprint-range
+    2024-01..2024-02, exits 2, stderr contains '2024-02', and stdout is empty."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "2024-02" in captured.err
+    assert captured.out == ""

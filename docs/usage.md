@@ -52,3 +52,32 @@ sprint-metrics: --schema is only valid with --json
 ```
 
 Exit code: 2.
+
+## --sprint-range
+
+The `--sprint-range` flag reports on multiple sprints at once. The cards file must be a JSON object keyed by `YYYY-MM` sprint label, each value a list of cards. The range is inclusive: `START..END` produces one table row for every label from START to END.
+
+```json
+{
+  "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+  "2024-02": [{"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-07"}]
+}
+```
+
+```
+sprint-metrics sprints.json --sprint-range 2024-01..2024-02
+```
+
+```
+| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |
+|--------|------------|-----------|------------|----------------|---------------|-----------------|-------------|------------------|
+| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | — |
+| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | — |
+```
+
+If the range includes a sprint label not present in the file, the command exits with code 2 and names the missing label on stderr:
+
+```
+$ sprint-metrics sprints.json --sprint-range 2024-01..2024-02
+sprint-metrics: no data for sprint 2024-02
+```
