@@ -16,3 +16,24 @@ BEGIN:metrics
 | Throughput | `throughput` | Return the number of completed cards in the sprint. | `sprint_throughput` |
 | WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. | `sprint_wip_violations` |
 END:metrics
+
+## Computation details
+
+### First attempt rate
+
+The first attempt rate is the percentage of completed cards whose `attempts`
+field equals 1, rounded to the nearest whole number. A sprint with no
+completed cards reports 0.
+
+### Failure breakdown
+
+The failure breakdown includes only completed cards with `attempts` greater
+than 1. Cards are grouped by their failure class and failure role, and the
+groups are sorted by count descending. The result is an empty list when no
+completed card has attempts greater than 1.
+
+### Top failure causes
+
+Top failure causes is the top 3 failure classes by count, with ties broken
+alphabetically. The result is an empty object when no completed card has a
+non-null failure class.
