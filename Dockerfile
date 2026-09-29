@@ -6,3 +6,5 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir .
+RUN useradd -r sprint
+USER sprint
