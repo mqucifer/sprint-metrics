@@ -66,3 +66,16 @@ def test_docker_run_with_cards(tmp_path):
     )
     assert run.returncode == 0, f"docker run failed: {run.stderr}"
     assert "| Current | 5 days | 7 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in run.stdout
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
+def test_docker_runs_as_non_root():
+    """AC1: the container's process runs as a non-root user (UID != 0)."""
+    run = subprocess.run(
+        ["docker", "run", "--rm", "--entrypoint", "sh", "sprint-metrics-test", "-c", "id -u"],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, f"docker run id -u failed: {run.stderr}"
+    uid = int(run.stdout.strip())
+    assert uid != 0, f"Process runs as root (UID {uid})"
