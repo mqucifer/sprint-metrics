@@ -649,3 +649,37 @@ def test_prior_sprint_doc_output_matches(tmp_path, capsys):
 
     assert exit_code == 0
     assert "- **Cycle time**: 4 days (was 6 days, -2)" in captured.out
+
+
+def test_prior_doc_output_matches(tmp_path, capsys):
+    """AC2: the --prior doc example produces the documented table rows."""
+    current = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    prior = [{"created": "2023-12-01", "started": "2023-12-03", "completed": "2023-12-09"}]
+    current_path = tmp_path / "current.json"
+    current_path.write_text(json.dumps(current))
+    prior_path = tmp_path / "prior.json"
+    prior_path.write_text(json.dumps(prior))
+    exit_code = main([str(current_path), "--prior", str(prior_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    current_line = next(line for line in lines if line.startswith("| Current |"))
+    prior_line = next(line for line in lines if line.startswith("| Prior |"))
+    delta_line = next(line for line in lines if line.startswith("| Delta |"))
+    assert "4 days" in current_line
+    assert "6 days" in prior_line
+    assert "-2 days" in delta_line
+
+
+def test_prior_doc_error_invalid_json(tmp_path, capsys):
+    """AC3: invalid JSON in the --prior file exits 2 with sprint-metrics on stderr."""
+    current = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    current_path = tmp_path / "current.json"
+    current_path.write_text(json.dumps(current))
+    bad_prior = tmp_path / "bad_prior.json"
+    bad_prior.write_text("not valid json")
+    exit_code = main([str(current_path), "--prior", str(bad_prior)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "sprint-metrics" in captured.err
+    assert captured.out == ""
