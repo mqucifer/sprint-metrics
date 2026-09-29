@@ -24,6 +24,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify FROM line is pinned by digest
+        run: |
+          set -euo pipefail
+          grep '^FROM ' Dockerfile | grep -q '@sha256:' || {
+            echo "ERROR: Dockerfile FROM line is not pinned by a @sha256: digest"
+            exit 1
+          }
       - name: Build image
         run: docker build -t sprint-metrics-smoke .
       - name: Run sprint-metrics --help
