@@ -1,6 +1,8 @@
 """Tests for the CLI entry point in sprint_metrics.cli."""
 
 import json
+import subprocess
+import sys
 
 from sprint_metrics.cli import main
 
@@ -29,3 +31,23 @@ def test_main_from_cli_module_rejects_invalid_json(tmp_path, capsys):
     assert exit_code == 2
     assert "sprint-metrics" in captured.err
     assert captured.out == ""
+
+
+def test_scrape_log_message_uses_all_interfaces(tmp_path):
+    """AC1: stdout contains a line starting with 'sprint-metrics: serving metrics at'
+    and that line does not contain '127.0.0.1'."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "sprint_metrics", str(cards_path), "--scrape", "--port", "0"],
+        stdout=subprocess.PIPE,
+    )
+    try:
+        line = proc.stdout.readline().decode().strip()
+        assert line.startswith("sprint-metrics: serving metrics at")
+        assert "127.0.0.1" not in line
+    finally:
+        proc.kill()
+        proc.wait()

@@ -34,9 +34,9 @@ def start_scrape(tmp_path):
         process = subprocess.Popen(argv, stdout=subprocess.PIPE, text=True)
         processes.append(process)
         banner = process.stdout.readline()
-        match = re.search(r"http://127\.0\.0\.1:\d+/metrics", banner)
+        match = re.search(r"http://[\d.]+:(\d+)/metrics", banner)
         assert match, f"scrape server did not report its URL: {banner!r}"
-        return match.group(0)
+        return f"http://127.0.0.1:{match.group(1)}/metrics"
 
     yield start
 

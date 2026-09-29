@@ -88,7 +88,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         cards_path = args.cards.name if hasattr(args.cards, "name") else ""
         wip_limits_path = args.wip_limits.name if args.wip_limits is not None else None
         port = serve_metrics(cards_path, wip_limits_path, args.escalations, args.port)
-        print(f"sprint-metrics: serving metrics at http://127.0.0.1:{port}/metrics", flush=True)
+        print(f"sprint-metrics: serving metrics at http://0.0.0.0:{port}/metrics", flush=True)
         with contextlib.suppress(KeyboardInterrupt):
             threading.Event().wait()
         return 0

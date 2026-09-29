@@ -34,7 +34,7 @@ def test_serve_metrics_returns_500_for_missing_file(tmp_path):
     """AC2: a cards file path pointing to a file that does not exist. serve_metrics
     called from sprint_metrics.serve with that path and port 0, and a GET request
     to the /metrics endpoint returns HTTP 500 with a body containing
-    'sprint-metrics:'."""
+    'sprint-metrics:' and not containing 'sprint_cycle_time_days'."""
     from sprint_metrics.serve import serve_metrics
 
     missing_path = str(tmp_path / "does-not-exist.json")
@@ -54,3 +54,4 @@ def test_serve_metrics_returns_500_for_missing_file(tmp_path):
 
     assert status == 500
     assert "sprint-metrics:" in body
+    assert "sprint_cycle_time_days" not in body
