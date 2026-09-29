@@ -21,3 +21,11 @@ sprint-metrics cards.json
 `cards.json` is a JSON file of sprint cards. When no file argument is given, the tool reads the JSON from standard input and prints the default table.
 
 Full documentation lives in [docs/](docs/): card input format, metric definitions, output formats, thresholds, and scrape mode.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the version-to-version change history.
+
+## Documentation maintenance
+
+User-visible changes update `docs/` and `CHANGELOG.md` in the same pull request.

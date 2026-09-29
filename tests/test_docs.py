@@ -446,3 +446,51 @@ def test_input_format_states_created_only_required_and_top_level_array():
     assert "created" in before
     assert "required" in before
     assert "array" in before.lower()
+
+
+def test_readme_has_changelog_pointer_outside_code_blocks():
+    """README.md has a line outside fenced code blocks that names CHANGELOG.md
+    and tells the reader where to find version-to-version change history."""
+    readme = (Path(__file__).parent.parent / "README.md").read_text()
+    lines = readme.splitlines()
+    in_code_block = False
+    for line in lines:
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if not in_code_block and "CHANGELOG.md" in line:
+            lower = line.lower()
+            assert "changelog" in lower or "change history" in lower
+            return
+    pytest.fail("No line outside code blocks references CHANGELOG.md with change history context")
+
+
+def test_readme_states_same_pr_maintenance_rule():
+    """README.md hand-written content has a sentence naming both docs/ and
+    CHANGELOG.md that states a user-visible change updates them in the same PR."""
+    readme = (Path(__file__).parent.parent / "README.md").read_text()
+    for line in readme.splitlines():
+        if "docs/" in line and "CHANGELOG.md" in line and "same pull request" in line:
+            return
+    pytest.fail("No line names both docs/ and CHANGELOG.md with the same-pull-request rule")
+
+
+def test_readme_unchanged_by_docs_gen():
+    """Running _docs_gen does not modify the changelog pointer or maintenance rule
+    in README.md."""
+    import subprocess
+
+    repo_root = Path(__file__).parent.parent
+    readme_path = repo_root / "README.md"
+    before = readme_path.read_bytes()
+
+    result = subprocess.run(
+        ["uv", "run", "python", "-m", "sprint_metrics._docs_gen"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"_docs_gen failed: {result.stderr}"
+
+    after = readme_path.read_bytes()
+    assert before == after, "_docs_gen modified README.md"
