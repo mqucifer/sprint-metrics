@@ -717,3 +717,31 @@ def test_formats_metrics_unknown_metric_error(tmp_path, capsys):
     assert exit_code == 2
     assert "bogus_metric" in captured.err
     assert captured.out == ""
+
+
+def test_scrape_doc_shows_command_startup_and_response_formats():
+    """AC1: docs/scrape.md hand-written section (after END:scrape) shows a command
+    with --scrape and --port, the startup message containing 'serving metrics at
+    http://127.0.0.1:', a fenced /metrics block in Prometheus text format, and a
+    fenced /json block with api_version and metric keys."""
+    doc_path = Path(__file__).parent.parent / "docs" / "scrape.md"
+    content = doc_path.read_text()
+
+    end_marker = "END:scrape"
+    assert end_marker in content
+    section = content.split(end_marker, 1)[1]
+
+    # Command line with --scrape and --port
+    assert "--scrape" in section
+    assert "--port" in section
+
+    # Startup message printed to stdout
+    assert "serving metrics at http://127.0.0.1:" in section
+
+    # Fenced block of /metrics in Prometheus text format
+    assert "sprint_cycle_time_days" in section
+    assert "sprint_throughput_cards" in section
+
+    # Fenced block of /json with api_version and metric keys
+    assert "api_version" in section
+    assert "cycle_time_days" in section
