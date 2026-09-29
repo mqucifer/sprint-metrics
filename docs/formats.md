@@ -231,3 +231,53 @@ sprint-metrics: Expecting value: line 1 column 1 (char 0)
 ```
 
 stdout is empty.
+
+## --metrics (metric filtering)
+
+The `--metrics` flag restricts the output to a comma-separated list of metric names. Only the requested metrics appear in the output; all others are omitted.
+
+Valid metric names: `cycle_time_days`, `lead_time_days`, `throughput`, `wip_violations`, `blocked_aging_days`, `escalation_rate_percent`, `first_attempt_rate_percent`, `failure_breakdown`.
+
+**Input** (`cards.json`):
+
+```json
+[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+```
+
+### JSON
+
+Request only throughput and cycle time:
+
+```
+sprint-metrics cards.json --json --metrics throughput,cycle_time_days
+```
+
+```json
+{"api_version": "1", "cycle_time_days": 4, "throughput": 1, "top_failure_causes": {}, "flags": {"cycle_time_days": false, "throughput": false}}
+```
+
+### Table
+
+```
+sprint-metrics cards.json --metrics throughput,cycle_time_days
+```
+
+```
+| Sprint | Cycle time | Throughput |
+|--------|------------|------------|
+| Current | 4 days | 1 |
+```
+
+### Error: unknown metric name
+
+```
+sprint-metrics cards.json --json --metrics throughput,bogus_metric
+```
+
+Exit code: `2`
+
+```
+sprint-metrics: unknown metric 'bogus_metric'
+```
+
+stdout is empty.
