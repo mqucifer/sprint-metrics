@@ -4,6 +4,8 @@ Reports how the crew is performing: cycle time, lead time, throughput per sprint
 
 ## Installation
 
+### Git dependency
+
 Requires Python 3.12. No third-party runtime packages are needed — the tool uses only the standard library.
 
 ```
@@ -11,6 +13,18 @@ uv pip install git+https://github.com/mqucifer/sprint-metrics.git@v0.1.0
 ```
 
 After installation the `sprint-metrics` command is available on the PATH.
+
+### Container image
+
+No Python interpreter or third-party packages are required on the host — the image is self-contained.
+
+```
+docker run --rm -v /path/to/cards.json:/input/cards.json ghcr.io/mqucifer/sprint-metrics:1.0.0 /input/cards.json
+```
+
+The cards file is mounted into the container at `/input/cards.json`, and the command produces a table report on stdout.
+
+The image is available under a version tag matching each release (e.g. `1.0.0`) and under the tag `latest` for the newest version.
 
 ## Basic usage
 
