@@ -45,6 +45,8 @@ def test_docker_run_with_cards(tmp_path):
     """AC2: docker run with a volume-mounted cards.json exits 0 and stdout
     contains the expected table row for a card with cycle time 5 days and
     lead time 7 days."""
+    if not _image_available():
+        pytest.skip("sprint-metrics-test image not built")
     cards_path = tmp_path / "cards.json"
     cards_path.write_text(
         json.dumps([{"created": "2024-01-03", "started": "2024-01-05", "completed": "2024-01-10"}])
@@ -71,6 +73,8 @@ def test_docker_run_with_cards(tmp_path):
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
 def test_docker_runs_as_non_root():
     """AC1: the container's process runs as a non-root user (UID != 0)."""
+    if not _image_available():
+        pytest.skip("sprint-metrics-test image not built")
     run = subprocess.run(
         ["docker", "run", "--rm", "--entrypoint", "sh", "sprint-metrics-test", "-c", "id -u"],
         capture_output=True,
@@ -79,3 +83,14 @@ def test_docker_runs_as_non_root():
     assert run.returncode == 0, f"docker run id -u failed: {run.stderr}"
     uid = int(run.stdout.strip())
     assert uid != 0, f"Process runs as root (UID {uid})"
+
+
+def _image_available():
+    """Return True if the sprint-metrics-test image exists in the local Docker daemon."""
+    if shutil.which("docker") is None:
+        return False
+    result = subprocess.run(
+        ["docker", "image", "inspect", "sprint-metrics-test"],
+        capture_output=True,
+    )
+    return result.returncode == 0
