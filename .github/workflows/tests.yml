@@ -48,3 +48,56 @@ jobs:
             echo "ERROR: Container is running as root (UID 0)"
             exit 1
           fi
+      - name: Verify scrape endpoint is reachable
+        run: |
+          set -euo pipefail
+
+          TMPDIR=$(mktemp -d)
+          CONTAINER=""
+
+          cleanup() {
+            if [ -n "$CONTAINER" ]; then
+              docker stop "$CONTAINER" 2>/dev/null || true
+              docker rm "$CONTAINER" 2>/dev/null || true
+            fi
+            rm -rf "$TMPDIR"
+          }
+          trap cleanup EXIT
+
+          cat > "$TMPDIR/cards.json" << 'CARDS'
+          [
+            {
+              "id": "1",
+              "title": "A card",
+              "created": "2024-01-01",
+              "started": "2024-01-02",
+              "completed": "2024-01-05"
+            }
+          ]
+          CARDS
+
+          CONTAINER=$(docker run -d -p 9100:9100 -v "$TMPDIR":/cards sprint-metrics-smoke --scrape --port 9100 /cards.json)
+
+          METRICS=""
+          for i in $(seq 1 30); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/metrics || true)
+            if [ "$HTTP_CODE" = "200" ]; then
+              METRICS=$(curl -s http://localhost:9100/metrics)
+              break
+            fi
+            sleep 1
+          done
+
+          if [ -z "$METRICS" ]; then
+            echo "ERROR: /metrics endpoint did not become reachable within 30 seconds"
+            exit 1
+          fi
+
+          echo "$METRICS"
+
+          if ! echo "$METRICS" | grep -q 'sprint_cycle_time_days'; then
+            echo "ERROR: /metrics response does not contain sprint_cycle_time_days"
+            exit 1
+          fi
+
+          echo "Scrape endpoint verified: /metrics is reachable and contains Prometheus content"
