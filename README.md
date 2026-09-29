@@ -6,9 +6,19 @@ Reports how the crew is performing: cycle time, lead time, throughput per sprint
 
 Requires Python 3.12. No third-party runtime packages are needed — the tool uses only the standard library.
 
+### From git
+
 ```
 uv pip install git+https://github.com/mqucifer/sprint-metrics.git@v0.1.0
 ```
+
+### From a container image
+
+```
+docker pull ghcr.io/mqucifer/sprint-metrics:1.0.0
+```
+
+Image tags follow the pattern `X.Y.Z`, `X.Y`, and `latest`.
 
 After installation the `sprint-metrics` command is available on the PATH.
 
@@ -21,6 +31,16 @@ sprint-metrics cards.json
 `cards.json` is a JSON file of sprint cards. When no file argument is given, the tool reads the JSON from standard input and prints the default table.
 
 Full documentation lives in [docs/](docs/): card input format, metric definitions, output formats, thresholds, and scrape mode.
+
+## Versioning
+
+Versions follow SemVer:
+
+- **MAJOR** — removing a published API version
+- **MINOR** — adding a feature or a new API version
+- **PATCH** — fixes and documentation changes
+
+Release notes are published as GitHub Releases on the [sprint-metrics repository](https://github.com/mqucifer/sprint-metrics/releases). The [CHANGELOG.md](CHANGELOG.md) file in the repository tracks changes between versions.
 
 ## Changelog
 
