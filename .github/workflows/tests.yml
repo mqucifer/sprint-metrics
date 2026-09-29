@@ -32,3 +32,12 @@ jobs:
           output=$(docker run --rm sprint-metrics-smoke sprint-metrics --help)
           echo "$output"
           echo "$output" | grep -q "usage:"
+      - name: Verify non-root UID
+        run: |
+          set -euo pipefail
+          uid=$(docker run --rm --entrypoint sh sprint-metrics-smoke -c 'id -u')
+          echo "Container UID: $uid"
+          if [ "$uid" -eq 0 ]; then
+            echo "ERROR: Container is running as root (UID 0)"
+            exit 1
+          fi
