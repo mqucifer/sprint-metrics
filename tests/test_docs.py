@@ -630,3 +630,22 @@ def test_sprint_range_doc_error_missing_sprint(tmp_path, capsys):
     assert exit_code == 2
     assert "2024-02" in captured.err
     assert captured.out == ""
+
+
+def test_prior_sprint_doc_output_matches(tmp_path, capsys):
+    """AC2: the sprints JSON in the --prior-sprint section of docs/usage.md, run through
+    cli.main() with --prior-sprint 2024-01 and --markdown, exits 0 and stdout contains
+    the expected comparison line for cycle time."""
+    text = (DOCS_DIR / "usage.md").read_text()
+    section_start = text.index("## --prior-sprint")
+    section_text = text[section_start:]
+    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
+    assert match is not None, "no sprints JSON block found in --prior-sprint section"
+    sprints = json.loads(match.group(1))
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days (was 6 days, -2)" in captured.out

@@ -81,3 +81,63 @@ If the range includes a sprint label not present in the file, the command exits 
 $ sprint-metrics sprints.json --sprint-range 2024-01..2024-02
 sprint-metrics: no data for sprint 2024-02
 ```
+
+## --prior-sprint
+
+The `--prior-sprint` flag compares the most recent sprint against a prior one in a markdown report. The cards file must be a JSON object keyed by `YYYY-MM` sprint label (not a plain array), and the prior label must not be the most recent sprint.
+
+```json
+{
+  "2024-01": [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-08"}],
+  "2024-02": [{"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-07"}]
+}
+```
+
+```
+sprint-metrics sprints.json --prior-sprint 2024-01 --markdown
+```
+
+The markdown output includes a `## Prior Sprint` section with the prior sprint's metrics and a `## Current Sprint` section where each metric line shows the prior value and the signed change:
+
+```
+# Crew Performance Report
+
+Report date: 2024-02-10
+
+## Prior Sprint 2024-01
+
+- **Cycle time**: 6 days
+- **Lead time**: 7 days
+- **Throughput**: 1 cards
+- **WIP violations**: 0
+- **Blocked aging**: 0 days
+- **Escalation rate**: 0%
+- **First-attempt rate**: 100%
+
+## Current Sprint
+
+- **Cycle time**: 4 days (was 6 days, -2)
+- **Lead time**: 6 days (was 7 days, -1)
+- **Throughput**: 1 (was 1, 0)
+- **WIP violations**: 0 (was 0, 0)
+- **Blocked aging**: 0 days (was 0 days, 0)
+- **Escalation rate**: 0% (was 0%, 0)
+- **First-attempt rate**: 100% (was 100%, 0)
+
+## Crew Performance Summary
+
+- **Completed**: 1
+- **In progress**: 0
+- **Blocked**: 0
+```
+
+The report date reflects the day the example was captured. The `--prior-sprint` flag works with `--markdown` and `--json`; without `--markdown`, the default table output ignores the prior sprint.
+
+If the prior label is the most recent sprint, the command exits with code 2:
+
+```
+$ sprint-metrics sprints.json --prior-sprint 2024-02 --markdown
+sprint-metrics: prior sprint '2024-02' cannot be the most recent sprint
+```
+
+Exit code: 2.
