@@ -81,7 +81,7 @@ def serve_metrics(
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
             pass
 
-    server = http.server.HTTPServer(("127.0.0.1", port), MetricsHandler)
+    server = http.server.HTTPServer(("0.0.0.0", port), MetricsHandler)
     actual_port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
