@@ -37,3 +37,34 @@ completed card has attempts greater than 1.
 Top failure causes is the top 3 failure classes by count, with ties broken
 alphabetically. The result is an empty object when no completed card has a
 non-null failure class.
+
+## Boundary conditions
+
+### Zero values for an empty sprint
+
+A sprint with no completed cards reports 0 for cycle time, lead time,
+throughput, escalation rate, and first-attempt rate. WIP violations is 0
+when no WIP limits are configured.
+
+### Cycle time for a card without a started date
+
+A card completed without a `started` date contributes 0 days to the
+cycle-time average.
+
+### Blocked aging reference date
+
+For a card that was blocked and later completed, blocked aging is measured
+from `blocked_since` to the completion date. For a card still blocked,
+blocked aging is measured from `blocked_since` to the reference date, which
+defaults to today.
+
+### WIP violations
+
+WIP violations counts the number of states whose peak simultaneous
+occupancy exceeded the configured limit. A state with no configured limit
+cannot be in violation.
+
+### Escalation rate with no completed cards
+
+Escalation rate is 0 when no cards are completed, regardless of the
+escalation count.
