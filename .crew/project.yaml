@@ -43,6 +43,20 @@ design:
   checks:
   - uv run ruff check .
   - uv run pytest -q
+  ci_checks:
+  - 'The docker job in tests.yml builds the image and proves it starts as documented:
+    `docker run --rm <image> --help` prints a usage line, with the program name supplied
+    by the image''s ENTRYPOINT rather than repeated in the arguments.'
+  - 'The docker job in tests.yml proves the image runs as a user other than root:
+    a container is started with the entrypoint overridden to `sh -c ''id -u''` and
+    the exit fails unless the UID is not zero.'
+  - 'The docker job in tests.yml proves the base image is pinned by digest: the Dockerfile''s
+    FROM line is checked to contain an @sha256: reference, and the build succeeds
+    against that pinned base.'
+  - 'The docker job in tests.yml proves the scrape service is reachable from outside
+    the container: the image is started detached with port 9100 published and a cards
+    file bind-mounted, then an HTTP GET to /metrics from the host returns a 200 with
+    Prometheus text exposition format content.'
   release_how: 'Package versions follow SemVer, separate from the JSON api_version:
     removing an old API version is MAJOR, additions (including a new API version)
     are MINOR, fixes and docs are PATCH. The first release is 1.0.0. CHANGELOG.md
