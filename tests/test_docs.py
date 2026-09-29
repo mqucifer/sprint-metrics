@@ -683,3 +683,37 @@ def test_prior_doc_error_invalid_json(tmp_path, capsys):
     assert exit_code == 2
     assert "sprint-metrics" in captured.err
     assert captured.out == ""
+
+
+def test_formats_metrics_json_filtered_output(tmp_path, capsys):
+    """AC2: --metrics 'throughput,cycle_time_days' with --json shows only requested keys."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json", "--metrics", "throughput,cycle_time_days"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["throughput"] == 1
+    assert data["cycle_time_days"] == 4
+    assert "api_version" in data
+    assert "flags" in data
+    assert "top_failure_causes" in data
+    assert "lead_time_days" not in data
+    assert "wip_violations" not in data
+    assert "blocked_aging_days" not in data
+    assert "escalation_rate_percent" not in data
+
+
+def test_formats_metrics_unknown_metric_error(tmp_path, capsys):
+    """AC3: --metrics with an unknown name exits 2, stderr contains the name, stdout empty."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json", "--metrics", "throughput,bogus_metric"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "bogus_metric" in captured.err
+    assert captured.out == ""
