@@ -94,3 +94,13 @@ def _image_available():
         capture_output=True,
     )
     return result.returncode == 0
+
+
+def test_dockerfile_from_line_pinned_by_digest():
+    dockerfile = Path("Dockerfile").read_text()
+    first_line = dockerfile.splitlines()[0]
+    prefix = "FROM python:3.12-slim@sha256:"
+    assert first_line.startswith(prefix)
+    digest = first_line[len(prefix) :]
+    assert len(digest) == 64
+    assert all(c in "0123456789abcdef" for c in digest)
