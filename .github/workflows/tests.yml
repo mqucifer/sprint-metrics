@@ -36,9 +36,17 @@ jobs:
       - name: Run sprint-metrics --help
         run: |
           set -euo pipefail
-          output=$(docker run --rm sprint-metrics-smoke sprint-metrics --help)
+          output=$(docker run --rm sprint-metrics-smoke --help)
           echo "$output"
           echo "$output" | grep -q "usage:"
+      - name: Verify repeating program name fails
+        run: |
+          set -euo pipefail
+          if docker run --rm sprint-metrics-smoke sprint-metrics --help; then
+            echo "ERROR: Repeating the program name as an argument should fail"
+            exit 1
+          fi
+          echo "OK: repeating program name correctly fails"
       - name: Verify non-root UID
         run: |
           set -euo pipefail
