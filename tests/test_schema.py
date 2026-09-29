@@ -63,3 +63,34 @@ def test_schema_markdown_exits_2(capsys):
     assert exit_code == 2
     assert "--json" in captured.err
     assert captured.out == ""
+
+
+def test_schema_json_required_keys_and_properties(capsys):
+    """AC2: --schema --json exits 0; stdout is JSON whose required array contains
+    the named keys and whose properties include cycle_time_days typed as integer."""
+    exit_code = main(["--schema", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    for key in (
+        "api_version",
+        "cycle_time_days",
+        "throughput",
+        "first_attempt_rate_percent",
+        "failure_breakdown",
+        "flags",
+    ):
+        assert key in schema["required"]
+    assert schema["properties"]["cycle_time_days"] == {"type": "integer"}
+
+
+def test_schema_without_json_exits_2(capsys):
+    """AC3: --schema without --json exits 2, stderr contains 'only valid with --json',
+    and stdout is empty."""
+    exit_code = main(["--schema"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "only valid with --json" in captured.err
+    assert captured.out == ""

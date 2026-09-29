@@ -27,3 +27,28 @@ BEGIN:cli-args
 - `--thresholds`: JSON file of metric thresholds keyed by metric name, e.g. {"cycle_time_days": 3}; overrides the built-in defaults for the metrics it specifies.
 - `--metrics`: Comma-separated list of metric names to include in the output.
 END:cli-args
+
+## --schema
+
+The `--schema` flag outputs the JSON Schema for the API response to stdout.
+It requires `--json`; without it the command exits with an error (exit code 2).
+No cards file is needed.
+
+```
+sprint-metrics --schema --json
+```
+
+The output is a single-line JSON object (the JSON Schema, draft 2020-12):
+
+```json
+{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "required": ["api_version", "cycle_time_days", "lead_time_days", "throughput", "wip_violations", "blocked_aging_days", "escalation_rate_percent", "first_attempt_rate_percent", "failure_breakdown", "top_failure_causes", "flags"], "properties": {"api_version": {"type": "string"}, "cycle_time_days": {"type": "integer"}, "lead_time_days": {"type": "integer"}, "throughput": {"type": "integer"}, "wip_violations": {"type": "integer"}, "blocked_aging_days": {"type": "integer"}, "escalation_rate_percent": {"type": "integer"}, "first_attempt_rate_percent": {"type": "integer"}, "failure_breakdown": {"type": "array", "items": {"type": "object", "properties": {"class": {"type": "string"}, "role": {"type": "string"}, "count": {"type": "integer"}}, "required": ["class", "role", "count"]}}, "top_failure_causes": {"type": "object"}, "flags": {"type": "object"}, "sprint_date": {"type": "string"}, "prior": {"type": "object", "properties": {"cycle_time_days": {"type": "integer"}, "lead_time_days": {"type": "integer"}, "throughput": {"type": "integer"}, "wip_violations": {"type": "integer"}, "blocked_aging_days": {"type": "integer"}, "escalation_rate_percent": {"type": "integer"}, "first_attempt_rate_percent": {"type": "integer"}, "top_failure_causes": {"type": "object"}}}, "delta": {"type": "object", "properties": {"cycle_time_days": {"type": "integer"}, "lead_time_days": {"type": "integer"}, "throughput": {"type": "integer"}, "wip_violations": {"type": "integer"}, "blocked_aging_days": {"type": "integer"}, "escalation_rate_percent": {"type": "integer"}, "first_attempt_rate_percent": {"type": "integer"}}}}}
+```
+
+Omitting `--json` produces an error:
+
+```
+$ sprint-metrics --schema
+sprint-metrics: --schema is only valid with --json
+```
+
+Exit code: 2.
