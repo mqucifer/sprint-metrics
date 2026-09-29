@@ -10,7 +10,7 @@ dependencies = []
 sprint-metrics = "sprint_metrics.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "pyyaml>=6.0"]
 
 [build-system]
 requires = ["hatchling"]
