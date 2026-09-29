@@ -494,3 +494,55 @@ def test_readme_unchanged_by_docs_gen():
 
     after = readme_path.read_bytes()
     assert before == after, "_docs_gen modified README.md"
+
+
+def test_formats_worked_example_empty_sprint_json(tmp_path):
+    """AC4: the worked example in docs/formats.md, when run, produces the documented output."""
+    import json
+    import re
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    doc = Path("docs/formats.md").read_text()
+
+    # Extract the input JSON from the worked example section
+    match = re.search(
+        r"## Worked example: empty sprint\n.*?```json\n(.*?)```",
+        doc,
+        re.DOTALL,
+    )
+    assert match, "Worked example input not found in docs/formats.md"
+    cards_input = match.group(1).strip()
+
+    # Write the cards input to a temp file
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(cards_input)
+
+    # Run the command
+    result = subprocess.run(
+        [sys.executable, "-m", "sprint_metrics", str(cards_file), "--json"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+
+    # Parse and verify the output
+    output = json.loads(result.stdout)
+    assert output["api_version"] == "1"
+    assert output["cycle_time_days"] == 0
+    assert output["lead_time_days"] == 0
+    assert output["throughput"] == 0
+    assert output["wip_violations"] == 0
+    assert output["blocked_aging_days"] == 0
+    assert output["escalation_rate_percent"] == 0
+    assert output["first_attempt_rate_percent"] == 0
+    assert output["failure_breakdown"] == []
+    assert output["top_failure_causes"] == {}
+    assert output["flags"]["cycle_time_days"] is False
+    assert output["flags"]["lead_time_days"] is False
+    assert output["flags"]["throughput"] is True
+    assert output["flags"]["wip_violations"] is False
+    assert output["flags"]["blocked_aging_days"] is False
+    assert output["flags"]["escalation_rate_percent"] is False
+    assert output["flags"]["first_attempt_rate_percent"] is True
