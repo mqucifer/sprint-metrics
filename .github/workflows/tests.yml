@@ -29,7 +29,7 @@ jobs:
       - name: Run sprint-metrics --help
         run: |
           set -euo pipefail
-          output=$(docker run --rm sprint-metrics-smoke sprint-metrics --help)
+          output=$(docker run --rm sprint-metrics-smoke --help)
           echo "$output"
           echo "$output" | grep -q "usage:"
       - name: Verify non-root UID
