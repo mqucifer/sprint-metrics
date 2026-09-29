@@ -8,3 +8,4 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir .
 RUN useradd -r sprint
 USER sprint
+ENTRYPOINT ["sprint-metrics"]

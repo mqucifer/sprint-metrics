@@ -20,7 +20,7 @@ def test_dockerfile_is_not_pinned_to_an_architecture():
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
 def test_docker_build_and_help():
-    """AC1: docker build exits 0 and docker run sprint-metrics-test sprint-metrics --help
+    """AC1: docker build exits 0 and docker run --rm sprint-metrics-test --help
     exits 0 with stdout containing 'sprint-metrics'."""
     repo_root = Path(__file__).parent.parent
     build = subprocess.run(
@@ -32,7 +32,7 @@ def test_docker_build_and_help():
     assert build.returncode == 0, f"docker build failed: {build.stderr}"
 
     run = subprocess.run(
-        ["docker", "run", "--rm", "sprint-metrics-test", "sprint-metrics", "--help"],
+        ["docker", "run", "--rm", "sprint-metrics-test", "--help"],
         capture_output=True,
         text=True,
     )
@@ -60,7 +60,6 @@ def test_docker_run_with_cards(tmp_path):
             "-v",
             f"{cards_path}:/input/cards.json",
             "sprint-metrics-test",
-            "sprint-metrics",
             "/input/cards.json",
         ],
         capture_output=True,
@@ -104,3 +103,17 @@ def test_dockerfile_from_line_pinned_by_digest():
     digest = first_line[len(prefix) :]
     assert len(digest) == 64
     assert all(c in "0123456789abcdef" for c in digest)
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
+def test_docker_run_repeating_program_name_fails():
+    """AC4: docker run --rm <image> sprint-metrics --help exits non-zero
+    because the tool interprets 'sprint-metrics' as a cards file path."""
+    if not _image_available():
+        pytest.skip("sprint-metrics-test image not built")
+    run = subprocess.run(
+        ["docker", "run", "--rm", "sprint-metrics-test", "sprint-metrics", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode != 0, f"Expected non-zero exit, got {run.returncode}"
