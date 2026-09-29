@@ -58,7 +58,7 @@ sprint_first_attempt_rate_percent 100
 An HTTP GET to `/json` returns the JSON API response:
 
 ```json
-{"api_version": "1", "cycle_time_days": 4, "lead_time_days": 6, "throughput_cards": 1, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "first_attempt_rate_percent": 100, "failure_breakdown": [], "top_failure_causes": {}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput_cards": false, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": false}}
+{"api_version": "1", "cycle_time_days": 4, "lead_time_days": 6, "throughput": 1, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "first_attempt_rate_percent": 100, "failure_breakdown": [], "top_failure_causes": {}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": false, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": false}}
 ```
 
 ### Error handling
