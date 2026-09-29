@@ -141,3 +141,39 @@ sprint-metrics: prior sprint '2024-02' cannot be the most recent sprint
 ```
 
 Exit code: 2.
+## --prior
+
+The `--prior` flag compares the current period against a prior one by supplying two separate JSON files of cards. The current cards file is the primary argument; the prior cards file is passed with `--prior`. The default table shows three rows: `Current`, `Prior`, and `Delta`, where the Delta row shows the signed difference (Current minus Prior) for each numeric metric.
+
+Current cards file (`current.json`):
+
+```json
+[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+```
+
+Prior cards file (`prior.json`):
+
+```json
+[{"created": "2023-12-01", "started": "2023-12-03", "completed": "2023-12-09"}]
+```
+
+```
+sprint-metrics current.json --prior prior.json
+```
+
+```
+| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |
+|--------|------------|-----------|------------|----------------|---------------|-----------------|-------------|------------------|
+| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | — |
+| Prior | 6 days | 8 days | 1 | 0 | 0 days | 0% | 100% | — |
+| Delta | -2 days | -2 days | 0 | 0 | 0 days | 0% | 0% | — |
+```
+
+If the prior file contains invalid JSON, the command exits with code 2 and reports the error on stderr:
+
+```
+$ sprint-metrics current.json --prior prior.json
+sprint-metrics: Expecting value: line 1 column 1 (char 0)
+```
+
+Exit code: 2.
