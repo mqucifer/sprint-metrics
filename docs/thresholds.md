@@ -48,6 +48,19 @@ The cycle time (7 days) exceeds the custom threshold of 5, so it is flagged.
 The lead time (7 days) meets its default threshold of 7 exactly and is not
 flagged (a breach requires strict greater-than).
 
+In markdown output, the ⚠️ marker is followed by a parenthetical naming the
+configured threshold that was exceeded, so the reader sees the target without
+opening the thresholds file:
+
+```
+sprint-metrics cards.json --thresholds thresholds.json --markdown
+```
+
+```
+- **Cycle time**: 7 days ⚠️ (threshold: 5 days)
+- **Lead time**: 7 days
+```
+
 In JSON output the `flags` object reports which metrics are breached:
 
 ```

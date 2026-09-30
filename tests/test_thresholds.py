@@ -10,7 +10,8 @@ from sprint_metrics.thresholds import _load_thresholds, calculate_flags
 
 def test_markdown_flags_cycle_time_when_threshold_breached(tmp_path, capsys):
     """AC1: a card with cycle time 7 days and a thresholds file with cycle_time_days 5
-    produces a markdown report where the cycle time line carries a ⚠️ marker."""
+    produces a markdown report where the cycle time line shows the threshold value
+    in a parenthetical after the warning marker."""
     card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
     cards_path = tmp_path / "cards.json"
     cards_path.write_text(json.dumps([card]))
@@ -20,7 +21,7 @@ def test_markdown_flags_cycle_time_when_threshold_breached(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **Cycle time**: 7 days ⚠️" in captured.out
+    assert "- **Cycle time**: 7 days \u26a0\ufe0f (threshold: 5 days)" in captured.out
 
 
 def test_markdown_does_not_flag_cycle_time_when_below_threshold(tmp_path, capsys):
@@ -218,3 +219,92 @@ def test_calculate_flags_first_attempt_rate_above_threshold():
     ] * 5
     flags = calculate_flags(cards)
     assert flags["first_attempt_rate_percent"] is False
+
+
+def test_markdown_first_attempt_rate_breached_shows_threshold_value(tmp_path, capsys):
+    """AC2: 2 completed cards (1 first-attempt, 1 with attempts=2) giving 50% rate,
+    with first_attempt_rate_percent threshold 80, shows the parenthetical with the
+    percent sign matching the metric's display unit."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"first_attempt_rate_percent": 80}))
+    exit_code = main([str(cards_path), "--markdown", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First-attempt rate**: 50% \u26a0\ufe0f (threshold: 80%)" in captured.out
+
+
+def test_markdown_no_threshold_text_when_meeting_threshold_exactly(tmp_path, capsys):
+    """AC3: a card with cycle time exactly 5 days and threshold 5 produces no warning
+    marker and no threshold parenthetical, because meeting the threshold exactly
+    is not a breach."""
+    card = {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main([str(cards_path), "--markdown", "--thresholds", str(thresholds_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 5 days" in captured.out
+    assert "\u26a0\ufe0f" not in captured.out
+    assert "(threshold:" not in captured.out
+
+
+def test_markdown_no_threshold_text_without_thresholds_flag(tmp_path, capsys):
+    """AC4: without --thresholds, the markdown output contains no warning markers
+    and no threshold parenthetical anywhere."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    exit_code = main([str(cards_path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "\u26a0\ufe0f" not in captured.out
+    assert "(threshold:" not in captured.out
+    assert "- **Cycle time**: 4 days" in captured.out
+
+
+def test_markdown_wip_violations_shows_threshold_context(tmp_path, capsys):
+    """AC7: two overlapping in-progress cards with WIP limit In Progress=1 (1 violation)
+    and threshold wip_violations=0 shows the bare integer threshold with no unit
+    suffix, matching the metric's display as a unitless count."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": ""},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": ""},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    wip_path = tmp_path / "wip-limits.json"
+    wip_path.write_text(json.dumps({"In Progress": 1}))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"wip_violations": 0}))
+    exit_code = main(
+        [
+            str(cards_path),
+            "--wip-limits",
+            str(wip_path),
+            "--thresholds",
+            str(thresholds_path),
+            "--markdown",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **WIP violations**: 1 \u26a0\ufe0f (threshold: 0)" in captured.out
