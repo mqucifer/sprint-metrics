@@ -90,7 +90,7 @@ def test_changelog_1_0_0_section_has_date_entry_and_unreleased_above():
     assert "failure breakdown" in entry
 
 
-def test_pyproject_version_is_1_0_1():
+def test_pyproject_version_is_1_0_2():
     """AC1: pyproject.toml version field reads 1.0.2 with other fields unchanged."""
     import tomllib
     from pathlib import Path
@@ -140,7 +140,7 @@ def test_changelog_1_0_1_section_dated_with_entry_and_unreleased_above():
     assert match_100.start() > match.start(), "[1.0.0] should appear below [1.0.1]"
 
 
-def test_changelog_heading_order_unreleased_1_0_1_1_0_0():
+def test_changelog_heading_order_unreleased_1_0_2_1_0_1_1_0_0():
     """AC3: versioned headings in order are [Unreleased], [1.0.2] - date,
     [1.0.1] - date, [1.0.0] - 2025-07-13; no version-numbered heading appears before [Unreleased]."""
     import re
