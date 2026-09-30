@@ -56,3 +56,38 @@ jobs:
             echo "ERROR: Container is running as root (UID 0)"
             exit 1
           fi
+      - name: Verify scrape service is reachable
+        run: |
+          set -euo pipefail
+          CARDS_FILE=$(mktemp /tmp/cards_XXXXXX.json)
+          cat > "$CARDS_FILE" << 'EOF'
+          [{"title": "test card", "state": "Done", "created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+          EOF
+          CONTAINER_ID=$(docker run -d -p 9100:9100 -v "$CARDS_FILE":/cards.json sprint-metrics-smoke --scrape --port 9100 /cards.json)
+          echo "Container started: $CONTAINER_ID"
+          DEADLINE=$((SECONDS + 30))
+          response=""
+          while [ $SECONDS -lt $DEADLINE ]; do
+            if response=$(curl -sf http://localhost:9100/metrics) 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if [ $SECONDS -ge $DEADLINE ]; then
+            echo "ERROR: /metrics endpoint did not become reachable within 30 seconds"
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            rm -f "$CARDS_FILE"
+            exit 1
+          fi
+          echo "Scrape endpoint is up"
+          echo "$response" | grep -q '^sprint_cycle_time_days'
+          echo "OK: response contains sprint_cycle_time_days"
+          docker stop "$CONTAINER_ID"
+          docker rm "$CONTAINER_ID"
+          rm -f "$CARDS_FILE"
+          if docker ps --filter "publish=9100" | grep -q .; then
+            echo "ERROR: A container is still publishing port 9100"
+            exit 1
+          fi
+          echo "OK: container stopped and removed, port 9100 free"
