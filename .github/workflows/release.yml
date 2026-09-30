@@ -82,8 +82,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push container image
+      - name: Check if image exists in registry
+        id: image-check
         if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          version="${{ steps.version-check.outputs.current }}"
+          if docker manifest inspect "ghcr.io/mqucifer/sprint-metrics:${version}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Image ghcr.io/mqucifer/sprint-metrics:${version} already exists — skipping build."
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "Image ghcr.io/mqucifer/sprint-metrics:${version} not found in registry."
+          fi
+
+      - name: Build and push container image
+        if: github.event_name == 'push' && steps.image-check.outputs.found != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
