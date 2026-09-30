@@ -63,6 +63,7 @@ jobs:
           cat > "$CARDS_FILE" << 'EOF'
           [{"title": "test card", "state": "Done", "created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
           EOF
+          chmod 644 "$CARDS_FILE"
           CONTAINER_ID=$(docker run -d -p 9100:9100 -v "$CARDS_FILE":/cards.json sprint-metrics-smoke --scrape --port 9100 /cards.json)
           echo "Container started: $CONTAINER_ID"
           DEADLINE=$((SECONDS + 30))
