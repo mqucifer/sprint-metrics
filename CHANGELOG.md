@@ -4,6 +4,8 @@
 
 ### Added
 
+- Markdown health summary: `Changed:` line showing the metric with the largest absolute change when comparing to a prior sprint via `--prior-sprint`
+
 ### Changed
 
 ### Fixed

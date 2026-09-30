@@ -189,7 +189,7 @@ sprint-metrics cards.json --json
 
 ### Markdown
 
-The markdown report begins with a health summary between the report date and the first section heading. When no metric exceeds its threshold, the summary reads `Status: All clear`. When one or more metrics breach, it reads `Status: Attention needed (N metrics breached)` followed by a bulleted list naming each breached metric with its current value and the threshold it exceeded.
+The markdown report begins with a health summary between the report date and the first section heading. When no metric exceeds its threshold, the summary reads `Status: All clear`. When one or more metrics breach, it reads `Status: Attention needed (N metrics breached)` followed by a bulleted list naming each breached metric with its current value and the threshold it exceeded. When a prior sprint is specified with `--prior-sprint`, a `Changed:` line follows the status and any breached-metric bullets, naming the single metric with the largest absolute delta from the prior sprint and whether it improved or worsened. When no prior sprint is provided, no `Changed:` line appears.
 
 ```
 sprint-metrics cards.json --markdown

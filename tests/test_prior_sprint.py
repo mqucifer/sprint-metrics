@@ -508,3 +508,151 @@ def test_prior_sprint_markdown_arrows_only_in_current_section(tmp_path, capsys):
     for line in metric_lines:
         arrow_count = sum(1 for a in arrows if a in line)
         assert arrow_count == 1, f"expected exactly one arrow in {line!r}, found {arrow_count}"
+
+
+def test_changed_line_shows_largest_delta_cycle_time(tmp_path, capsys):
+    """AC1: prior sprint has cycle time 6, lead time 8, throughput 1; current has
+    cycle time 4, lead time 6, throughput 1. The markdown output includes
+    'Changed: Cycle time improved by 2 days' in the health summary section."""
+    prior_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-09"}
+    current_card = {"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-07"}
+    sprints = {"2024-01": [prior_card], "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    date_idx = next(i for i, line in enumerate(lines) if line.startswith("Report date:"))
+    heading_idx = next(i for i, line in enumerate(lines) if line.startswith("## "))
+    between = lines[date_idx + 1 : heading_idx]
+    assert "Changed: Cycle time improved by 2 days" in between
+
+
+def test_changed_line_throughput_worsened_singular(tmp_path, capsys):
+    """AC2: prior sprint has 2 completed cards (cycle time 6, lead time 8 each),
+    current has 1 (cycle time 6, lead time 8). Throughput dropped by 1, all
+    others unchanged. The markdown output includes
+    'Changed: Throughput worsened by 1 card'."""
+    prior_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-09"}
+    current_card = {"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-09"}
+    sprints = {"2024-01": [prior_card, prior_card], "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    date_idx = next(i for i, line in enumerate(lines) if line.startswith("Report date:"))
+    heading_idx = next(i for i, line in enumerate(lines) if line.startswith("## "))
+    between = lines[date_idx + 1 : heading_idx]
+    assert "Changed: Throughput worsened by 1 card" in between
+
+
+def test_changed_line_no_change_when_identical(tmp_path, capsys):
+    """AC3: both sprints have identical metric values. The markdown output
+    includes 'Changed: No change' in the health summary section."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [card], "2024-02": [card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    date_idx = next(i for i, line in enumerate(lines) if line.startswith("Report date:"))
+    heading_idx = next(i for i, line in enumerate(lines) if line.startswith("## "))
+    between = lines[date_idx + 1 : heading_idx]
+    assert "Changed: No change" in between
+
+
+def test_no_changed_line_without_prior_sprint(tmp_path, capsys):
+    """AC4: a cards file with one completed card, run with --markdown and without
+    --prior-sprint. The output does NOT include any line starting with 'Changed:'."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    assert not any(line.startswith("Changed:") for line in lines)
+
+
+def test_changed_line_tie_broken_by_canonical_order(tmp_path, capsys):
+    """AC6: cycle time and lead time both decreased by 2 days, throughput unchanged.
+    The line names exactly one metric (first in canonical order among ties), reads
+    'Changed: Cycle time improved by 2 days', and no second 'Changed:' line appears."""
+    prior_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-09"}
+    current_card = {"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-07"}
+    sprints = {"2024-01": [prior_card], "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    changed_lines = [line for line in lines if line.startswith("Changed:")]
+    assert len(changed_lines) == 1
+    assert changed_lines[0] == "Changed: Cycle time improved by 2 days"
+
+
+def test_changed_line_throughput_plural_cards(tmp_path, capsys):
+    """AC7: throughput dropped from 3 to 1 and cycle time changed by 1 day.
+    The line reads 'Changed: Throughput worsened by 2 cards' and the word
+    'cards' is plural because the delta magnitude is 2."""
+    prior_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-08"}
+    current_card = {"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-07"}
+    sprints = {"2024-01": [prior_card] * 3, "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    changed_lines = [line for line in lines if line.startswith("Changed:")]
+    assert len(changed_lines) == 1
+    assert changed_lines[0] == "Changed: Throughput worsened by 2 cards"
+
+
+def test_changed_line_appears_after_status_and_breached_bullets(tmp_path, capsys):
+    """AC8: when a metric breaches and a prior sprint is specified, the lines
+    appear in order: Status line, breached-metric bullets, Changed line, blank
+    line, then the next ## heading."""
+    prior_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    current_card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    sprints = {"2024-01": [prior_card], "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    status_idx = next(i for i, line in enumerate(lines) if line.startswith("Status:"))
+    heading_idx = next(
+        i for i, line in enumerate(lines) if i > status_idx and line.startswith("## ")
+    )
+    between = lines[status_idx + 1 : heading_idx]
+    changed_idx = next(i for i, line in enumerate(between) if line.startswith("Changed:"))
+    bullet_indices = [i for i, line in enumerate(between) if line.startswith("- ")]
+    if bullet_indices:
+        assert changed_idx > max(bullet_indices)
+    # The line before the ## heading is blank
+    assert lines[heading_idx - 1] == ""
+
+
+def test_changed_line_no_change_followed_by_blank_and_heading(tmp_path, capsys):
+    """AC9: all metrics identical between sprints. The line 'Changed: No change'
+    is followed immediately by a blank line and the next ## heading; no metric
+    name, unit, or delta value appears on or after the 'Changed:' line."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [card], "2024-02": [card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    changed_idx = next(i for i, line in enumerate(lines) if line == "Changed: No change")
+    assert lines[changed_idx + 1] == ""
+    assert lines[changed_idx + 2].startswith("## ")
