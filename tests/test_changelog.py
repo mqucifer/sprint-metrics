@@ -54,3 +54,53 @@ def test_unreleased_is_first_versioned_heading_and_no_version_before_it():
         assert not version_pattern.match(line), (
             f"version-numbered heading {line!r} appears before '## [Unreleased]'"
         )
+
+
+def test_pyproject_version_is_1_0_0():
+    """AC1: pyproject.toml version field reads 1.0.0 with other fields unchanged."""
+    import tomllib
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    project = data["project"]
+    assert project["version"] == "1.0.0"
+    assert project["name"] == "sprint-metrics"
+    assert project["description"] == "Delivery metrics for the crew's own board."
+    assert project["requires-python"] == ">=3.12,<3.13"
+    assert project["dependencies"] == []
+
+
+def test_changelog_1_0_0_section_has_date_entry_and_unreleased_above():
+    """AC2: [1.0.0] has a date suffix, the release entry under Added, and [Unreleased] above it."""
+    import re
+    from pathlib import Path
+
+    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+    content = changelog.read_text()
+
+    # [1.0.0] heading with date suffix in the form '## [1.0.0] - YYYY-MM-DD'
+    match = re.search(r"^## \[1\.0\.0\] - \d{4}-\d{2}-\d{2}$", content, re.MULTILINE)
+    assert match, "Missing '## [1.0.0] - YYYY-MM-DD' heading"
+
+    # [Unreleased] section appears above [1.0.0]
+    unreleased_match = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
+    assert unreleased_match, "Missing '## [Unreleased]'"
+    assert unreleased_match.start() < match.start()
+
+    # The release entry appears under ### Added in the [1.0.0] section
+    after_100 = content[match.end() :]
+    next_heading = re.search(r"^## ", after_100, re.MULTILINE)
+    section = after_100[: next_heading.start()] if next_heading else after_100
+
+    added_section = re.search(
+        r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL
+    )
+    assert added_section, "No ### Added subsection in [1.0.0]"
+    entry = added_section.group(1)
+    assert "Sprint-metrics CLI: cycle time, lead time, throughput" in entry
+    assert "WIP-limit violations" in entry
+    assert "blocked-card aging" in entry
+    assert "first-attempt rate" in entry
+    assert "failure breakdown" in entry
