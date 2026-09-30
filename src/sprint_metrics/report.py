@@ -621,6 +621,9 @@ def _health_summary_lines(
     When ``prior_cards`` is provided, a 'Changed:' line naming the metric with
     the largest absolute delta from the prior sprint is appended after the
     status and any breached-metric bullets.
+
+    When one or more cards are blocked or in progress, an 'Attention:' line is
+    appended after the status, breached bullets, and Changed line (if any).
     """
     if not cards:
         return []
@@ -652,6 +655,9 @@ def _health_summary_lines(
             lines.append(_format_breached_metric(metric, values[metric], effective[metric]))
     if prior_cards is not None:
         lines.append(_changed_line(cards, prior_cards, wip_limits, escalations, as_of))
+    attention = _attention_line(cards, as_of)
+    if attention is not None:
+        lines.append(attention)
     return lines
 
 
@@ -728,3 +734,26 @@ def _changed_unit(metric: str, magnitude: int) -> str:
     if metric in ("escalation_rate_percent", "first_attempt_rate_percent"):
         return "percent"
     return ""
+
+
+def _attention_line(cards: Sequence[Card], as_of: date | None) -> str | None:
+    """The 'Attention:' line naming blocked and in-progress card counts.
+
+    Returns None when no card is blocked or in progress. The duration shown is
+    the longest block duration among blocked cards. When ``as_of`` is None the
+    reference date is today, matching the Blocked aging metric.
+    """
+    _, in_progress, blocked = _summary_counts(cards)
+    if blocked == 0 and in_progress == 0:
+        return None
+    duration = ""
+    if blocked > 0:
+        reference = as_of if as_of is not None else date.today()
+        durations = [
+            (reference - card.blocked_since).days
+            for card in cards
+            if card.blocked_since is not None and not card.is_completed
+        ]
+        if durations:
+            duration = f" ({max(durations)} days)"
+    return f"Attention: {blocked} blocked{duration}, {in_progress} in progress"

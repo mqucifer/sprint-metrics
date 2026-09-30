@@ -168,3 +168,153 @@ def test_markdown_health_summary_cycle_time_bullet_exact_format(tmp_path, capsys
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "- Cycle time: 7 days (threshold 5 days)" in output
+
+
+def test_attention_line_blocked_and_in_progress(tmp_path, capsys):
+    """AC1: one blocked card (blocked 5 days) and one in-progress card produce
+    'Attention: 1 blocked (5 days), 1 in progress' in the health summary section,
+    between the Status line and the ## Current Sprint heading."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-26"},
+        {"created": "2024-01-15", "started": "2024-01-20"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-31"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    attention_idx = next(i for i, line in enumerate(lines) if line.startswith("Attention:"))
+    assert lines[attention_idx] == "Attention: 1 blocked (5 days), 1 in progress"
+    status_idx = next(i for i, line in enumerate(lines) if line.startswith("Status:"))
+    heading_idx = next(
+        i for i, line in enumerate(lines) if i > status_idx and line.startswith("## ")
+    )
+    assert status_idx < attention_idx < heading_idx
+
+
+def test_no_attention_line_when_only_completed(tmp_path, capsys):
+    """AC2: a completed card with no blocked or in-progress cards produces no
+    'Attention:' line in the markdown output."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-31"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Attention:" not in output
+
+
+def test_no_attention_line_empty_cards(tmp_path, capsys):
+    """AC3: an empty cards file produces 'No performance data available' and does
+    not include the text 'Attention:'."""
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text("[]")
+    exit_code = main([str(cards_path), "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "No performance data available" in output
+    assert "Attention:" not in output
+
+
+def test_attention_line_max_block_duration(tmp_path, capsys):
+    """AC4: two blocked cards (one blocked 3 days, one blocked 7 days) and no
+    in-progress cards produce 'Attention: 2 blocked (7 days), 0 in progress'."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-28"},
+        {"created": "2024-01-01", "blocked_since": "2024-01-24"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-31"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Attention: 2 blocked (7 days), 0 in progress" in output
+
+
+def test_attention_line_shows_max_not_sum_or_min(tmp_path, capsys):
+    """AC5: the line reads exactly 'Attention: 2 blocked (7 days), 1 in progress'
+    and the number in parentheses is 7 (the maximum block duration), not 3 or 10."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-28"},
+        {"created": "2024-01-01", "blocked_since": "2024-01-24"},
+        {"created": "2024-01-15", "started": "2024-01-20"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-31"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    attention_line = next(line for line in lines if line.startswith("Attention:"))
+    assert attention_line == "Attention: 2 blocked (7 days), 1 in progress"
+    assert "(3 days)" not in attention_line
+    assert "(10 days)" not in attention_line
+
+
+def test_blocked_card_not_counted_as_in_progress(tmp_path, capsys):
+    """AC6: a blocked card (blocked_since set, not completed) with a started date
+    is counted only as blocked, not also as in progress."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-28", "started": "2024-01-02"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-31"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Attention: 1 blocked (3 days), 0 in progress" in output
+
+
+def test_attention_line_last_in_health_summary(tmp_path, capsys):
+    """AC7: the Attention line is the last line of the health summary block; the
+    line immediately after it is blank, followed by the next ## heading."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-26"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-31"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    attention_idx = next(i for i, line in enumerate(lines) if line.startswith("Attention:"))
+    assert lines[attention_idx + 1] == ""
+    assert lines[attention_idx + 2].startswith("## ")
+
+
+def test_attention_counts_match_summary(tmp_path, capsys):
+    """AC8: the blocked count in the Attention line equals the 'Blocked' count in
+    the Summary, and the in-progress count equals the 'In progress' count; a card
+    that is both started and blocked is counted only as blocked."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-28", "started": "2024-01-02"},
+        {"created": "2024-01-15", "started": "2024-01-20"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-31"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    attention_line = next(line for line in lines if line.startswith("Attention:"))
+    assert "1 blocked" in attention_line
+    assert "1 in progress" in attention_line
+    assert "- **Blocked**: 1" in output
+    assert "- **In progress**: 1" in output
+
+
+def test_attention_line_shows_duration_without_sprint_date(tmp_path, capsys):
+    """When --sprint-date is not provided, the Attention line still shows a
+    duration in parentheses, consistent with the Blocked aging metric which
+    defaults to date.today()."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-26"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    attention_line = next(line for line in output.splitlines() if line.startswith("Attention:"))
+    assert " days)" in attention_line
