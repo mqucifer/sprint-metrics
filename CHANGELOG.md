@@ -10,6 +10,18 @@
 
 ### Removed
 
+## [1.0.1] - 2025-07-14
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Release workflow: the release PR now correctly triggers publishing of the version tag, GitHub Release, and container image
+
+### Removed
+
 ## [1.0.0] - 2025-07-13
 
 ### Added
