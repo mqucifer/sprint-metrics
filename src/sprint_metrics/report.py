@@ -158,8 +158,9 @@ def _sprint_section(
     When cards is empty, emits 'No performance data available' followed by the
     first-attempt rate line (always 0%) so the standup report shows both.
 
-    When ``prior_cards`` is provided, each metric line includes the prior
-    sprint's value and the signed change from prior to current.
+    When ``prior_cards`` is provided, each metric line includes a directional
+    arrow (\u2193, \u2191, or \u2192) between the current value and the parenthetical,
+    the prior sprint's value, and the signed change from prior to current.
 
     When ``thresholds`` is provided, a \u26a0\ufe0f marker is appended to any metric line
     whose value exceeds its threshold (strict greater-than; meeting the
@@ -193,46 +194,52 @@ def _sprint_section(
         lines: list[str] = ["## Current Sprint", ""]
         for metric in selected:
             if metric == "cycle_time_days":
+                delta = cycle_time - prior_cycle
                 lines.append(
-                    f"- **Cycle time**: {cycle_time} days "
-                    f"(was {prior_cycle} days, {_signed(cycle_time - prior_cycle)})"
+                    f"- **Cycle time**: {cycle_time} days {_trend_arrow(delta)} "
+                    f"(was {prior_cycle} days, {_signed(delta)})"
                     f"{_flag(cycle_time, thresholds, 'cycle_time_days')}"
                 )
             elif metric == "lead_time_days":
+                delta = lead_time - prior_lead
                 lines.append(
-                    f"- **Lead time**: {lead_time} days "
-                    f"(was {prior_lead} days, {_signed(lead_time - prior_lead)})"
+                    f"- **Lead time**: {lead_time} days {_trend_arrow(delta)} "
+                    f"(was {prior_lead} days, {_signed(delta)})"
                     f"{_flag(lead_time, thresholds, 'lead_time_days')}"
                 )
             elif metric == "throughput":
+                delta = throughput - prior_throughput
                 lines.append(
-                    f"- **Throughput**: {throughput} "
-                    f"(was {prior_throughput}, {_signed(throughput - prior_throughput)})"
+                    f"- **Throughput**: {throughput} cards {_trend_arrow(delta)} "
+                    f"(was {prior_throughput}, {_signed(delta)})"
                     f"{_flag(throughput, thresholds, 'throughput')}"
                 )
             elif metric == "wip_violations":
+                delta = wip_violations - prior_wip
                 lines.append(
-                    f"- **WIP violations**: {wip_violations} "
-                    f"(was {prior_wip}, {_signed(wip_violations - prior_wip)})"
+                    f"- **WIP violations**: {wip_violations} {_trend_arrow(delta)} "
+                    f"(was {prior_wip}, {_signed(delta)})"
                     f"{_flag(wip_violations, thresholds, 'wip_violations')}"
                 )
             elif metric == "blocked_aging_days":
+                delta = blocked_aging - prior_blocked
                 lines.append(
-                    f"- **Blocked aging**: {blocked_aging} days "
-                    f"(was {prior_blocked} days, {_signed(blocked_aging - prior_blocked)})"
+                    f"- **Blocked aging**: {blocked_aging} days {_trend_arrow(delta)} "
+                    f"(was {prior_blocked} days, {_signed(delta)})"
                     f"{_flag(blocked_aging, thresholds, 'blocked_aging_days')}"
                 )
             elif metric == "escalation_rate_percent":
+                delta = escalation_rate - prior_escalation
                 lines.append(
-                    f"- **Escalation rate**: {escalation_rate}% "
-                    f"(was {prior_escalation}%, {_signed(escalation_rate - prior_escalation)})"
+                    f"- **Escalation rate**: {escalation_rate}% {_trend_arrow(delta)} "
+                    f"(was {prior_escalation}%, {_signed(delta)})"
                     f"{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}"
                 )
             elif metric == "first_attempt_rate_percent":
+                delta = first_attempt_rate - prior_first_attempt
                 lines.append(
-                    f"- **First-attempt rate**: {first_attempt_rate}% "
-                    f"(was {prior_first_attempt}%, "
-                    f"{_signed(first_attempt_rate - prior_first_attempt)})"
+                    f"- **First-attempt rate**: {first_attempt_rate}% {_trend_arrow(delta)} "
+                    f"(was {prior_first_attempt}%, {_signed(delta)})"
                     f"{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
                 )
         if "failure_breakdown" in selected and failure_breakdown:
@@ -539,3 +546,12 @@ def _format_failure_breakdown(breakdown: list[tuple[str, str, int]]) -> str:
         else:
             parts.append(f"{count}\u00d7 {cls}")
     return ", ".join(parts)
+
+
+def _trend_arrow(delta: int) -> str:
+    """Return the directional arrow for a signed change: \u2193, \u2191, or \u2192."""
+    if delta < 0:
+        return "\u2193"
+    if delta > 0:
+        return "\u2191"
+    return "\u2192"

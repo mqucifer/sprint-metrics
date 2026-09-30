@@ -1737,7 +1737,7 @@ def test_markdown_empty_cards_shows_zero_rate_and_no_data(tmp_path, capsys):
 def test_markdown_prior_sprint_shows_first_attempt_rate_with_change(tmp_path, capsys):
     """AC5: sprint 2024-01 has 4 cards (2 first-attempt) and sprint 2024-02 has
     4 cards (3 first-attempt, 1 parse/Developer). --prior-sprint 2024-01 --markdown
-    shows '- **First-attempt rate**: 75% (was 50%, +25)' in the current sprint section."""
+    shows '- **First-attempt rate**: 75% \u2191 (was 50%, +25)' in the current sprint section."""
     prior_cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
@@ -1778,7 +1778,7 @@ def test_markdown_prior_sprint_shows_first_attempt_rate_with_change(tmp_path, ca
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First-attempt rate**: 75% (was 50%, +25)" in captured.out
+    assert "- **First-attempt rate**: 75% \u2191 (was 50%, +25)" in captured.out
 
 
 def test_prometheus_reports_first_attempt_rate_and_failure_count(tmp_path, capsys):
