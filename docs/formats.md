@@ -189,6 +189,8 @@ sprint-metrics cards.json --json
 
 ### Markdown
 
+The markdown report begins with a health summary between the report date and the first section heading. When no metric exceeds its threshold, the summary reads `Status: All clear`. When one or more metrics breach, it reads `Status: Attention needed (N metrics breached)` followed by a bulleted list naming each breached metric with its current value and the threshold it exceeded.
+
 ```
 sprint-metrics cards.json --markdown
 ```
@@ -197,6 +199,8 @@ sprint-metrics cards.json --markdown
 # Crew Performance Report
 
 Report date: 2024-01-15
+
+Status: All clear
 
 ## Current Sprint
 
