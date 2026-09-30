@@ -45,11 +45,11 @@ design:
   - uv run pytest -q
   ci_checks:
   - 'The docker job in tests.yml builds the image and proves it starts as documented:
-    `docker run --rm <image> --help` prints a usage line, with the program name supplied
+    docker run --rm <image> --help prints a usage line, with the program name supplied
     by the image''s ENTRYPOINT rather than repeated in the arguments.'
   - 'The docker job in tests.yml proves the image runs as a user other than root:
-    a container is started with the entrypoint overridden to `sh -c ''id -u''` and
-    the exit fails unless the UID is not zero.'
+    a container is started with the entrypoint overridden to sh -c ''id -u'' and the
+    exit fails unless the UID is not zero.'
   - 'The docker job in tests.yml proves the base image is pinned by digest: the Dockerfile''s
     FROM line is checked to contain an @sha256: reference, and the build succeeds
     against that pinned base.'
@@ -62,11 +62,16 @@ design:
     are MINOR, fixes and docs are PATCH. The first release is 1.0.0. CHANGELOG.md
     follows Keep a Changelog; every user-visible PR adds an entry to [Unreleased].
     A release is a PR that bumps the version in pyproject.toml and dates the [Unreleased]
-    section. When it merges, a release workflow sees the new version and does three
-    things: creates tag vX.Y.Z; creates a GitHub Release whose body is that CHANGELOG
-    section; builds and pushes a linux/amd64 and linux/arm64 container image to ghcr.io/mqucifer/sprint-metrics
-    tagged X.Y.Z, X.Y, and latest, with build-provenance attestation, using only GITHUB_TOKEN.
-    The release workflow includes a workflow_dispatch dry-run path that validates
+    section. When it merges, the release workflow (triggered on push to main) reads
+    the version from pyproject.toml and then checks each published artifact independently,
+    creating only what is missing: (1) the git tag vX.Y.Z is created and pushed if
+    it does not already exist; (2) the GitHub Release for that tag is created with
+    the dated CHANGELOG section as its body if no Release exists for the tag; (3)
+    a linux/amd64 and linux/arm64 container image is built and pushed to ghcr.io/mqucifer/sprint-metrics
+    tagged X.Y.Z, X.Y, and latest, with build-provenance attestation, using only GITHUB_TOKEN,
+    if the image has not yet been published for that tag. A run that fails part-way
+    leaves the version for the next run to finish; the version number is not used
+    up. The release workflow includes a workflow_dispatch dry-run path that validates
     the pipeline without tagging or pushing. The crew installs the tool as a git dependency
     pinned to the tag (e.g. uv pip install git+https://github.com/mqucifer/sprint-metrics.git@v1.0.0)
     or runs the image by its tag (ghcr.io/mqucifer/sprint-metrics:1.0.0).'
