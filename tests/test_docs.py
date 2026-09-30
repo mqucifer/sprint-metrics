@@ -745,3 +745,41 @@ def test_scrape_doc_shows_command_startup_and_response_formats():
     # Fenced block of /json with api_version and metric keys
     assert "api_version" in section
     assert "cycle_time_days" in section
+
+
+def test_formats_empty_sprint_json_output(tmp_path, capsys):
+    """AC2: the empty-sprint cards input in docs/formats.md, run with --json,
+    exits 0 and stdout parses as JSON with all metrics zero and the expected
+    flag values for an empty sprint."""
+    text = (DOCS_DIR / "formats.md").read_text()
+    section_start = text.index("## Empty sprint")
+    section_text = text[section_start:]
+    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
+    assert match is not None, "no cards JSON block found in docs/formats.md Empty sprint section"
+    cards = json.loads(match.group(1))
+    assert cards == [], "expected empty array in docs/formats.md empty-sprint example"
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["api_version"] == "1"
+    assert data["cycle_time_days"] == 0
+    assert data["lead_time_days"] == 0
+    assert data["throughput"] == 0
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+    assert data["first_attempt_rate_percent"] == 0
+    assert data["failure_breakdown"] == []
+    assert data["top_failure_causes"] == {}
+    flags = data["flags"]
+    assert flags["throughput"] is True
+    assert flags["first_attempt_rate_percent"] is True
+    assert flags["cycle_time_days"] is False
+    assert flags["lead_time_days"] is False
+    assert flags["wip_violations"] is False
+    assert flags["blocked_aging_days"] is False
+    assert flags["escalation_rate_percent"] is False
