@@ -91,8 +91,8 @@ def test_changelog_1_0_0_section_has_date_entry_and_unreleased_above():
 
 
 def test_changelog_1_0_1_section_dated_with_entry_and_unreleased_above():
-    """AC2: [1.0.1] has a date suffix, [Unreleased] above it contains only standard
-    subheadings with no entries, and [1.0.0] below remains with its date and entry."""
+    """AC2: [1.0.1] has a date suffix, [Unreleased] above it contains standard
+    subheadings, and [1.0.0] below remains with its date and entry."""
     import re
     from pathlib import Path
 
@@ -108,15 +108,18 @@ def test_changelog_1_0_1_section_dated_with_entry_and_unreleased_above():
     assert unreleased_match, "Missing '## [Unreleased]'"
     assert unreleased_match.start() < match.start()
 
-    # [Unreleased] section contains only the four standard subheadings with no entries
+    # [Unreleased] section contains the four standard subheadings in order
     after_unreleased = content[unreleased_match.end() :]
     next_heading = re.search(r"^## \[", after_unreleased, re.MULTILINE)
     unreleased_section = (
         after_unreleased[: next_heading.start()] if next_heading else after_unreleased
     )
-    assert not re.search(r"^\s*-\s", unreleased_section, re.MULTILINE), (
-        "[Unreleased] section contains entries; it should only have subheadings"
-    )
+    headings = ["### Added", "### Changed", "### Fixed", "### Removed"]
+    positions = []
+    for heading in headings:
+        assert heading in unreleased_section, f"[Unreleased] section missing {heading!r}"
+        positions.append(unreleased_section.index(heading))
+    assert positions == sorted(positions), "[Unreleased] sub-headings are not in order"
 
     # [1.0.0] section below [1.0.1] remains with its date
     match_100 = re.search(r"^## \[1\.0\.0\] - 2025-07-13$", content, re.MULTILINE)

@@ -313,6 +313,8 @@ def format_markdown_report(
     shows whether any metric breaches its threshold: 'Status: All clear' when
     none do, or 'Status: Attention needed (N metrics breached)' followed by a
     bulleted list naming each breached metric with its value and threshold.
+    When ``prior_sprint`` and ``prior_cards`` are provided, a 'Changed:' line
+    names the metric with the largest absolute delta from the prior sprint.
 
     When ``prior_sprint`` and ``prior_cards`` are provided, a comparison section
     for the prior sprint is included before the current sprint section, and the
@@ -332,7 +334,9 @@ def format_markdown_report(
         "",
         f"Report date: {report_date.isoformat()}",
     ]
-    lines.extend(_health_summary_lines(parsed, wip_limits, escalations, as_of, thresholds))
+    lines.extend(
+        _health_summary_lines(parsed, wip_limits, escalations, as_of, thresholds, prior_cards)
+    )
     if prior_sprint is not None and prior_cards is not None:
         lines.append("")
         lines.extend(
@@ -573,6 +577,16 @@ _HEALTH_DISPLAY: dict[str, str] = {
     "first_attempt_rate_percent": "First attempt rate",
 }
 
+_LOWER_IS_BETTER: frozenset[str] = frozenset(
+    (
+        "cycle_time_days",
+        "lead_time_days",
+        "wip_violations",
+        "blocked_aging_days",
+        "escalation_rate_percent",
+    )
+)
+
 
 def _format_breached_metric(metric: str, value: int, threshold: float) -> str:
     """A single breached-metric bullet with value and threshold in the metric's unit."""
@@ -595,12 +609,17 @@ def _health_summary_lines(
     escalations: int,
     as_of: date | None,
     thresholds: Mapping[str, float] | None,
+    prior_cards: Sequence[Card] | None = None,
 ) -> list[str]:
     """The health summary lines: a status line and, when metrics breach, their bullets.
 
     Returns an empty list when there are no cards (the 'No performance data
     available' section handles that case). Otherwise returns the status line
     followed by one bullet per breached metric, in canonical order.
+
+    When ``prior_cards`` is provided, a 'Changed:' line naming the metric with
+    the largest absolute delta from the prior sprint is appended after the
+    status and any breached-metric bullets.
     """
     if not cards:
         return []
@@ -608,8 +627,45 @@ def _health_summary_lines(
     effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     breached = [m for m in _CANONICAL_ORDER if m != "failure_breakdown" and flags.get(m)]
     if not breached:
-        return ["Status: All clear"]
+        lines = ["Status: All clear"]
+    else:
+        cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+        throughput = calculate_throughput(cards)
+        wip_violations = calculate_wip_violations(cards, wip_limits)
+        blocked_aging = calculate_blocked_aging(cards, as_of)
+        escalation_rate = calculate_escalation_rate(cards, escalations)
+        first_attempt_rate = calculate_first_attempt_rate(cards)
 
+        values: dict[str, int] = {
+            "cycle_time_days": cycle_time,
+            "lead_time_days": lead_time,
+            "throughput": throughput,
+            "wip_violations": wip_violations,
+            "blocked_aging_days": blocked_aging,
+            "escalation_rate_percent": escalation_rate,
+            "first_attempt_rate_percent": first_attempt_rate,
+        }
+
+        lines = [f"Status: Attention needed ({len(breached)} metrics breached)"]
+        for metric in breached:
+            lines.append(_format_breached_metric(metric, values[metric], effective[metric]))
+    if prior_cards is not None:
+        lines.append(_changed_line(cards, prior_cards, wip_limits, escalations, as_of))
+    return lines
+
+
+def _changed_line(
+    cards: Sequence[Card],
+    prior_cards: Sequence[Card],
+    wip_limits: Mapping[str, int] | None,
+    escalations: int,
+    as_of: date | None,
+) -> str:
+    """The 'Changed:' line: names the metric with the largest absolute delta from the prior sprint.
+
+    Ties in absolute magnitude are broken by canonical order. When all deltas
+    are zero, returns 'Changed: No change'.
+    """
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
@@ -617,17 +673,57 @@ def _health_summary_lines(
     escalation_rate = calculate_escalation_rate(cards, escalations)
     first_attempt_rate = calculate_first_attempt_rate(cards)
 
-    values: dict[str, int] = {
-        "cycle_time_days": cycle_time,
-        "lead_time_days": lead_time,
-        "throughput": throughput,
-        "wip_violations": wip_violations,
-        "blocked_aging_days": blocked_aging,
-        "escalation_rate_percent": escalation_rate,
-        "first_attempt_rate_percent": first_attempt_rate,
+    prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
+    prior_throughput = calculate_throughput(prior_cards)
+    prior_wip = calculate_wip_violations(prior_cards, wip_limits)
+    prior_blocked = calculate_blocked_aging(prior_cards, as_of)
+    prior_escalation = calculate_escalation_rate(prior_cards, escalations)
+    prior_first_attempt = calculate_first_attempt_rate(prior_cards)
+
+    deltas: dict[str, int] = {
+        "cycle_time_days": cycle_time - prior_cycle,
+        "lead_time_days": lead_time - prior_lead,
+        "throughput": throughput - prior_throughput,
+        "wip_violations": wip_violations - prior_wip,
+        "blocked_aging_days": blocked_aging - prior_blocked,
+        "escalation_rate_percent": escalation_rate - prior_escalation,
+        "first_attempt_rate_percent": first_attempt_rate - prior_first_attempt,
     }
 
-    lines = [f"Status: Attention needed ({len(breached)} metrics breached)"]
-    for metric in breached:
-        lines.append(_format_breached_metric(metric, values[metric], effective[metric]))
-    return lines
+    best_metric: str | None = None
+    best_abs: int = 0
+    for metric in _CANONICAL_ORDER:
+        if metric == "failure_breakdown":
+            continue
+        abs_delta = abs(deltas[metric])
+        if abs_delta > best_abs:
+            best_abs = abs_delta
+            best_metric = metric
+
+    if best_metric is None or best_abs == 0:
+        return "Changed: No change"
+
+    delta = deltas[best_metric]
+    if best_metric in _LOWER_IS_BETTER:
+        direction = "improved" if delta < 0 else "worsened"
+    else:
+        direction = "improved" if delta > 0 else "worsened"
+
+    name = _HEALTH_DISPLAY[best_metric]
+    unit = _changed_unit(best_metric, best_abs)
+    if unit:
+        return f"Changed: {name} {direction} by {best_abs} {unit}"
+    return f"Changed: {name} {direction} by {best_abs}"
+
+
+def _changed_unit(metric: str, magnitude: int) -> str:
+    """The unit word for a changed-metric line, singular or plural as needed."""
+    if metric in ("cycle_time_days", "lead_time_days", "blocked_aging_days"):
+        return "days"
+    if metric == "throughput":
+        return "card" if magnitude == 1 else "cards"
+    if metric == "wip_violations":
+        return ""
+    if metric in ("escalation_rate_percent", "first_attempt_rate_percent"):
+        return "percent"
+    return ""
