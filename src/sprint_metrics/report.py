@@ -739,15 +739,17 @@ def _attention_line(cards: Sequence[Card], as_of: date | None) -> str | None:
     """The 'Attention:' line naming blocked and in-progress card counts.
 
     Returns None when no card is blocked or in progress. The duration shown is
-    the longest block duration among blocked cards.
+    the longest block duration among blocked cards. When ``as_of`` is None the
+    reference date is today, matching the Blocked aging metric.
     """
     _, in_progress, blocked = _summary_counts(cards)
     if blocked == 0 and in_progress == 0:
         return None
     duration = ""
-    if blocked > 0 and as_of is not None:
+    if blocked > 0:
+        reference = as_of if as_of is not None else date.today()
         durations = [
-            (as_of - card.blocked_since).days
+            (reference - card.blocked_since).days
             for card in cards
             if card.blocked_since is not None and not card.is_completed
         ]

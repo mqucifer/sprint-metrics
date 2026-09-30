@@ -302,3 +302,19 @@ def test_attention_counts_match_summary(tmp_path, capsys):
     assert "1 in progress" in attention_line
     assert "- **Blocked**: 1" in output
     assert "- **In progress**: 1" in output
+
+
+def test_attention_line_shows_duration_without_sprint_date(tmp_path, capsys):
+    """When --sprint-date is not provided, the Attention line still shows a
+    duration in parentheses, consistent with the Blocked aging metric which
+    defaults to date.today()."""
+    cards = [
+        {"created": "2024-01-01", "blocked_since": "2024-01-26"},
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    attention_line = next(line for line in output.splitlines() if line.startswith("Attention:"))
+    assert " days)" in attention_line
