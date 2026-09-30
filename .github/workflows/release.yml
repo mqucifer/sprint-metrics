@@ -97,6 +97,27 @@ jobs:
             ghcr.io/mqucifer/sprint-metrics:${{ steps.version-check.outputs.current_short }}
             ghcr.io/mqucifer/sprint-metrics:latest
 
+      - name: Set package visibility to public
+        if: github.event_name == 'push' && steps.version-check.outputs.version_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          response=$(curl -s -w '\n%{http_code}' \
+            -X PATCH \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${API_URL}/user/packages/container/sprint-metrics" \
+            -d '{"visibility":"public"}')
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          if [ "$http_code" != "200" ] && [ "$http_code" != "204" ]; then
+            echo "Failed to set package visibility (HTTP $http_code): $body" >&2
+            exit 1
+          fi
+          echo "Package visibility set to public"
+
       - name: Build container image (dry-run)
         if: github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
