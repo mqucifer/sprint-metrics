@@ -15,32 +15,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Detect version change
         id: version-check
         run: |
           set -euo pipefail
           current=$(grep '^version = ' pyproject.toml | sed 's/^version = "\(.*\)"$/\1/')
-          if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            prior=$(git show HEAD~1:pyproject.toml | grep '^version = ' | sed 's/^version = "\(.*\)"$/\1/')
-          else
-            prior=""
-          fi
           echo "current=$current" >> "$GITHUB_OUTPUT"
           echo "current_short=$(echo "$current" | sed 's/\.[0-9]*$//')" >> "$GITHUB_OUTPUT"
-          echo "prior=$prior" >> "$GITHUB_OUTPUT"
-          if [ -n "$prior" ] && [ "$current" = "$prior" ]; then
+          tag="v${current}"
+          if [ -n "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
             echo "version_changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "version_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Gate — version unchanged, no release
+      - name: Gate — tag exists, no release
         if: github.event_name == 'push' && steps.version-check.outputs.version_changed == 'false'
         run: |
-          echo "Version unchanged (${{ steps.version-check.outputs.current }}) — nothing to release."
+          echo "Tag v${{ steps.version-check.outputs.current }} already exists — nothing to release."
 
       - name: Dry-run — no side effects
         if: github.event_name == 'workflow_dispatch'
