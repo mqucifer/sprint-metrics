@@ -56,22 +56,6 @@ def test_unreleased_is_first_versioned_heading_and_no_version_before_it():
         )
 
 
-def test_pyproject_version_is_1_0_0():
-    """AC1: pyproject.toml version field reads 1.0.0 with other fields unchanged."""
-    import tomllib
-    from pathlib import Path
-
-    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    with open(pyproject, "rb") as f:
-        data = tomllib.load(f)
-    project = data["project"]
-    assert project["version"] == "1.0.0"
-    assert project["name"] == "sprint-metrics"
-    assert project["description"] == "Delivery metrics for the crew's own board."
-    assert project["requires-python"] == ">=3.12,<3.13"
-    assert project["dependencies"] == []
-
-
 def test_changelog_1_0_0_section_has_date_entry_and_unreleased_above():
     """AC2: [1.0.0] has a date suffix, the release entry under Added, and [Unreleased] above it."""
     import re
@@ -104,3 +88,85 @@ def test_changelog_1_0_0_section_has_date_entry_and_unreleased_above():
     assert "blocked-card aging" in entry
     assert "first-attempt rate" in entry
     assert "failure breakdown" in entry
+
+
+def test_pyproject_version_is_1_0_1():
+    """AC1: pyproject.toml version field reads 1.0.1 with other fields unchanged."""
+    import tomllib
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    project = data["project"]
+    assert project["version"] == "1.0.1"
+    assert project["name"] == "sprint-metrics"
+    assert project["description"] == "Delivery metrics for the crew's own board."
+    assert project["requires-python"] == ">=3.12,<3.13"
+    assert project["dependencies"] == []
+
+
+def test_changelog_1_0_1_section_dated_with_entry_and_unreleased_above():
+    """AC2: [1.0.1] has a date suffix, [Unreleased] above it contains only standard
+    subheadings with no entries, and [1.0.0] below remains with its date and entry."""
+    import re
+    from pathlib import Path
+
+    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+    content = changelog.read_text()
+
+    # [1.0.1] heading with date suffix in the form '## [1.0.1] - YYYY-MM-DD'
+    match = re.search(r"^## \[1\.0\.1\] - \d{4}-\d{2}-\d{2}$", content, re.MULTILINE)
+    assert match, "Missing '## [1.0.1] - YYYY-MM-DD' heading"
+
+    # [Unreleased] section appears above [1.0.1]
+    unreleased_match = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
+    assert unreleased_match, "Missing '## [Unreleased]'"
+    assert unreleased_match.start() < match.start()
+
+    # [Unreleased] section contains only the four standard subheadings with no entries
+    after_unreleased = content[unreleased_match.end() :]
+    next_heading = re.search(r"^## \[", after_unreleased, re.MULTILINE)
+    unreleased_section = (
+        after_unreleased[: next_heading.start()] if next_heading else after_unreleased
+    )
+    assert not re.search(r"^\s*-\s", unreleased_section, re.MULTILINE), (
+        "[Unreleased] section contains entries; it should only have subheadings"
+    )
+
+    # [1.0.0] section below [1.0.1] remains with its date
+    match_100 = re.search(r"^## \[1\.0\.0\] - 2025-07-13$", content, re.MULTILINE)
+    assert match_100, "Missing '## [1.0.0] - 2025-07-13' heading"
+    assert match_100.start() > match.start(), "[1.0.0] should appear below [1.0.1]"
+
+
+def test_changelog_heading_order_unreleased_1_0_1_1_0_0():
+    """AC3: versioned headings in order are [Unreleased], [1.0.1] - date,
+    [1.0.0] - 2025-07-13; no version-numbered heading appears before [Unreleased]."""
+    import re
+    from pathlib import Path
+
+    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+    lines = changelog.read_text().splitlines()
+    pattern = re.compile(r"^## \[.+\]")
+    matched_lines = [line for line in lines if pattern.match(line)]
+    assert len(matched_lines) >= 3, (
+        f"Expected at least 3 versioned headings, got {len(matched_lines)}"
+    )
+    assert matched_lines[0] == "## [Unreleased]", (
+        f"First heading is {matched_lines[0]!r}, expected '## [Unreleased]'"
+    )
+    second = matched_lines[1]
+    assert re.match(r"^## \[1\.0\.1\] - \d{4}-\d{2}-\d{2}$", second), (
+        f"Second heading is {second!r}, expected '## [1.0.1] - YYYY-MM-DD'"
+    )
+    assert matched_lines[2] == "## [1.0.0] - 2025-07-13", (
+        f"Third heading is {matched_lines[2]!r}, expected '## [1.0.0] - 2025-07-13'"
+    )
+    # No version-numbered heading before [Unreleased]
+    unreleased_idx = lines.index("## [Unreleased]")
+    version_pattern = re.compile(r"^## \[\d+(\.\d+)*\]")
+    for line in lines[:unreleased_idx]:
+        assert not version_pattern.match(line), (
+            f"Version-numbered heading {line!r} appears before '## [Unreleased]'"
+        )
