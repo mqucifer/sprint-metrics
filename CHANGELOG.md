@@ -10,6 +10,18 @@
 
 ### Removed
 
+## [1.0.2] - 2025-07-15
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Release mechanism: the release workflow now creates the version tag, GitHub Release, and container image independently, completing any missing artifacts on re-run
+
+### Removed
+
 ## [1.0.1] - 2025-07-14
 
 ### Added
