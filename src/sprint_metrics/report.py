@@ -17,7 +17,7 @@ from sprint_metrics.metrics import (
     calculate_top_failure_causes,
     calculate_wip_violations,
 )
-from sprint_metrics.thresholds import _flag, calculate_flags
+from sprint_metrics.thresholds import DEFAULT_THRESHOLDS, _flag, calculate_flags
 
 
 def format_performance_table(
@@ -309,6 +309,11 @@ def format_markdown_report(
     the summary of work in each state — an empty sprint reports zeros rather
     than leaving the Scrum Master to explain a missing section.
 
+    Between the report date and the first section heading, a health summary
+    shows whether any metric breaches its threshold: 'Status: All clear' when
+    none do, or 'Status: Attention needed (N metrics breached)' followed by a
+    bulleted list naming each breached metric with its value and threshold.
+
     When ``prior_sprint`` and ``prior_cards`` are provided, a comparison section
     for the prior sprint is included before the current sprint section, and the
     current sprint's metrics show the prior value and signed change.
@@ -327,6 +332,7 @@ def format_markdown_report(
         "",
         f"Report date: {report_date.isoformat()}",
     ]
+    lines.extend(_health_summary_lines(parsed, wip_limits, escalations, as_of, thresholds))
     if prior_sprint is not None and prior_cards is not None:
         lines.append("")
         lines.extend(
@@ -555,3 +561,73 @@ def _trend_arrow(delta: int) -> str:
     if delta > 0:
         return "\u2191"
     return "\u2192"
+
+
+_HEALTH_DISPLAY: dict[str, str] = {
+    "cycle_time_days": "Cycle time",
+    "lead_time_days": "Lead time",
+    "throughput": "Throughput",
+    "wip_violations": "WIP violations",
+    "blocked_aging_days": "Blocked aging",
+    "escalation_rate_percent": "Escalation rate",
+    "first_attempt_rate_percent": "First attempt rate",
+}
+
+
+def _format_breached_metric(metric: str, value: int, threshold: float) -> str:
+    """A single breached-metric bullet with value and threshold in the metric's unit."""
+    name = _HEALTH_DISPLAY[metric]
+    if metric in ("cycle_time_days", "lead_time_days", "blocked_aging_days"):
+        return f"- {name}: {value} days (threshold {threshold:g} days)"
+    if metric == "throughput":
+        unit = "card" if threshold == 1 else "cards"
+        return f"- {name}: {value} cards (threshold {threshold:g} {unit})"
+    if metric == "wip_violations":
+        return f"- {name}: {value} (threshold {threshold:g})"
+    if metric in ("escalation_rate_percent", "first_attempt_rate_percent"):
+        return f"- {name}: {value}% (threshold {threshold:g}%)"
+    raise ValueError(f"unknown metric for health summary: {metric}")
+
+
+def _health_summary_lines(
+    cards: Sequence[Card],
+    wip_limits: Mapping[str, int] | None,
+    escalations: int,
+    as_of: date | None,
+    thresholds: Mapping[str, float] | None,
+) -> list[str]:
+    """The health summary lines: a status line and, when metrics breach, their bullets.
+
+    Returns an empty list when there are no cards (the 'No performance data
+    available' section handles that case). Otherwise returns the status line
+    followed by one bullet per breached metric, in canonical order.
+    """
+    if not cards:
+        return []
+    flags = calculate_flags(cards, wip_limits, escalations, as_of, thresholds)
+    effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
+    breached = [m for m in _CANONICAL_ORDER if m != "failure_breakdown" and flags.get(m)]
+    if not breached:
+        return ["Status: All clear"]
+
+    cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+    throughput = calculate_throughput(cards)
+    wip_violations = calculate_wip_violations(cards, wip_limits)
+    blocked_aging = calculate_blocked_aging(cards, as_of)
+    escalation_rate = calculate_escalation_rate(cards, escalations)
+    first_attempt_rate = calculate_first_attempt_rate(cards)
+
+    values: dict[str, int] = {
+        "cycle_time_days": cycle_time,
+        "lead_time_days": lead_time,
+        "throughput": throughput,
+        "wip_violations": wip_violations,
+        "blocked_aging_days": blocked_aging,
+        "escalation_rate_percent": escalation_rate,
+        "first_attempt_rate_percent": first_attempt_rate,
+    }
+
+    lines = [f"Status: Attention needed ({len(breached)} metrics breached)"]
+    for metric in breached:
+        lines.append(_format_breached_metric(metric, values[metric], effective[metric]))
+    return lines
