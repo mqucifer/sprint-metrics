@@ -91,7 +91,7 @@ def test_changelog_1_0_0_section_has_date_entry_and_unreleased_above():
 
 
 def test_pyproject_version_is_1_0_1():
-    """AC1: pyproject.toml version field reads 1.0.1 with other fields unchanged."""
+    """AC1: pyproject.toml version field reads 1.0.2 with other fields unchanged."""
     import tomllib
     from pathlib import Path
 
@@ -99,7 +99,7 @@ def test_pyproject_version_is_1_0_1():
     with open(pyproject, "rb") as f:
         data = tomllib.load(f)
     project = data["project"]
-    assert project["version"] == "1.0.1"
+    assert project["version"] == "1.0.2"
     assert project["name"] == "sprint-metrics"
     assert project["description"] == "Delivery metrics for the crew's own board."
     assert project["requires-python"] == ">=3.12,<3.13"
@@ -141,8 +141,8 @@ def test_changelog_1_0_1_section_dated_with_entry_and_unreleased_above():
 
 
 def test_changelog_heading_order_unreleased_1_0_1_1_0_0():
-    """AC3: versioned headings in order are [Unreleased], [1.0.1] - date,
-    [1.0.0] - 2025-07-13; no version-numbered heading appears before [Unreleased]."""
+    """AC3: versioned headings in order are [Unreleased], [1.0.2] - date,
+    [1.0.1] - date, [1.0.0] - 2025-07-13; no version-numbered heading appears before [Unreleased]."""
     import re
     from pathlib import Path
 
@@ -150,18 +150,22 @@ def test_changelog_heading_order_unreleased_1_0_1_1_0_0():
     lines = changelog.read_text().splitlines()
     pattern = re.compile(r"^## \[.+\]")
     matched_lines = [line for line in lines if pattern.match(line)]
-    assert len(matched_lines) >= 3, (
-        f"Expected at least 3 versioned headings, got {len(matched_lines)}"
+    assert len(matched_lines) >= 4, (
+        f"Expected at least 4 versioned headings, got {len(matched_lines)}"
     )
     assert matched_lines[0] == "## [Unreleased]", (
         f"First heading is {matched_lines[0]!r}, expected '## [Unreleased]'"
     )
     second = matched_lines[1]
-    assert re.match(r"^## \[1\.0\.1\] - \d{4}-\d{2}-\d{2}$", second), (
-        f"Second heading is {second!r}, expected '## [1.0.1] - YYYY-MM-DD'"
+    assert re.match(r"^## \[1\.0\.2\] - \d{4}-\d{2}-\d{2}$", second), (
+        f"Second heading is {second!r}, expected '## [1.0.2] - YYYY-MM-DD'"
     )
-    assert matched_lines[2] == "## [1.0.0] - 2025-07-13", (
-        f"Third heading is {matched_lines[2]!r}, expected '## [1.0.0] - 2025-07-13'"
+    third = matched_lines[2]
+    assert re.match(r"^## \[1\.0\.1\] - \d{4}-\d{2}-\d{2}$", third), (
+        f"Third heading is {third!r}, expected '## [1.0.1] - YYYY-MM-DD'"
+    )
+    assert matched_lines[3] == "## [1.0.0] - 2025-07-13", (
+        f"Fourth heading is {matched_lines[3]!r}, expected '## [1.0.0] - 2025-07-13'"
     )
     # No version-numbered heading before [Unreleased]
     unreleased_idx = lines.index("## [Unreleased]")
@@ -170,3 +174,35 @@ def test_changelog_heading_order_unreleased_1_0_1_1_0_0():
         assert not version_pattern.match(line), (
             f"Version-numbered heading {line!r} appears before '## [Unreleased]'"
         )
+
+
+def test_changelog_1_0_2_section_dated_with_fixed_entry_and_unreleased_above():
+    """The [1.0.2] section has a date, [Unreleased] is above it, it contains a Fixed
+    bullet about release corrections, and [1.0.1] is below."""
+    import re
+    from pathlib import Path
+
+    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+    content = changelog.read_text()
+
+    # [1.0.2] heading with date suffix in the form '## [1.0.2] - YYYY-MM-DD'
+    match = re.search(r"^## \[1\.0\.2\] - \d{4}-\d{2}-\d{2}$", content, re.MULTILINE)
+    assert match, "Missing '## [1.0.2] - YYYY-MM-DD' heading"
+
+    # [Unreleased] section appears above [1.0.2]
+    unreleased_match = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
+    assert unreleased_match, "Missing '## [Unreleased]'"
+    assert unreleased_match.start() < match.start()
+
+    # [1.0.2] section has a Fixed bullet mentioning release
+    after_102 = content[match.end() :]
+    next_heading = re.search(r"^## \[", after_102, re.MULTILINE)
+    section = after_102[: next_heading.start()] if next_heading else after_102
+    fixed_match = re.search(r"^### Fixed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
+    assert fixed_match, "No ### Fixed subsection in [1.0.2]"
+    assert "release" in fixed_match.group(1).lower(), "[1.0.2] Fixed section should mention release"
+
+    # [1.0.1] section below [1.0.2] remains with its date
+    match_101 = re.search(r"^## \[1\.0\.1\] - 2025-07-14$", content, re.MULTILINE)
+    assert match_101, "Missing '## [1.0.1] - 2025-07-14' heading"
+    assert match_101.start() > match.start(), "[1.0.1] should appear below [1.0.2]"

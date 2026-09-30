@@ -10,6 +10,18 @@
 
 ### Removed
 
+## [1.0.2] - 2025-07-15
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Release mechanism: corrected the release workflow to independently check and create the git tag, GitHub Release, and container image, so a partial failure does not prevent completing the release on a subsequent run
+
+### Removed
+
 ## [1.0.1] - 2025-07-14
 
 ### Added
