@@ -86,7 +86,7 @@ jobs:
           docker stop "$CONTAINER_ID"
           docker rm "$CONTAINER_ID"
           rm -f "$CARDS_FILE"
-          if docker ps --filter "publish=9100" | grep -q .; then
+          if docker ps -q --filter "publish=9100" | grep -q .; then
             echo "ERROR: A container is still publishing port 9100"
             exit 1
           fi
