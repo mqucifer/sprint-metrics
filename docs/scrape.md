@@ -65,3 +65,47 @@ An HTTP GET to `/json` returns the JSON API response:
 
 If the cards file is deleted while the server is running, subsequent requests to
 `/metrics` return HTTP 500 with a body containing `sprint-metrics:`.
+
+## Container deployment
+
+To run scrape mode as a persistent service in a container (e.g. on Kubernetes or
+Docker Compose), start the image with the scrape port published and the cards file
+mounted:
+
+```
+docker run -d -p 9100:9100 -v /path/to/cards.json:/input/cards.json \
+  ghcr.io/mqucifer/sprint-metrics:1.0.0 /input/cards.json --scrape --port 9100
+```
+
+The container path for the cards file is `/input/cards.json`. The `-p 9100:9100`
+flag publishes host port 9100 to the container's port 9100, where the scrape
+server listens.
+
+Once running, the server exposes:
+
+- `/metrics` — Prometheus text exposition format
+- `/json` — JSON API response
+
+The cards file is re-read on every request, so the container does not need a
+restart when board data changes.
+
+### Custom port
+
+If port 9100 is unavailable on the host or disallowed by network policy, use
+`--port` to choose a different port inside the container and map it to whatever
+host port you need:
+
+```
+docker run -d -p 8080:8080 -v /path/to/cards.json:/input/cards.json \
+  ghcr.io/mqucifer/sprint-metrics:1.0.0 /input/cards.json --scrape --port 8080
+```
+
+To let the OS assign an ephemeral port (useful when an orchestrator-managed
+service assigns the port for you), pass `--port 0`:
+
+```
+docker run -d -v /path/to/cards.json:/input/cards.json \
+  ghcr.io/mqucifer/sprint-metrics:1.0.0 /input/cards.json --scrape --port 0
+```
+
+The actual port is printed at startup on stdout.
