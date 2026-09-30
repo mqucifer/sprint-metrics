@@ -656,3 +656,59 @@ def test_changed_line_no_change_followed_by_blank_and_heading(tmp_path, capsys):
     changed_idx = next(i for i, line in enumerate(lines) if line == "Changed: No change")
     assert lines[changed_idx + 1] == ""
     assert lines[changed_idx + 2].startswith("## ")
+
+
+def test_prior_sprint_markdown_no_threshold_context_when_not_breached(tmp_path, capsys):
+    """AC5: prior sprint cycle time 6 days, current cycle time 4 days, threshold 5
+    (current does not breach). The cycle time line shows the arrow and prior value
+    but no warning marker and no threshold parenthetical."""
+    prior_card = {"created": "2023-12-31", "started": "2024-01-02", "completed": "2024-01-08"}
+    current_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [prior_card], "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main(
+        [str(path), "--prior-sprint", "2024-01", "--thresholds", str(thresholds_path), "--markdown"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days \u2193 (was 6 days, -2)" in captured.out
+    assert "\u26a0\ufe0f" not in captured.out
+    assert "(threshold:" not in captured.out
+
+
+def test_prior_sprint_markdown_first_attempt_rate_breached_shows_arrow_and_threshold(
+    tmp_path, capsys
+):
+    """AC8: prior sprint first-attempt rate 40%, current 67%, threshold 80. The line
+    contains both the directional arrow and the threshold context on a single line,
+    so the reader sees direction and the breached target together."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    not_first = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    sprints = {
+        "2024-01": [first_attempt, first_attempt, not_first, not_first, not_first],
+        "2024-02": [first_attempt, first_attempt, not_first],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"first_attempt_rate_percent": 80}))
+    exit_code = main(
+        [str(path), "--prior-sprint", "2024-01", "--thresholds", str(thresholds_path), "--markdown"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert (
+        "- **First-attempt rate**: 67% \u2191 (was 40%, +27) \u26a0\ufe0f (threshold: 80%)"
+        in captured.out
+    )

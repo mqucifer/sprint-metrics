@@ -1682,7 +1682,7 @@ def test_markdown_omits_top_failure_causes_when_all_first_attempt(tmp_path, caps
 def test_markdown_flags_first_attempt_rate_below_threshold(tmp_path, capsys):
     """AC3: 4 completed cards (1 first-attempt, 2 parse/Developer, 1 edit/Developer)
     with --thresholds {"first_attempt_rate_percent": 50} shows
-    '- **First-attempt rate**: 25% \u26a0\ufe0f'."""
+    '- **First-attempt rate**: 25% \u26a0\ufe0f (threshold: 50%)'."""
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {
@@ -1718,7 +1718,7 @@ def test_markdown_flags_first_attempt_rate_below_threshold(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First-attempt rate**: 25% \u26a0\ufe0f" in captured.out
+    assert "- **First-attempt rate**: 25% \u26a0\ufe0f (threshold: 50%)" in captured.out
 
 
 def test_markdown_empty_cards_shows_zero_rate_and_no_data(tmp_path, capsys):

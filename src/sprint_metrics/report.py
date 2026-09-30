@@ -17,7 +17,7 @@ from sprint_metrics.metrics import (
     calculate_top_failure_causes,
     calculate_wip_violations,
 )
-from sprint_metrics.thresholds import DEFAULT_THRESHOLDS, _flag, calculate_flags
+from sprint_metrics.thresholds import DEFAULT_THRESHOLDS, _flag, _threshold_context, calculate_flags
 
 
 def format_performance_table(
@@ -162,9 +162,10 @@ def _sprint_section(
     arrow (\u2193, \u2191, or \u2192) between the current value and the parenthetical,
     the prior sprint's value, and the signed change from prior to current.
 
-    When ``thresholds`` is provided, a \u26a0\ufe0f marker is appended to any metric line
-    whose value exceeds its threshold (strict greater-than; meeting the
-    threshold exactly is not a breach).
+    When ``thresholds`` is provided, a \u26a0\ufe0f marker followed by a parenthetical
+    naming the configured threshold is appended to any metric line whose value
+    exceeds its threshold (strict greater-than; meeting the threshold exactly
+    is not a breach).
 
     When ``metrics`` is provided, only the requested metric lines are emitted;
     the section heading is always present when cards exist.
@@ -198,49 +199,49 @@ def _sprint_section(
                 lines.append(
                     f"- **Cycle time**: {cycle_time} days {_trend_arrow(delta)} "
                     f"(was {prior_cycle} days, {_signed(delta)})"
-                    f"{_flag(cycle_time, thresholds, 'cycle_time_days')}"
+                    f"{_threshold_context(cycle_time, thresholds, 'cycle_time_days')}"
                 )
             elif metric == "lead_time_days":
                 delta = lead_time - prior_lead
                 lines.append(
                     f"- **Lead time**: {lead_time} days {_trend_arrow(delta)} "
                     f"(was {prior_lead} days, {_signed(delta)})"
-                    f"{_flag(lead_time, thresholds, 'lead_time_days')}"
+                    f"{_threshold_context(lead_time, thresholds, 'lead_time_days')}"
                 )
             elif metric == "throughput":
                 delta = throughput - prior_throughput
                 lines.append(
                     f"- **Throughput**: {throughput} cards {_trend_arrow(delta)} "
                     f"(was {prior_throughput}, {_signed(delta)})"
-                    f"{_flag(throughput, thresholds, 'throughput')}"
+                    f"{_threshold_context(throughput, thresholds, 'throughput')}"
                 )
             elif metric == "wip_violations":
                 delta = wip_violations - prior_wip
                 lines.append(
                     f"- **WIP violations**: {wip_violations} {_trend_arrow(delta)} "
                     f"(was {prior_wip}, {_signed(delta)})"
-                    f"{_flag(wip_violations, thresholds, 'wip_violations')}"
+                    f"{_threshold_context(wip_violations, thresholds, 'wip_violations')}"
                 )
             elif metric == "blocked_aging_days":
                 delta = blocked_aging - prior_blocked
                 lines.append(
                     f"- **Blocked aging**: {blocked_aging} days {_trend_arrow(delta)} "
                     f"(was {prior_blocked} days, {_signed(delta)})"
-                    f"{_flag(blocked_aging, thresholds, 'blocked_aging_days')}"
+                    f"{_threshold_context(blocked_aging, thresholds, 'blocked_aging_days')}"
                 )
             elif metric == "escalation_rate_percent":
                 delta = escalation_rate - prior_escalation
                 lines.append(
                     f"- **Escalation rate**: {escalation_rate}% {_trend_arrow(delta)} "
                     f"(was {prior_escalation}%, {_signed(delta)})"
-                    f"{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}"
+                    f"{_threshold_context(escalation_rate, thresholds, 'escalation_rate_percent')}"
                 )
             elif metric == "first_attempt_rate_percent":
                 delta = first_attempt_rate - prior_first_attempt
                 lines.append(
                     f"- **First-attempt rate**: {first_attempt_rate}% {_trend_arrow(delta)} "
                     f"(was {prior_first_attempt}%, {_signed(delta)})"
-                    f"{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
+                    f"{_threshold_context(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
                 )
         if "failure_breakdown" in selected and failure_breakdown:
             lines.append("")
@@ -255,31 +256,31 @@ def _sprint_section(
     for metric in selected:
         if metric == "cycle_time_days":
             lines.append(
-                f"- **Cycle time**: {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')}"
+                f"- **Cycle time**: {cycle_time} days{_threshold_context(cycle_time, thresholds, 'cycle_time_days')}"
             )
         elif metric == "lead_time_days":
             lines.append(
-                f"- **Lead time**: {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')}"
+                f"- **Lead time**: {lead_time} days{_threshold_context(lead_time, thresholds, 'lead_time_days')}"
             )
         elif metric == "throughput":
             lines.append(
-                f"- **Throughput**: {throughput} cards{_flag(throughput, thresholds, 'throughput')}"
+                f"- **Throughput**: {throughput} cards{_threshold_context(throughput, thresholds, 'throughput')}"
             )
         elif metric == "wip_violations":
             lines.append(
-                f"- **WIP violations**: {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}"
+                f"- **WIP violations**: {wip_violations}{_threshold_context(wip_violations, thresholds, 'wip_violations')}"
             )
         elif metric == "blocked_aging_days":
             lines.append(
-                f"- **Blocked aging**: {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}"
+                f"- **Blocked aging**: {blocked_aging} days{_threshold_context(blocked_aging, thresholds, 'blocked_aging_days')}"
             )
         elif metric == "escalation_rate_percent":
             lines.append(
-                f"- **Escalation rate**: {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}"
+                f"- **Escalation rate**: {escalation_rate}%{_threshold_context(escalation_rate, thresholds, 'escalation_rate_percent')}"
             )
         elif metric == "first_attempt_rate_percent":
             lines.append(
-                f"- **First-attempt rate**: {first_attempt_rate}%{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
+                f"- **First-attempt rate**: {first_attempt_rate}%{_threshold_context(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
             )
     if "failure_breakdown" in selected and failure_breakdown:
         lines.append("")
