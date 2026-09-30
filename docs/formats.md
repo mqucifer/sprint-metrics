@@ -9,6 +9,12 @@ The JSON response top level carries:
 - `failure_breakdown` — an array of objects, each with `class`, `role`, and `count`
 - `sprint_date` (optional) — present when `--sprint-date` is supplied
 
+## API versioning
+
+The `api_version` field in every JSON response identifies the response shape. As long as the tool still reports `api_version` `"1"`, the response shape — fields, types, and their semantics — is unchanged from what you received before the upgrade. No MINOR or PATCH release will alter the response for an existing `api_version`.
+
+A breaking change is the removal of an existing `api_version`. This requires a MAJOR package version bump. The CHANGELOG for that release names the removed version and the replacement. The only way your response shape changes is across a MAJOR boundary that retires the `api_version` you were using.
+
 The full JSON Schema is shown below. The `--schema` flag (used with `--json`)
 prints this schema to standard output.
 
