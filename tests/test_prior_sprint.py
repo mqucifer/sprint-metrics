@@ -79,7 +79,7 @@ def test_prior_sprint_markdown_shows_prior_values_and_change(tmp_path, capsys):
     2024-01-02, completed 2024-01-08) and sprint 2024-02 has 5 completed cards
     (created 2024-01-01, started 2024-01-03, completed 2024-01-07). Running with
     --prior-sprint 2024-01 and --markdown shows the prior values and signed
-    change for cycle time, lead time, and throughput."""
+    change for cycle time, lead time, and throughput, each with a trend arrow."""
     prior_card = {"created": "2023-12-31", "started": "2024-01-02", "completed": "2024-01-08"}
     current_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     sprints = {"2024-01": [prior_card] * 3, "2024-02": [current_card] * 5}
@@ -89,9 +89,9 @@ def test_prior_sprint_markdown_shows_prior_values_and_change(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **Cycle time**: 4 days (was 6 days, -2)" in captured.out
-    assert "- **Lead time**: 6 days (was 8 days, -2)" in captured.out
-    assert "- **Throughput**: 5 (was 3, +2)" in captured.out
+    assert "- **Cycle time**: 4 days \u2193 (was 6 days, -2)" in captured.out
+    assert "- **Lead time**: 6 days \u2193 (was 8 days, -2)" in captured.out
+    assert "- **Throughput**: 5 cards \u2191 (was 3, +2)" in captured.out
 
 
 def test_markdown_without_prior_sprint_has_no_was(tmp_path, capsys):
@@ -111,8 +111,8 @@ def test_prior_sprint_in_flight_card_shows_zero_cycle_time(tmp_path, capsys):
     """AC3: sprint 2024-01 has one in-flight card (created 2024-01-01, started
     2024-01-02, no completed date) and sprint 2024-02 has one completed card
     (created 2024-01-01, started 2024-01-03, completed 2024-01-07). Running with
-    --prior-sprint 2024-01 and --markdown shows cycle time 4 days (was 0 days, +4)
-    and escalation rate 0% (was 0%, 0)."""
+    --prior-sprint 2024-01 and --markdown shows cycle time 4 days \u2191 (was 0 days, +4)
+    and escalation rate 0% \u2192 (was 0%, 0)."""
     in_flight = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
     sprints = {"2024-01": [in_flight], "2024-02": [COMPLETED_CARD]}
     path = tmp_path / "sprints.json"
@@ -121,14 +121,14 @@ def test_prior_sprint_in_flight_card_shows_zero_cycle_time(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **Cycle time**: 4 days (was 0 days, +4)" in captured.out
-    assert "- **Escalation rate**: 0% (was 0%, 0)" in captured.out
+    assert "- **Cycle time**: 4 days \u2191 (was 0 days, +4)" in captured.out
+    assert "- **Escalation rate**: 0% \u2192 (was 0%, 0)" in captured.out
 
 
 def test_prior_sprint_identical_dates_show_zero_change(tmp_path, capsys):
     """AC4: both sprints have one completed card with identical dates. Running
-    with --prior-sprint 2024-01 and --markdown shows cycle time 4 days (was 4
-    days, 0) and throughput 1 (was 1, 0)."""
+    with --prior-sprint 2024-01 and --markdown shows cycle time 4 days \u2192 (was 4
+    days, 0) and throughput 1 cards \u2192 (was 1, 0)."""
     sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
     path = tmp_path / "sprints.json"
     path.write_text(json.dumps(sprints))
@@ -136,8 +136,8 @@ def test_prior_sprint_identical_dates_show_zero_change(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **Cycle time**: 4 days (was 4 days, 0)" in captured.out
-    assert "- **Throughput**: 1 (was 1, 0)" in captured.out
+    assert "- **Cycle time**: 4 days \u2192 (was 4 days, 0)" in captured.out
+    assert "- **Throughput**: 1 cards \u2192 (was 1, 0)" in captured.out
 
 
 def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
@@ -222,7 +222,7 @@ def test_prior_sprint_json_cannot_be_most_recent(tmp_path, capsys):
 def test_prior_sprint_markdown_first_attempt_rate_with_change(tmp_path, capsys):
     """AC1: 2024-01 has 3 completed cards (2 first-attempt, 1 not) and 2024-02 has
     5 completed cards (4 first-attempt, 1 not). --prior-sprint 2024-01 --markdown
-    exits 0 and stdout contains '- **First-attempt rate**: 80% (was 67%, +13)'."""
+    exits 0 and stdout contains '- **First-attempt rate**: 80% \u2191 (was 67%, +13)'."""
     first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     not_first = {
         "created": "2024-01-01",
@@ -241,7 +241,7 @@ def test_prior_sprint_markdown_first_attempt_rate_with_change(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First-attempt rate**: 80% (was 67%, +13)" in captured.out
+    assert "- **First-attempt rate**: 80% \u2191 (was 67%, +13)" in captured.out
 
 
 def test_single_sprint_markdown_first_attempt_rate_no_prior(tmp_path, capsys):
@@ -262,7 +262,7 @@ def test_single_sprint_markdown_first_attempt_rate_no_prior(tmp_path, capsys):
 def test_prior_sprint_markdown_first_attempt_rate_empty_prior(tmp_path, capsys):
     """AC3: 2024-01 is an empty list and 2024-02 has one completed card with
     attempts=1. --prior-sprint 2024-01 --markdown exits 0 and stdout contains
-    '- **First-attempt rate**: 100% (was 0%, +100)'."""
+    '- **First-attempt rate**: 100% \u2191 (was 0%, +100)'."""
     card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     sprints = {"2024-01": [], "2024-02": [card]}
     path = tmp_path / "sprints.json"
@@ -271,13 +271,13 @@ def test_prior_sprint_markdown_first_attempt_rate_empty_prior(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First-attempt rate**: 100% (was 0%, +100)" in captured.out
+    assert "- **First-attempt rate**: 100% \u2191 (was 0%, +100)" in captured.out
 
 
 def test_prior_sprint_markdown_first_attempt_rate_zero_change(tmp_path, capsys):
     """AC4: 2024-01 and 2024-02 each have one completed card with attempts=2 and
     failure_class='bug'. --prior-sprint 2024-01 --markdown exits 0 and stdout
-    contains '- **First-attempt rate**: 0% (was 0%, 0)'."""
+    contains '- **First-attempt rate**: 0% \u2192 (was 0%, 0)'."""
     card = {
         "created": "2024-01-01",
         "started": "2024-01-03",
@@ -292,7 +292,7 @@ def test_prior_sprint_markdown_first_attempt_rate_zero_change(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **First-attempt rate**: 0% (was 0%, 0)" in captured.out
+    assert "- **First-attempt rate**: 0% \u2192 (was 0%, 0)" in captured.out
 
 
 def test_prior_sprint_json_top_level_first_attempt_and_top_causes(tmp_path, capsys):
@@ -350,3 +350,161 @@ def test_prior_sprint_json_delta_zero_when_identical_first_attempt(tmp_path, cap
     data = json.loads(captured.out)
     assert data["delta"]["first_attempt_rate_percent"] == 0
     assert data["prior"]["first_attempt_rate_percent"] == 100
+
+
+def test_prior_sprint_markdown_cycle_time_decreased_shows_down_arrow(tmp_path, capsys):
+    """AC1: sprint 2024-01 has cycle time 6 days, sprint 2024-02 has cycle time 4 days.
+    --prior-sprint 2024-01 --markdown shows the ↓ arrow between the value and the
+    open parenthesis on the cycle time line."""
+    prior_card = {"created": "2023-12-30", "started": "2024-01-02", "completed": "2024-01-08"}
+    current_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [prior_card], "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days \u2193 (was 6 days, -2)" in captured.out
+
+
+def test_prior_sprint_markdown_throughput_increased_shows_up_arrow(tmp_path, capsys):
+    """AC2: prior sprint has 1 completed card, current sprint has 3 completed cards.
+    --prior-sprint LABEL --markdown shows the ↑ arrow on the throughput line."""
+    sprints = {
+        "2024-01": [COMPLETED_CARD],
+        "2024-02": [COMPLETED_CARD] * 3,
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Throughput**: 3 cards \u2191 (was 1, +2)" in captured.out
+
+
+def test_prior_sprint_markdown_cycle_time_unchanged_shows_steady_arrow(tmp_path, capsys):
+    """AC3: both sprints have identical cycle time (4 days).
+    --prior-sprint LABEL --markdown shows the → arrow on the cycle time line."""
+    sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days \u2192 (was 4 days, 0)" in captured.out
+
+
+def test_prior_sprint_markdown_no_prior_shows_no_arrow(tmp_path, capsys):
+    """AC4: a single-sprint cards file run with --markdown and no --prior-sprint
+    shows cycle time without any arrow character."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([COMPLETED_CARD]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 4 days" in captured.out
+    assert "\u2193" not in captured.out
+    assert "\u2191" not in captured.out
+    assert "\u2192" not in captured.out
+
+
+def test_prior_sprint_markdown_first_attempt_rate_increased_shows_up_arrow(tmp_path, capsys):
+    """AC5: prior sprint has 50% first-attempt rate, current sprint has 100%.
+    --prior-sprint LABEL --markdown shows the ↑ arrow on the first-attempt rate line."""
+    first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    not_first = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "attempts": 2,
+        "failure_class": "bug",
+    }
+    sprints = {
+        "2024-01": [first_attempt, not_first],
+        "2024-02": [first_attempt, first_attempt],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **First-attempt rate**: 100% \u2191 (was 50%, +50)" in captured.out
+
+
+def test_prior_sprint_markdown_arrows_on_all_numeric_metrics(tmp_path, capsys):
+    """AC7: all four remaining numeric metrics (lead time, WIP violations, blocked
+    aging, escalation rate) show a directional arrow in the Current Sprint section."""
+    wip_limits = {"In Progress": 1}
+    prior_sprint = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-09"},
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-08"},
+        {"created": "2024-01-01", "blocked_since": "2024-02-25"},
+    ]
+    current_sprint = [
+        {"created": "2024-02-01", "started": "2024-02-02", "completed": "2024-02-07"},
+        {"created": "2024-02-01", "blocked_since": "2024-02-26"},
+    ]
+    sprints = {"2024-01": prior_sprint, "2024-02": current_sprint}
+    sprints_path = tmp_path / "sprints.json"
+    sprints_path.write_text(json.dumps(sprints))
+    limits_path = tmp_path / "wip-limits.json"
+    limits_path.write_text(json.dumps(wip_limits))
+    exit_code = main(
+        [
+            str(sprints_path),
+            "--prior-sprint",
+            "2024-01",
+            "--markdown",
+            "--sprint-date",
+            "2024-03-01",
+            "--wip-limits",
+            str(limits_path),
+            "--escalations",
+            "1",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "6 days \u2193 (was 8 days" in captured.out
+    assert "0 \u2193 (was 1" in captured.out
+    assert "4 days \u2193 (was 5 days" in captured.out
+    assert "100% \u2191 (was 50%" in captured.out
+
+
+def test_prior_sprint_markdown_arrows_only_in_current_section(tmp_path, capsys):
+    """AC8: the text between '## Prior Sprint' and '## Current Sprint' contains no
+    arrow characters, and every metric bullet line between '## Current Sprint' and
+    '## Crew Performance Summary' that contains '(was' also contains exactly one
+    arrow character."""
+    prior_card = {"created": "2023-12-31", "started": "2024-01-02", "completed": "2024-01-08"}
+    current_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [prior_card], "2024-02": [current_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    output = captured.out
+    arrows = ("\u2193", "\u2191", "\u2192")
+
+    prior_start = output.index("## Prior Sprint")
+    current_start = output.index("## Current Sprint")
+    summary_start = output.index("## Crew Performance Summary")
+
+    prior_section = output[prior_start:current_start]
+    for arrow in arrows:
+        assert arrow not in prior_section, f"arrow {arrow!r} found in Prior Sprint section"
+
+    current_section = output[current_start:summary_start]
+    metric_lines = [line for line in current_section.splitlines() if "(was" in line]
+    assert metric_lines, "no metric lines with '(was' found in Current Sprint section"
+    for line in metric_lines:
+        arrow_count = sum(1 for a in arrows if a in line)
+        assert arrow_count == 1, f"expected exactly one arrow in {line!r}, found {arrow_count}"

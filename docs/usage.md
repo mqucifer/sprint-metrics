@@ -116,13 +116,13 @@ Report date: 2024-02-10
 
 ## Current Sprint
 
-- **Cycle time**: 4 days (was 6 days, -2)
-- **Lead time**: 6 days (was 7 days, -1)
-- **Throughput**: 1 (was 1, 0)
-- **WIP violations**: 0 (was 0, 0)
-- **Blocked aging**: 0 days (was 0 days, 0)
-- **Escalation rate**: 0% (was 0%, 0)
-- **First-attempt rate**: 100% (was 100%, 0)
+- **Cycle time**: 4 days ↓ (was 6 days, -2)
+- **Lead time**: 6 days ↓ (was 7 days, -1)
+- **Throughput**: 1 cards → (was 1, 0)
+- **WIP violations**: 0 → (was 0, 0)
+- **Blocked aging**: 0 days → (was 0 days, 0)
+- **Escalation rate**: 0% → (was 0%, 0)
+- **First-attempt rate**: 100% → (was 100%, 0)
 
 ## Crew Performance Summary
 
@@ -130,6 +130,8 @@ Report date: 2024-02-10
 - **In progress**: 0
 - **Blocked**: 0
 ```
+
+A directional arrow between the current value and the parenthetical shows movement compared to the prior sprint: ↓ means the number decreased, ↑ means it increased, and → means it is unchanged.
 
 The report date reflects the day the example was captured. The `--prior-sprint` flag works with `--markdown` and `--json`; without `--markdown`, the default table output ignores the prior sprint.
 

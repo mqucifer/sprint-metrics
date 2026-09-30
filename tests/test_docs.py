@@ -635,7 +635,7 @@ def test_sprint_range_doc_error_missing_sprint(tmp_path, capsys):
 def test_prior_sprint_doc_output_matches(tmp_path, capsys):
     """AC2: the sprints JSON in the --prior-sprint section of docs/usage.md, run through
     cli.main() with --prior-sprint 2024-01 and --markdown, exits 0 and stdout contains
-    the expected comparison line for cycle time."""
+    the expected comparison line for cycle time with a trend arrow."""
     text = (DOCS_DIR / "usage.md").read_text()
     section_start = text.index("## --prior-sprint")
     section_text = text[section_start:]
@@ -648,7 +648,7 @@ def test_prior_sprint_doc_output_matches(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "- **Cycle time**: 4 days (was 6 days, -2)" in captured.out
+    assert "- **Cycle time**: 4 days \u2193 (was 6 days, -2)" in captured.out
 
 
 def test_prior_doc_output_matches(tmp_path, capsys):
