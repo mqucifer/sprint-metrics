@@ -237,3 +237,36 @@ def wip_violation_details(
         if peak > limit:
             details.append((state, peak, limit))
     return details
+
+
+def blocked_aging_detail(
+    cards: Iterable[Card | Mapping[str, object]],
+    as_of: date | None = None,
+) -> list[tuple[date, date]]:
+    """Return the (created, blocked_since) dates of cards producing the maximum blocked aging.
+
+    Computes each blocked card's aging the same way ``calculate_blocked_aging``
+    does: completed cards use their completion date, in-flight cards use
+    ``as_of`` (or today). Returns a list of (created, blocked_since) tuples for
+    every card at the maximum (ties included). Returns an empty list when no
+    card is blocked or the maximum aging is 0.
+    """
+    reference = as_of if as_of is not None else date.today()
+    parsed = _as_cards(cards)
+    agings: list[tuple[int, date, date]] = []
+    for card in parsed:
+        if card.blocked_since is None:
+            continue
+        if card.completed is not None:
+            aging = (card.completed - card.blocked_since).days
+        else:
+            aging = (reference - card.blocked_since).days
+        agings.append((aging, card.created, card.blocked_since))
+    if not agings:
+        return []
+    max_aging = max(a for a, _, _ in agings)
+    if max_aging == 0:
+        return []
+    return [
+        (created, blocked_since) for aging, created, blocked_since in agings if aging == max_aging
+    ]

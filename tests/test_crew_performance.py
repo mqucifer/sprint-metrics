@@ -1969,3 +1969,130 @@ def test_markdown_wip_detail_line_followed_by_next_metric(run_command):
     assert detail_line.startswith("  - ")
     next_metric_line = lines[wip_idx + 2]
     assert next_metric_line.startswith("- **Blocked aging**:")
+
+
+def test_markdown_blocked_aging_names_worst_card(run_command):
+    """AC1: one card blocked since 2024-01-02 with --sprint-date 2024-01-31 shows
+    an indented line beneath the blocked-aging metric naming the card's creation
+    date and blocked-since date."""
+    cards = [{"created": "2024-01-01", "blocked_since": "2024-01-02"}]
+    exit_code, output, _ = run_command(cards, sprint_date="2024-01-31", markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 29 days")
+    detail_line = lines[aging_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2024-01-01" in detail_line
+    assert "2024-01-02" in detail_line
+
+
+def test_markdown_blocked_aging_zero_shows_no_indented_detail(run_command):
+    """AC2: a card with no blocked_since shows blocked aging 0 days and no
+    indented line beneath it."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 0 days")
+    next_line = lines[aging_idx + 1]
+    assert not next_line.startswith("  - ")
+
+
+def test_markdown_blocked_aging_names_only_worst_card(run_command):
+    """AC3: two blocked cards with different aging shows an indented line naming
+    only the card with the maximum aging (card B, blocked 30 days), not the other
+    (card A, blocked 15 days)."""
+    card_a = {"created": "2024-01-01", "blocked_since": "2024-01-16"}
+    card_b = {"created": "2024-01-05", "blocked_since": "2024-01-01"}
+    exit_code, output, _ = run_command([card_a, card_b], sprint_date="2024-01-31", markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 30 days")
+    detail_line = lines[aging_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2024-01-05" in detail_line
+    assert "2024-01-01" in detail_line
+    assert "2024-01-16" not in detail_line
+
+
+def test_markdown_blocked_aging_names_tied_cards(run_command):
+    """AC4: two blocked cards both blocked since 2024-01-01 with --sprint-date
+    2024-01-31 shows two indented lines, one per card, both with blocked_since
+    2024-01-01."""
+    card_a = {"created": "2024-01-01", "blocked_since": "2024-01-01"}
+    card_b = {"created": "2024-01-03", "blocked_since": "2024-01-01"}
+    exit_code, output, _ = run_command([card_a, card_b], sprint_date="2024-01-31", markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 30 days")
+    line1 = lines[aging_idx + 1]
+    line2 = lines[aging_idx + 2]
+    assert line1.startswith("  - ")
+    assert "2024-01-01" in line1
+    assert line2.startswith("  - ")
+    assert "2024-01-03" in line2
+
+
+def test_markdown_blocked_aging_only_metric_shows_exactly_two_lines(tmp_path, capsys):
+    """AC6 (UX): --markdown --sprint-date 2024-01-31 --metrics blocked_aging_days
+    with one blocked card shows exactly the metric line and its indented detail
+    in the sprint section, with no other metric lines."""
+    cards = [{"created": "2024-01-01", "blocked_since": "2024-01-02"}]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main(
+        [
+            str(cards_path),
+            "--markdown",
+            "--sprint-date",
+            "2024-01-31",
+            "--metrics",
+            "blocked_aging_days",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 29 days")
+    detail_line = lines[aging_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2024-01-01" in detail_line
+    assert "2024-01-02" in detail_line
+    assert "- **Cycle time**" not in captured.out
+    assert "- **Lead time**" not in captured.out
+    assert "- **Throughput**" not in captured.out
+    assert "- **WIP violations**" not in captured.out
+    assert "- **Escalation rate**" not in captured.out
+    assert "- **First-attempt rate**" not in captured.out
+
+
+def test_markdown_blocked_aging_names_completed_card_dates(run_command):
+    """AC7 (UX): a card that was blocked and later completed still names its
+    creation and blocked-since dates in the indented context line."""
+    cards = [{"created": "2024-01-05", "blocked_since": "2024-01-08", "completed": "2024-01-10"}]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 2 days")
+    detail_line = lines[aging_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2024-01-05" in detail_line
+    assert "2024-01-08" in detail_line
+
+
+def test_markdown_blocked_aging_zero_no_indented_line_before_next_metric(run_command):
+    """AC8 (UX): when blocked aging is 0 days, the line immediately following
+    the metric line is the next metric in canonical order (escalation rate),
+    with no indented line between them."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 0 days")
+    next_line = lines[aging_idx + 1]
+    assert next_line.startswith("- **Escalation rate**:")

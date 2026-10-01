@@ -8,6 +8,7 @@ from datetime import date
 
 from sprint_metrics.card import Card, _as_cards
 from sprint_metrics.metrics import (
+    blocked_aging_detail,
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
@@ -233,6 +234,11 @@ def _sprint_section(
                     f"(was {prior_blocked} days, {_signed(delta)})"
                     f"{_threshold_context(blocked_aging, thresholds, 'blocked_aging_days')}"
                 )
+                if blocked_aging > 0:
+                    for created, blocked_since in blocked_aging_detail(cards, as_of):
+                        lines.append(
+                            f"  - created {created.isoformat()}, blocked since {blocked_since.isoformat()}"
+                        )
             elif metric == "escalation_rate_percent":
                 delta = escalation_rate - prior_escalation
                 lines.append(
@@ -281,6 +287,11 @@ def _sprint_section(
             lines.append(
                 f"- **Blocked aging**: {blocked_aging} days{_threshold_context(blocked_aging, thresholds, 'blocked_aging_days')}"
             )
+            if blocked_aging > 0:
+                for created, blocked_since in blocked_aging_detail(cards, as_of):
+                    lines.append(
+                        f"  - created {created.isoformat()}, blocked since {blocked_since.isoformat()}"
+                    )
         elif metric == "escalation_rate_percent":
             lines.append(
                 f"- **Escalation rate**: {escalation_rate}%{_threshold_context(escalation_rate, thresholds, 'escalation_rate_percent')}"
