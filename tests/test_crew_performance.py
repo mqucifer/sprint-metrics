@@ -2096,3 +2096,70 @@ def test_markdown_blocked_aging_zero_no_indented_line_before_next_metric(run_com
     aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 0 days")
     next_line = lines[aging_idx + 1]
     assert next_line.startswith("- **Escalation rate**:")
+
+
+def test_markdown_summary_appears_before_current_sprint(run_command):
+    """AC1: the Crew Performance Summary heading appears before the Current Sprint
+    heading, and both appear after the Report date line."""
+    exit_code, output, _ = run_command([COMPLETED_CARD], markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    date_idx = next(i for i, line in enumerate(lines) if line.startswith("Report date:"))
+    summary_idx = next(i for i, line in enumerate(lines) if line == "## Crew Performance Summary")
+    current_idx = next(i for i, line in enumerate(lines) if line == "## Current Sprint")
+    assert date_idx < summary_idx < current_idx
+
+
+def test_markdown_summary_appears_before_no_data_when_empty(run_command):
+    """AC3: with an empty cards file the summary section with zero counts appears
+    before the 'No performance data available' line."""
+    exit_code, output, _ = run_command([], markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    summary_idx = next(i for i, line in enumerate(lines) if line == "## Crew Performance Summary")
+    no_data_idx = next(i for i, line in enumerate(lines) if line == "No performance data available")
+    assert summary_idx < no_data_idx
+    assert "- **Completed**: 0" in output
+    assert "- **In progress**: 0" in output
+    assert "- **Blocked**: 0" in output
+
+
+def test_markdown_first_heading_is_summary_and_blocked_before_cycle_time(run_command):
+    """AC5 (UX): the first ## heading is the Crew Performance Summary, and the
+    Blocked count line appears before any Cycle time line."""
+    cards = [
+        COMPLETED_CARD,
+        COMPLETED_CARD,
+        COMPLETED_CARD,
+        {"created": "2024-07-03", "started": "2024-07-05"},
+        {"created": "2024-07-03", "started": "2024-07-04", "blocked_since": "2024-07-07"},
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    first_heading = next(line for line in lines if line.startswith("## "))
+    assert first_heading == "## Crew Performance Summary"
+    assert output.index("- **Blocked**: 1") < output.index("- **Cycle time**:")
+
+
+def test_markdown_summary_counts_sum_to_total_card_count(run_command):
+    """AC6 (UX): the three summary counts sum to the total number of cards."""
+    import re
+
+    cards = [
+        COMPLETED_CARD,
+        COMPLETED_CARD,
+        COMPLETED_CARD,
+        {"created": "2024-07-03", "started": "2024-07-05"},
+        {"created": "2024-07-03", "started": "2024-07-04", "blocked_since": "2024-07-07"},
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    completed = int(re.search(r"- \*\*Completed\*\*: (\d+)", output).group(1))
+    in_progress = int(re.search(r"- \*\*In progress\*\*: (\d+)", output).group(1))
+    blocked = int(re.search(r"- \*\*Blocked\*\*: (\d+)", output).group(1))
+    assert completed + in_progress + blocked == 5

@@ -324,8 +324,8 @@ def format_markdown_report(
     """Render the crew performance metrics as a markdown report for the standup issue.
 
     The report is written to be pasted straight into the standup issue, so it
-    always opens with its heading and the date it covers, and always closes with
-    the summary of work in each state — an empty sprint reports zeros rather
+    always opens with its heading and the date it covers, followed immediately
+    by the summary of work in each state — an empty sprint reports zeros rather
     than leaving the Scrum Master to explain a missing section.
 
     Between the report date and the first section heading, a health summary
@@ -356,6 +356,8 @@ def format_markdown_report(
     lines.extend(
         _health_summary_lines(parsed, wip_limits, escalations, as_of, thresholds, prior_cards)
     )
+    lines.append("")
+    lines.extend(_summary_section(parsed))
     if prior_sprint is not None and prior_cards is not None:
         lines.append("")
         lines.extend(
@@ -365,8 +367,6 @@ def format_markdown_report(
     lines.extend(
         _sprint_section(parsed, wip_limits, escalations, as_of, prior_cards, thresholds, metrics)
     )
-    lines.append("")
-    lines.extend(_summary_section(parsed))
     return "\n".join(lines)
 
 

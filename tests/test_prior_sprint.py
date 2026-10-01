@@ -479,9 +479,8 @@ def test_prior_sprint_markdown_arrows_on_all_numeric_metrics(tmp_path, capsys):
 
 def test_prior_sprint_markdown_arrows_only_in_current_section(tmp_path, capsys):
     """AC8: the text between '## Prior Sprint' and '## Current Sprint' contains no
-    arrow characters, and every metric bullet line between '## Current Sprint' and
-    '## Crew Performance Summary' that contains '(was' also contains exactly one
-    arrow character."""
+    arrow characters, and every metric bullet line in the '## Current Sprint' section
+    that contains '(was' also contains exactly one arrow character."""
     prior_card = {"created": "2023-12-31", "started": "2024-01-02", "completed": "2024-01-08"}
     current_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     sprints = {"2024-01": [prior_card], "2024-02": [current_card]}
@@ -496,13 +495,12 @@ def test_prior_sprint_markdown_arrows_only_in_current_section(tmp_path, capsys):
 
     prior_start = output.index("## Prior Sprint")
     current_start = output.index("## Current Sprint")
-    summary_start = output.index("## Crew Performance Summary")
 
     prior_section = output[prior_start:current_start]
     for arrow in arrows:
         assert arrow not in prior_section, f"arrow {arrow!r} found in Prior Sprint section"
 
-    current_section = output[current_start:summary_start]
+    current_section = output[current_start:]
     metric_lines = [line for line in current_section.splitlines() if "(was" in line]
     assert metric_lines, "no metric lines with '(was' found in Current Sprint section"
     for line in metric_lines:
@@ -712,3 +710,21 @@ def test_prior_sprint_markdown_first_attempt_rate_breached_shows_arrow_and_thres
         "- **First-attempt rate**: 67% \u2191 (was 40%, +27) \u26a0\ufe0f (threshold: 80%)"
         in captured.out
     )
+
+
+def test_markdown_summary_appears_before_prior_and_current_sprint(tmp_path, capsys):
+    """AC2: the Crew Performance Summary heading appears before the Prior Sprint
+    heading, which appears before the Current Sprint heading."""
+    prior_card = {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-08"}
+    sprints = {"2024-01": [prior_card], "2024-02": [COMPLETED_CARD]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    summary_idx = next(i for i, line in enumerate(lines) if line == "## Crew Performance Summary")
+    prior_idx = next(i for i, line in enumerate(lines) if line == "## Prior Sprint 2024-01")
+    current_idx = next(i for i, line in enumerate(lines) if line == "## Current Sprint")
+    assert summary_idx < prior_idx < current_idx
