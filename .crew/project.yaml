@@ -13,6 +13,10 @@ intent:
     - Outputs a table by default, or JSON, markdown, or Prometheus text exposition
       format.
     - Serves the Prometheus metrics at /metrics in scrape mode.
+    - A service, run from the released container image, that accepts board events
+      over HTTP, keeps their history in Postgres under its own schema on a shared
+      server, and answers sprint, range and trend queries from that history.
+    - The service's logs and traces, sent as OpenTelemetry over OTLP.
     - Packaging and deployment of the tool so the crew can invoke it.
     out_of_scope:
     - 'Reporting on anything beyond the projects the Sponsor has asked the crew to
