@@ -345,6 +345,10 @@ def format_markdown_report(
     When ``prior_sprint`` and ``prior_cards`` are provided, a 'Changed:' line
     names the metric with the largest absolute delta from the prior sprint.
 
+    The Crew Performance Summary (completed, in-progress, blocked counts)
+    appears immediately after the health summary, before any sprint metric
+    section, so the reader sees sprint health at a glance.
+
     When ``prior_sprint`` and ``prior_cards`` are provided, a comparison section
     for the prior sprint is included before the current sprint section, and the
     current sprint's metrics show the prior value and signed change.
@@ -366,6 +370,8 @@ def format_markdown_report(
     lines.extend(
         _health_summary_lines(parsed, wip_limits, escalations, as_of, thresholds, prior_cards)
     )
+    lines.append("")
+    lines.extend(_summary_section(parsed))
     if prior_sprint is not None and prior_cards is not None:
         lines.append("")
         lines.extend(
@@ -375,8 +381,6 @@ def format_markdown_report(
     lines.extend(
         _sprint_section(parsed, wip_limits, escalations, as_of, prior_cards, thresholds, metrics)
     )
-    lines.append("")
-    lines.extend(_summary_section(parsed))
     return "\n".join(lines)
 
 

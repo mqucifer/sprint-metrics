@@ -202,6 +202,12 @@ Report date: 2024-01-15
 
 Status: All clear
 
+## Crew Performance Summary
+
+- **Completed**: 1
+- **In progress**: 0
+- **Blocked**: 0
+
 ## Current Sprint
 
 - **Cycle time**: 4 days
@@ -211,12 +217,6 @@ Status: All clear
 - **Blocked aging**: 0 days
 - **Escalation rate**: 0%
 - **First-attempt rate**: 100%
-
-## Crew Performance Summary
-
-- **Completed**: 1
-- **In progress**: 0
-- **Blocked**: 0
 ```
 
 > The report date reflects the day the example was captured.
