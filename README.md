@@ -6,7 +6,7 @@ Reports how the crew is performing: cycle time, lead time, throughput per sprint
 
 ### Git dependency
 
-Requires Python 3.12. No third-party runtime packages are needed — the tool uses only the standard library.
+Requires Python 3.12. The tool requires the following third-party runtime packages: psycopg, opentelemetry-sdk, and opentelemetry-exporter-otlp.
 
 ### From git
 
