@@ -16,6 +16,7 @@ from sprint_metrics.metrics import (
     calculate_throughput,
     calculate_top_failure_causes,
     calculate_wip_violations,
+    wip_violation_details,
 )
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS, _flag, _threshold_context, calculate_flags
 
@@ -222,6 +223,9 @@ def _sprint_section(
                     f"(was {prior_wip}, {_signed(delta)})"
                     f"{_threshold_context(wip_violations, thresholds, 'wip_violations')}"
                 )
+                if wip_violations > 0 and wip_limits is not None:
+                    for state, peak, limit in wip_violation_details(cards, wip_limits):
+                        lines.append(f"  - {state}: peak {peak}, limit {limit}")
             elif metric == "blocked_aging_days":
                 delta = blocked_aging - prior_blocked
                 lines.append(
@@ -270,6 +274,9 @@ def _sprint_section(
             lines.append(
                 f"- **WIP violations**: {wip_violations}{_threshold_context(wip_violations, thresholds, 'wip_violations')}"
             )
+            if wip_violations > 0 and wip_limits is not None:
+                for state, peak, limit in wip_violation_details(cards, wip_limits):
+                    lines.append(f"  - {state}: peak {peak}, limit {limit}")
         elif metric == "blocked_aging_days":
             lines.append(
                 f"- **Blocked aging**: {blocked_aging} days{_threshold_context(blocked_aging, thresholds, 'blocked_aging_days')}"

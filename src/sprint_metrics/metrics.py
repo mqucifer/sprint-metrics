@@ -215,3 +215,25 @@ def calculate_top_failure_causes(cards: Iterable[Card | Mapping[str, object]]) -
         counts[key] = counts.get(key, 0) + 1
     sorted_items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return dict(sorted_items[:3])
+
+
+def wip_violation_details(
+    cards: Iterable[Card | Mapping[str, object]],
+    wip_limits: Mapping[str, int] | None = None,
+) -> list[tuple[str, int, int]]:
+    """Return the breached states with their peak occupancy and configured limit.
+
+    Returns a list of (state_name, peak_occupancy, configured_limit) tuples, one
+    per state whose peak exceeded its limit, in the iteration order of
+    ``wip_limits``. Returns an empty list when no state is breached or
+    ``wip_limits`` is None or empty.
+    """
+    if not wip_limits:
+        return []
+    parsed = _as_cards(cards)
+    details: list[tuple[str, int, int]] = []
+    for state, limit in wip_limits.items():
+        peak = _peak_occupancy(parsed, state)
+        if peak > limit:
+            details.append((state, peak, limit))
+    return details

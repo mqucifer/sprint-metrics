@@ -1828,3 +1828,144 @@ def test_prometheus_empty_sprint_shows_zero_rate_and_no_failure_count(tmp_path, 
     assert exit_code == 0
     assert "sprint_first_attempt_rate_percent 0" in captured.out
     assert "sprint_failure_count" not in captured.out
+
+
+def test_markdown_wip_violations_names_breached_state_with_peak_and_limit(run_command):
+    """AC1: 4 in-progress cards with WIP limit 3 for In Progress shows an indented
+    line beneath the WIP violations line naming In Progress with peak 4 and limit 3."""
+    cards = [IN_FLIGHT_CARD] * 4
+    exit_code, output, _ = run_command(cards, wip_limits={"In Progress": 3}, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    detail_line = lines[wip_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "In Progress" in detail_line
+    assert "4" in detail_line
+    assert "3" in detail_line
+
+
+def test_markdown_wip_no_breach_shows_no_indented_detail(run_command):
+    """AC2: 2 in-progress cards with WIP limit 3 shows WIP violations 0 and no
+    indented line beneath it naming a state or peak."""
+    cards = [IN_FLIGHT_CARD] * 2
+    exit_code, output, _ = run_command(cards, wip_limits={"In Progress": 3}, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 0")
+    next_line = lines[wip_idx + 1]
+    assert not next_line.startswith("  - ")
+
+
+def test_markdown_wip_no_limits_shows_no_indented_detail(run_command):
+    """AC3: 4 in-progress cards with no WIP limits shows WIP violations 0 and no
+    indented line beneath it."""
+    cards = [IN_FLIGHT_CARD] * 4
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 0")
+    next_line = lines[wip_idx + 1]
+    assert not next_line.startswith("  - ")
+
+
+def test_markdown_wip_violations_names_multiple_breached_states_in_order(run_command):
+    """AC4: two breached states show two indented lines in the order the states
+    appear in the WIP limits file."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-01", "completed": ""}] * 4 + [
+        {"created": "2024-01-01"}
+    ] * 2
+    exit_code, output, _ = run_command(
+        cards, wip_limits={"In Progress": 3, "To Do": 1}, markdown=True
+    )
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 2")
+    line1 = lines[wip_idx + 1]
+    line2 = lines[wip_idx + 2]
+    assert line1.startswith("  - ")
+    assert "In Progress" in line1
+    assert "4" in line1
+    assert "3" in line1
+    assert line2.startswith("  - ")
+    assert "To Do" in line2
+    assert "2" in line2
+    assert "1" in line2
+
+
+def test_markdown_wip_violations_only_metric_shows_exactly_two_lines(tmp_path, capsys):
+    """AC6: --markdown --metrics wip_violations with 4 in-progress cards and WIP
+    limit 3 shows exactly the WIP violations line and its indented detail, with
+    no other metric lines in the sprint section."""
+    cards = [IN_FLIGHT_CARD] * 4
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    limits_path = tmp_path / "wip-limits.json"
+    limits_path.write_text(json.dumps({"In Progress": 3}))
+    exit_code = main(
+        [
+            str(cards_path),
+            "--markdown",
+            "--wip-limits",
+            str(limits_path),
+            "--metrics",
+            "wip_violations",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    detail_line = lines[wip_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "In Progress" in detail_line
+    assert "4" in detail_line
+    assert "3" in detail_line
+    assert "- **Cycle time**" not in captured.out
+    assert "- **Lead time**" not in captured.out
+    assert "- **Throughput**" not in captured.out
+    assert "- **Blocked aging**" not in captured.out
+    assert "- **Escalation rate**" not in captured.out
+    assert "- **First-attempt rate**" not in captured.out
+
+
+def test_markdown_wip_violations_only_names_breached_state(run_command):
+    """AC7: 4 in-progress cards with WIP limits {"In Progress": 3, "To Do": 10}
+    shows exactly one indented line naming In Progress, and no line naming To Do."""
+    cards = [IN_FLIGHT_CARD] * 4
+    exit_code, output, _ = run_command(
+        cards, wip_limits={"In Progress": 3, "To Do": 10}, markdown=True
+    )
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    detail_line = lines[wip_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "In Progress" in detail_line
+    assert "4" in detail_line
+    assert "3" in detail_line
+    assert "To Do" not in detail_line
+    next_line = lines[wip_idx + 2]
+    assert not (next_line.startswith("  - ") and "To Do" in next_line)
+
+
+def test_markdown_wip_detail_line_followed_by_next_metric(run_command):
+    """AC8: the indented WIP detail line is immediately followed by the next metric
+    line in canonical order (Blocked aging), confirming the detail is visually
+    attached to its metric and does not float between unrelated lines."""
+    cards = [IN_FLIGHT_CARD] * 4
+    exit_code, output, _ = run_command(cards, wip_limits={"In Progress": 3}, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    detail_line = lines[wip_idx + 1]
+    assert detail_line.startswith("  - ")
+    next_metric_line = lines[wip_idx + 2]
+    assert next_metric_line.startswith("- **Blocked aging**:")

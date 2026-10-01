@@ -234,3 +234,29 @@ def test_all_metrics_includes_new_metrics():
 
     assert "first_attempt_rate_percent" in ALL_METRICS
     assert "failure_breakdown" in ALL_METRICS
+
+
+def test_wip_violation_details_returns_breached_states():
+    """4 in-flight cards with WIP limit 3 for In Progress returns [('In Progress', 4, 3)]."""
+    from sprint_metrics.metrics import wip_violation_details
+
+    cards = [{"created": "2024-01-01", "started": "2024-01-02", "completed": ""}] * 4
+    assert wip_violation_details(cards, {"In Progress": 3}) == [("In Progress", 4, 3)]
+
+
+def test_wip_violation_details_empty_when_no_breach():
+    """2 in-flight cards with WIP limit 3 returns an empty list."""
+    from sprint_metrics.metrics import wip_violation_details
+
+    cards = [{"created": "2024-01-01", "started": "2024-01-02", "completed": ""}] * 2
+    assert wip_violation_details(cards, {"In Progress": 3}) == []
+
+
+def test_wip_violation_details_empty_when_no_limits():
+    """No WIP limits (None or empty) returns an empty list."""
+    from sprint_metrics.metrics import wip_violation_details
+
+    cards = [{"created": "2024-01-01", "started": "2024-01-02", "completed": ""}] * 4
+    assert wip_violation_details(cards) == []
+    assert wip_violation_details(cards, None) == []
+    assert wip_violation_details(cards, {}) == []
