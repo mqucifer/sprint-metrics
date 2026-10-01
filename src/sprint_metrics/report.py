@@ -246,6 +246,12 @@ def _sprint_section(
                     f"(was {prior_escalation}%, {_signed(delta)})"
                     f"{_threshold_context(escalation_rate, thresholds, 'escalation_rate_percent')}"
                 )
+                if escalation_rate > 0:
+                    esc_word = "escalation" if escalations == 1 else "escalations"
+                    card_word = "card" if throughput == 1 else "cards"
+                    lines.append(
+                        f"  - {escalations} {esc_word}, {throughput} completed {card_word}"
+                    )
             elif metric == "first_attempt_rate_percent":
                 delta = first_attempt_rate - prior_first_attempt
                 lines.append(
@@ -296,6 +302,10 @@ def _sprint_section(
             lines.append(
                 f"- **Escalation rate**: {escalation_rate}%{_threshold_context(escalation_rate, thresholds, 'escalation_rate_percent')}"
             )
+            if escalation_rate > 0:
+                esc_word = "escalation" if escalations == 1 else "escalations"
+                card_word = "card" if throughput == 1 else "cards"
+                lines.append(f"  - {escalations} {esc_word}, {throughput} completed {card_word}")
         elif metric == "first_attempt_rate_percent":
             lines.append(
                 f"- **First-attempt rate**: {first_attempt_rate}%{_threshold_context(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"

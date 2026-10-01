@@ -6,6 +6,7 @@
 
 - Markdown health summary: `Changed:` line showing the metric with the largest absolute change when comparing to a prior sprint via `--prior-sprint`
 - Markdown health summary: `Attention:` line showing blocked card count with longest block duration and in-progress card count
+- Markdown standup report: indented detail line beneath the escalation-rate metric showing escalation count and completed-card count when the rate is non-zero
 
 ### Changed
 

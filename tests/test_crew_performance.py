@@ -2096,3 +2096,107 @@ def test_markdown_blocked_aging_zero_no_indented_line_before_next_metric(run_com
     aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 0 days")
     next_line = lines[aging_idx + 1]
     assert next_line.startswith("- **Escalation rate**:")
+
+
+def test_markdown_escalation_rate_shows_count_and_completed_cards(run_command):
+    """AC1: 10 completed cards with --escalations 2 shows an indented line beneath
+    the escalation-rate line naming 2 escalations and 10 completed cards."""
+    cards = [COMPLETED_CARD] * 10
+    exit_code, output, _ = run_command(cards, escalations=2, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 20%")
+    detail_line = lines[esc_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2 escalations" in detail_line
+    assert "10 completed cards" in detail_line
+
+
+def test_markdown_escalation_rate_zero_shows_no_indented_detail(run_command):
+    """AC2: 5 completed cards with no escalations (default 0) shows escalation rate
+    0% and no indented line beneath it."""
+    cards = [COMPLETED_CARD] * 5
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 0%")
+    next_line = lines[esc_idx + 1]
+    assert not next_line.startswith("  - ")
+
+
+def test_markdown_escalation_rate_zero_when_no_completed_cards(run_command):
+    """AC3: 3 in-progress cards (none completed) with --escalations 2 shows
+    escalation rate 0% and no indented line beneath it."""
+    cards = [IN_FLIGHT_CARD] * 3
+    exit_code, output, _ = run_command(cards, escalations=2, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 0%")
+    next_line = lines[esc_idx + 1]
+    assert not next_line.startswith("  - ")
+
+
+def test_markdown_escalation_rate_singular_escalation(run_command):
+    """AC5 (UX): 10 completed cards with --escalations 1 shows '1 escalation'
+    (singular) not '1 escalations' in the indented detail line."""
+    cards = [COMPLETED_CARD] * 10
+    exit_code, output, _ = run_command(cards, escalations=1, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 10%")
+    detail_line = lines[esc_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "1 escalation" in detail_line
+    assert "1 escalations" not in detail_line
+    assert "10 completed cards" in detail_line
+
+
+def test_markdown_escalation_rate_only_metric_shows_exactly_two_lines(tmp_path, capsys):
+    """AC6 (UX): --markdown --escalations 2 --metrics escalation_rate_percent with
+    10 completed cards shows exactly the metric line and its indented detail in
+    the sprint section, with no other metric lines."""
+    cards = [COMPLETED_CARD] * 10
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main(
+        [
+            str(cards_path),
+            "--markdown",
+            "--escalations",
+            "2",
+            "--metrics",
+            "escalation_rate_percent",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 20%")
+    detail_line = lines[esc_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2 escalations" in detail_line
+    assert "10 completed cards" in detail_line
+    assert "- **Cycle time**" not in captured.out
+    assert "- **Lead time**" not in captured.out
+    assert "- **Throughput**" not in captured.out
+    assert "- **WIP violations**" not in captured.out
+    assert "- **Blocked aging**" not in captured.out
+    assert "- **First-attempt rate**" not in captured.out
+
+
+def test_markdown_escalation_rate_zero_no_indented_line_before_next_metric(run_command):
+    """AC7 (UX): 3 in-progress cards with --escalations 2 shows escalation rate 0%
+    and the next line is the first-attempt rate line, with no indented line between."""
+    cards = [IN_FLIGHT_CARD] * 3
+    exit_code, output, _ = run_command(cards, escalations=2, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 0%")
+    next_line = lines[esc_idx + 1]
+    assert next_line.startswith("- **First-attempt rate**:")
