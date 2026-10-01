@@ -4,7 +4,7 @@ version = "1.0.2"
 description = "Delivery metrics for the crew's own board."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = ["psycopg>=3.1", "opentelemetry-sdk>=1.24", "opentelemetry-exporter-otlp>=1.24"]
 
 [project.scripts]
 sprint-metrics = "sprint_metrics.cli:main"

@@ -230,12 +230,14 @@ def _readme_section(text: str, heading: str) -> str:
 
 
 def test_installation_states_python_312_and_no_third_party_packages():
-    """AC1 (migrated): the README's installation section states Python 3.12 is required
-    and that no third-party runtime packages are needed."""
+    """AC (updated): the README's git-dependency installation section states Python 3.12 is
+    required and names the three third-party runtime packages the tool depends on."""
     text = README.read_text()
     section = _readme_section(text, "Installation")
     assert "3.12" in section
-    assert "no third-party" in section.lower()
+    assert "psycopg" in section
+    assert "opentelemetry-sdk" in section
+    assert "opentelemetry-exporter-otlp" in section
 
 
 def test_input_format_shows_json_array_with_complete_and_partial_cards():

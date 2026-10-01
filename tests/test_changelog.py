@@ -140,7 +140,11 @@ def test_pyproject_version_is_1_0_2():
     assert project["name"] == "sprint-metrics"
     assert project["description"] == "Delivery metrics for the crew's own board."
     assert project["requires-python"] == ">=3.12,<3.13"
-    assert project["dependencies"] == []
+    assert project["dependencies"] == [
+        "psycopg>=3.1",
+        "opentelemetry-sdk>=1.24",
+        "opentelemetry-exporter-otlp>=1.24",
+    ]
 
 
 def test_changelog_heading_order_unreleased_1_0_2_1_0_1_1_0_0():
