@@ -110,3 +110,24 @@ def test_card_detail_shows_attempts_failure_class_and_role():
     assert "3" in data_lines[0]
     assert "timeout" in data_lines[0]
     assert "infra" in data_lines[0]
+
+
+def test_card_detail_section_after_definitions_shows_both_cards():
+    """AC1: Card Detail appears after Definitions and lists both cards by created date."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-02", "started": "2024-01-04"},
+    ]
+    result = format_markdown_report(cards)
+    lines = result.splitlines()
+    assert lines.index("## Card Detail") > lines.index("## Definitions")
+    section_body = "\n".join(lines[lines.index("## Card Detail") :])
+    assert "2024-01-01" in section_body
+    assert "2024-01-02" in section_body
+
+
+def test_card_detail_omitted_when_no_cards():
+    """AC3: with no cards, the report has Definitions but no Card Detail section."""
+    result = format_markdown_report([])
+    assert "## Definitions" in result
+    assert "## Card Detail" not in result
