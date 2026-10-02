@@ -2339,21 +2339,6 @@ def test_markdown_definitions_present_with_empty_cards(tmp_path, capsys):
     assert "Cycle time" in def_body
 
 
-def test_markdown_definitions_is_last_section_heading(tmp_path, capsys):
-    """AC5: '## Definitions' is the last '## ' heading in the markdown output."""
-    cards_file = tmp_path / "cards.json"
-    cards_file.write_text(
-        '[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]'
-    )
-    main(["--markdown", str(cards_file)])
-    output = capsys.readouterr().out
-    lines = output.splitlines()
-
-    headings = [i for i, line in enumerate(lines) if line.startswith("## ")]
-    assert len(headings) > 0
-    assert lines[headings[-1]] == "## Definitions"
-
-
 def test_markdown_definitions_single_metric(tmp_path, capsys):
     """AC6: With --metrics cycle_time_days, the Definitions section contains only
     the Cycle time definition."""
@@ -2541,3 +2526,33 @@ def test_markdown_first_attempt_rate_only_metric_shows_exactly_two_lines(tmp_pat
     assert "2 of 5" in detail_line
     assert "retry" in detail_line
     assert "Top failure causes" not in captured.out
+
+
+def test_markdown_card_detail_follows_definitions(run_command):
+    """AC1: the Card Detail section appears after Definitions and shows both cards' created dates."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-02", "started": "2024-01-04"},
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    assert "## Card Detail" in lines
+    assert lines.index("## Card Detail") > lines.index("## Definitions")
+    card_detail_idx = lines.index("## Card Detail")
+    section_body = "\n".join(lines[card_detail_idx:])
+    assert "2024-01-01" in section_body
+    assert "2024-01-02" in section_body
+
+
+def test_markdown_card_detail_omitted_with_empty_cards(tmp_path, capsys):
+    """AC3: an empty cards file produces a markdown report with Definitions but no Card Detail section."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text("[]")
+    exit_code = main(["--markdown", str(cards_file)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "## Definitions" in output
+    assert "## Card Detail" not in output

@@ -189,7 +189,7 @@ sprint-metrics cards.json --json
 
 ### Markdown
 
-The markdown report begins with a health summary between the report date and the first section heading. When no metric exceeds its threshold, the summary reads `Status: All clear`. When one or more metrics breach, it reads `Status: Attention needed (N metrics breached)` followed by a bulleted list naming each breached metric with its current value and the threshold it exceeded. When a prior sprint is specified with `--prior-sprint`, a `Changed:` line follows the status and any breached-metric bullets, naming the single metric with the largest absolute delta from the prior sprint and whether it improved or worsened. When no prior sprint is provided, no `Changed:` line appears. When one or more cards are blocked or in progress, an `Attention:` line follows, naming the count of blocked cards with the longest block duration and the count of in-progress cards. When the WIP violations count is non-zero and WIP limits are configured, an indented line beneath the WIP violations metric names each breached state, its peak simultaneous occupancy, and the configured limit for that state. When the blocked aging is non-zero, an indented line beneath the blocked-aging metric names the creation date and blocked-since date of the card (or cards, if tied) producing the maximum aging. When the escalation rate is non-zero, an indented line beneath the escalation-rate metric states the number of escalations and the number of completed cards the rate is computed from. When the first-attempt rate is below 100% and at least one card is completed, an indented line beneath the first-attempt-rate metric states how many of the completed cards required a retry.
+The markdown report begins with a health summary between the report date and the first section heading. When no metric exceeds its threshold, the summary reads `Status: All clear`. When one or more metrics breach, it reads `Status: Attention needed (N metrics breached)` followed by a bulleted list naming each breached metric with its current value and the threshold it exceeded. When a prior sprint is specified with `--prior-sprint`, a `Changed:` line follows the status and any breached-metric bullets, naming the single metric with the largest absolute delta from the prior sprint and whether it improved or worsened. When no prior sprint is provided, no `Changed:` line appears. When one or more cards are blocked or in progress, an `Attention:` line follows, naming the count of blocked cards with the longest block duration and the count of in-progress cards. When the WIP violations count is non-zero and WIP limits are configured, an indented line beneath the WIP violations metric names each breached state, its peak simultaneous occupancy, and the configured limit for that state. When the blocked aging is non-zero, an indented line beneath the blocked-aging metric names the creation date and blocked-since date of the card (or cards, if tied) producing the maximum aging. When the escalation rate is non-zero, an indented line beneath the escalation-rate metric states the number of escalations and the number of completed cards the rate is computed from. When the first-attempt rate is below 100% and at least one card is completed, an indented line beneath the first-attempt-rate metric states how many of the completed cards required a retry. The report ends with a Card Detail section after the Definitions section, listing each card on its own row with its created, started, completed, and blocked-since dates, its state, its attempts, and its failure class and role; this section is omitted when no cards exist.
 
 ```
 sprint-metrics cards.json --markdown
@@ -228,6 +228,13 @@ Status: All clear
 - Escalation rate: Escalations as a percentage of completed cards
 - First-attempt rate: Percentage of completed cards that passed on the first attempt
 - Top causes: Most frequent failure classes among completed cards with attempts greater than 1
+
+## Card Detail
+
+| Created | Started | Completed | Blocked since | State | Attempts | Failure class | Failure role |
+|---------|---------|-----------|---------------|-------|----------|---------------|--------------|
+| 2024-01-01 | 2024-01-03 | 2024-01-07 | — | Done | 1 | — | — |
+| 2024-01-04 | — | — | — | Not Started | 1 | — | — |
 ```
 
 > The report date reflects the day the example was captured.
