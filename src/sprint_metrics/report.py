@@ -371,7 +371,9 @@ def format_markdown_report(
     present regardless of ``metrics``.
 
     A Definitions section follows the sprint metric sections, providing a
-    one-line explanation for each metric shown in the report.
+    one-line explanation for each metric shown in the report. A Card Detail
+    section follows Definitions, listing each card's dates and state; it is
+    omitted when no cards exist.
     """
     parsed = _as_cards(cards)
     report_date = as_of if as_of is not None else date.today()
@@ -396,6 +398,10 @@ def format_markdown_report(
     )
     lines.append("")
     lines.extend(_definitions_section(metrics))
+    card_detail = _card_detail_section(parsed)
+    if card_detail:
+        lines.append("")
+        lines.extend(card_detail)
     return "\n".join(lines)
 
 
@@ -830,4 +836,46 @@ def _definitions_section(metrics: frozenset[str] | None = None) -> list[str]:
     lines = ["## Definitions", ""]
     for metric in selected:
         lines.append(f"- {_METRIC_COLUMNS[metric]}: {_DEFINITIONS[metric]}")
+    return lines
+
+
+def _card_state(card: Card) -> str:
+    """The display state for a card in the Card Detail table."""
+    if card.is_completed:
+        return "Done"
+    if card.blocked_since is not None:
+        return "Blocked"
+    if card.started is not None:
+        return "In Progress"
+    return "Not Started"
+
+
+def _card_detail_section(cards: Sequence[Card]) -> list[str]:
+    """The per-card detail table showing dates, state, and failure info.
+
+    Returns an empty list when there are no cards, so the section is omitted.
+    """
+    if not cards:
+        return []
+    lines = [
+        "## Card Detail",
+        "",
+        "| Created | Started | Completed | Blocked since | State | Attempts | Failure class | Failure role |",
+        "|---------|---------|-----------|---------------|-------|----------|---------------|--------------|",
+    ]
+    for card in cards:
+        created = card.created.isoformat()
+        started = card.started.isoformat() if card.started is not None else "\u2014"
+        completed = card.completed.isoformat() if card.completed is not None else "\u2014"
+        blocked_since = (
+            card.blocked_since.isoformat() if card.blocked_since is not None else "\u2014"
+        )
+        state = _card_state(card)
+        attempts = str(card.attempts)
+        failure_class = card.failure_class if card.failure_class else "\u2014"
+        failure_role = card.failure_role if card.failure_role else "\u2014"
+        lines.append(
+            f"| {created} | {started} | {completed} | {blocked_since}"
+            f" | {state} | {attempts} | {failure_class} | {failure_role} |"
+        )
     return lines
