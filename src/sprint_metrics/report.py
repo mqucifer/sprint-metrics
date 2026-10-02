@@ -359,6 +359,9 @@ def format_markdown_report(
     When ``metrics`` is provided, only the requested metric lines are emitted in
     the sprint section; the heading, report date, and summary section are always
     present regardless of ``metrics``.
+
+    A Definitions section follows the sprint metric sections, providing a
+    one-line explanation for each metric shown in the report.
     """
     parsed = _as_cards(cards)
     report_date = as_of if as_of is not None else date.today()
@@ -381,6 +384,8 @@ def format_markdown_report(
     lines.extend(
         _sprint_section(parsed, wip_limits, escalations, as_of, prior_cards, thresholds, metrics)
     )
+    lines.append("")
+    lines.extend(_definitions_section(metrics))
     return "\n".join(lines)
 
 
@@ -789,3 +794,30 @@ def _attention_line(cards: Sequence[Card], as_of: date | None) -> str | None:
         if durations:
             duration = f" ({max(durations)} days)"
     return f"Attention: {blocked} blocked{duration}, {in_progress} in progress"
+
+
+_DEFINITIONS: dict[str, str] = {
+    "cycle_time_days": "Mean days from when a card started work to when it completed",
+    "lead_time_days": "Mean days from creation to completion",
+    "throughput": "Number of cards completed this sprint",
+    "wip_violations": "Number of states whose peak occupancy exceeded the configured WIP limit",
+    "blocked_aging_days": "Maximum number of days any card has been blocked",
+    "escalation_rate_percent": "Escalations as a percentage of completed cards",
+    "first_attempt_rate_percent": "Percentage of completed cards that passed on the first attempt",
+    "failure_breakdown": "Most frequent failure classes among completed cards with attempts greater than 1",
+}
+
+
+def _definitions_section(metrics: frozenset[str] | None = None) -> list[str]:
+    """The definitions of each metric shown in the report, in canonical order.
+
+    When ``metrics`` is provided, only the requested metric definitions are emitted.
+    """
+    if metrics is not None:
+        selected = [m for m in _CANONICAL_ORDER if m in metrics]
+    else:
+        selected = list(_CANONICAL_ORDER)
+    lines = ["## Definitions", ""]
+    for metric in selected:
+        lines.append(f"- {_METRIC_COLUMNS[metric]}: {_DEFINITIONS[metric]}")
+    return lines

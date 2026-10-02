@@ -217,6 +217,17 @@ Status: All clear
 - **Blocked aging**: 0 days
 - **Escalation rate**: 0%
 - **First-attempt rate**: 100%
+
+## Definitions
+
+- Cycle time: Mean days from when a card started work to when it completed
+- Lead time: Mean days from creation to completion
+- Throughput: Number of cards completed this sprint
+- WIP violations: Number of states whose peak occupancy exceeded the configured WIP limit
+- Blocked aging: Maximum number of days any card has been blocked
+- Escalation rate: Escalations as a percentage of completed cards
+- First-attempt rate: Percentage of completed cards that passed on the first attempt
+- Top causes: Most frequent failure classes among completed cards with attempts greater than 1
 ```
 
 > The report date reflects the day the example was captured.
