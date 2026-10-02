@@ -2371,3 +2371,173 @@ def test_markdown_definitions_single_metric(tmp_path, capsys):
     assert "Cycle time" in def_body
     assert "Lead time" not in def_body
     assert "Throughput" not in def_body
+
+
+def test_markdown_first_attempt_rate_shows_retry_count(run_command):
+    """AC1: 5 completed cards (3 first-attempt, 2 with attempts 2) shows
+    an indented line beneath the first-attempt-rate line stating 2 of 5
+    completed cards required a retry."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    rate_idx = next(i for i, line in enumerate(lines) if "First-attempt rate" in line)
+    assert "60%" in lines[rate_idx]
+    detail_line = lines[rate_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2 of 5" in detail_line
+    assert "retry" in detail_line
+
+
+def test_markdown_first_attempt_rate_no_retry_line_when_all_first_attempt(run_command):
+    """AC2: 5 completed cards all first-attempt shows 100% and no indented
+    retry line beneath it."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+    ] * 5
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    rate_idx = next(i for i, line in enumerate(lines) if "First-attempt rate" in line)
+    assert "100%" in lines[rate_idx]
+    next_line = lines[rate_idx + 1]
+    assert not next_line.startswith("  - ")
+
+
+def test_markdown_first_attempt_rate_no_retry_line_when_no_completed(run_command):
+    """AC3: 3 in-progress cards (none completed) shows 0% and no indented
+    retry line beneath it."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": ""},
+    ] * 3
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    rate_idx = next(i for i, line in enumerate(lines) if "First-attempt rate" in line)
+    assert "0%" in lines[rate_idx]
+    next_line = lines[rate_idx + 1]
+    assert not next_line.startswith("  - ")
+
+
+def test_markdown_first_attempt_rate_retry_line_before_top_causes(tmp_path, capsys):
+    """AC5 (UX): the retry count line appears before 'Top failure causes',
+    confirming it is attached to the first-attempt-rate metric."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    rate_idx = next(i for i, line in enumerate(lines) if "First-attempt rate" in line)
+    assert "60%" in lines[rate_idx]
+    detail_line = lines[rate_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2 of 5" in detail_line
+    assert "retry" in detail_line
+    next_non_blank = next(lines[i] for i in range(rate_idx + 2, len(lines)) if lines[i].strip())
+    assert next_non_blank == "Top failure causes"
+
+
+def test_markdown_first_attempt_rate_100_no_indented_line_before_next_section(tmp_path, capsys):
+    """AC6 (UX): at 100%, no indented line between the rate and the next section."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+    ] * 5
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    rate_idx = next(i for i, line in enumerate(lines) if "First-attempt rate" in line)
+    assert "100%" in lines[rate_idx]
+    next_line = lines[rate_idx + 1]
+    assert not next_line.startswith("  - ")
+    next_non_blank = next(lines[i] for i in range(rate_idx + 1, len(lines)) if lines[i].strip())
+    assert "Top failure causes" in next_non_blank or "Definitions" in next_non_blank
+
+
+def test_markdown_first_attempt_rate_only_metric_shows_exactly_two_lines(tmp_path, capsys):
+    """AC7 (UX): --markdown --metrics first_attempt_rate_percent shows exactly
+    the rate line and its indented retry detail, with no 'Top failure causes'."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failure_class": "check",
+            "failure_role": "Code Reviewer",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown", "--metrics", "first_attempt_rate_percent"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    rate_idx = next(i for i, line in enumerate(lines) if "First-attempt rate" in line)
+    assert "60%" in lines[rate_idx]
+    detail_line = lines[rate_idx + 1]
+    assert detail_line.startswith("  - ")
+    assert "2 of 5" in detail_line
+    assert "retry" in detail_line
+    assert "Top failure causes" not in captured.out

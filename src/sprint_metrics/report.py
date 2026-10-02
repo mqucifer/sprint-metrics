@@ -259,6 +259,13 @@ def _sprint_section(
                     f"(was {prior_first_attempt}%, {_signed(delta)})"
                     f"{_threshold_context(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
                 )
+                if first_attempt_rate < 100 and throughput > 0:
+                    retry_count = sum(
+                        1 for card in cards if card.is_completed and card.attempts > 1
+                    )
+                    lines.append(
+                        f"  - {retry_count} of {throughput} completed cards required a retry"
+                    )
         if "failure_breakdown" in selected and failure_breakdown:
             lines.append("")
             lines.append("Top failure causes")
@@ -310,6 +317,9 @@ def _sprint_section(
             lines.append(
                 f"- **First-attempt rate**: {first_attempt_rate}%{_threshold_context(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
             )
+            if first_attempt_rate < 100 and throughput > 0:
+                retry_count = sum(1 for card in cards if card.is_completed and card.attempts > 1)
+                lines.append(f"  - {retry_count} of {throughput} completed cards required a retry")
     if "failure_breakdown" in selected and failure_breakdown:
         lines.append("")
         lines.append("Top failure causes")
