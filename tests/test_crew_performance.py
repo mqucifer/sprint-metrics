@@ -2268,3 +2268,106 @@ def test_markdown_summary_counts_sum_to_total_card_count(run_command):
     in_progress = int(re.search(r"- \*\*In progress\*\*: (\d+)", output).group(1))
     blocked = int(re.search(r"- \*\*Blocked\*\*: (\d+)", output).group(1))
     assert completed + in_progress + blocked == 5
+
+
+def test_markdown_definitions_section_after_current_sprint(tmp_path, capsys):
+    """AC1: '## Definitions' appears after the last metric line in '## Current Sprint',
+    and the section body includes a line containing 'Cycle time' with 'mean', 'days',
+    'start', and 'complet' (case-insensitive)."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(
+        '[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]'
+    )
+    main(["--markdown", str(cards_file)])
+    output = capsys.readouterr().out
+    lines = output.splitlines()
+
+    sprint_idx = lines.index("## Current Sprint")
+    def_idx = lines.index("## Definitions")
+    assert def_idx > sprint_idx
+
+    # The last metric line in the Current Sprint section is before '## Definitions'
+    sprint_lines = lines[sprint_idx:def_idx]
+    metric_lines = [i for i, line in enumerate(sprint_lines) if line.startswith("- **")]
+    assert metric_lines, "expected at least one metric line in Current Sprint"
+    last_metric_idx = sprint_idx + metric_lines[-1]
+    assert def_idx > last_metric_idx
+
+    def_body = "\n".join(lines[def_idx:]).lower()
+    assert "cycle time" in def_body
+    assert "mean" in def_body
+    assert "days" in def_body
+    assert "start" in def_body
+    assert "complet" in def_body
+
+
+def test_markdown_definitions_filtered_by_metrics(tmp_path, capsys):
+    """AC2: With --metrics cycle_time_days,throughput, the Definitions section
+    includes only those two metrics' definitions."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(
+        '[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]'
+    )
+    main(["--markdown", "--metrics", "cycle_time_days,throughput", str(cards_file)])
+    output = capsys.readouterr().out
+    lines = output.splitlines()
+
+    def_idx = lines.index("## Definitions")
+    def_body = "\n".join(lines[def_idx:])
+
+    assert "Cycle time" in def_body
+    assert "Throughput" in def_body
+    assert "Lead time" not in def_body
+    assert "WIP violations" not in def_body
+    assert "Blocked aging" not in def_body
+    assert "Escalation rate" not in def_body
+    assert "First attempt" not in def_body
+
+
+def test_markdown_definitions_present_with_empty_cards(tmp_path, capsys):
+    """AC3: Definitions are static and independent of card data; an empty cards
+    file still produces a Definitions section containing 'Cycle time'."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text("[]")
+    main(["--markdown", str(cards_file)])
+    output = capsys.readouterr().out
+    lines = output.splitlines()
+
+    assert "## Definitions" in lines
+    def_idx = lines.index("## Definitions")
+    def_body = "\n".join(lines[def_idx:])
+    assert "Cycle time" in def_body
+
+
+def test_markdown_definitions_is_last_section_heading(tmp_path, capsys):
+    """AC5: '## Definitions' is the last '## ' heading in the markdown output."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(
+        '[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]'
+    )
+    main(["--markdown", str(cards_file)])
+    output = capsys.readouterr().out
+    lines = output.splitlines()
+
+    headings = [i for i, line in enumerate(lines) if line.startswith("## ")]
+    assert len(headings) > 0
+    assert lines[headings[-1]] == "## Definitions"
+
+
+def test_markdown_definitions_single_metric(tmp_path, capsys):
+    """AC6: With --metrics cycle_time_days, the Definitions section contains only
+    the Cycle time definition."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(
+        '[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]'
+    )
+    main(["--markdown", "--metrics", "cycle_time_days", str(cards_file)])
+    output = capsys.readouterr().out
+    lines = output.splitlines()
+
+    def_idx = lines.index("## Definitions")
+    def_body = "\n".join(lines[def_idx:])
+
+    assert "Cycle time" in def_body
+    assert "Lead time" not in def_body
+    assert "Throughput" not in def_body
