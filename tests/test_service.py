@@ -849,3 +849,265 @@ def test_range_second_sprint_prior_and_delta_values():
         assert body["sprints"]["2024-02"]["delta"]["cycle_time_days"] == -1
     finally:
         conn.close()
+
+
+def _get_text(url: str) -> tuple[int, str, str]:
+    """GET a URL and return (status, content_type, body_text)."""
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            return resp.status, resp.headers.get("Content-Type", ""), resp.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Content-Type", ""), e.read().decode()
+
+
+@requires_db
+def test_metrics_cycle_time_line_and_content_type():
+    """AC1: GET /metrics after started+finished events returns 200, Content-Type contains text/plain,
+    and body has a line starting with sprint_cycle_time_days{sprint="2024-01"} and ending with ' 4'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_metrics'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac1_metrics",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        finished = _make_event(
+            card_id="ac1_metrics",
+            event_type="finished",
+            timestamp="2024-01-07T15:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, content_type, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert "text/plain" in content_type
+        lines = body.splitlines()
+        cycle_lines = [
+            line for line in lines if line.startswith('sprint_cycle_time_days{sprint="2024-01"}')
+        ]
+        assert len(cycle_lines) == 1
+        assert cycle_lines[0].endswith(" 4")
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_throughput_lines_both_sprints():
+    """AC2: GET /metrics with events in both 2024-01 and 2024-02 contains
+    sprint_throughput_cards lines for both sprints."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac2_metrics_a', 'ac2_metrics_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_metrics_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_metrics_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_metrics_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_metrics_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert 'sprint_throughput_cards{sprint="2024-01"}' in body
+        assert 'sprint_throughput_cards{sprint="2024-02"}' in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_empty_db_no_metric_lines():
+    """AC3: GET /metrics with no events returns 200 and body does not contain
+    the substring 'sprint_cycle_time_days'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert "sprint_cycle_time_days" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_content_type_and_exact_line():
+    """AC4: Content-Type is exactly 'text/plain; version=0.0.4; charset=utf-8' and
+    body contains the exact line 'sprint_throughput_cards{sprint="2024-01"} 1'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_metrics'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac4_metrics",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        finished = _make_event(
+            card_id="ac4_metrics",
+            event_type="finished",
+            timestamp="2024-01-07T15:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, content_type, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert content_type == "text/plain; version=0.0.4; charset=utf-8"
+        lines = body.splitlines()
+        assert 'sprint_throughput_cards{sprint="2024-01"} 1' in lines
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_seven_lines_per_sprint():
+    """AC5: body contains at least seven lines with sprint="2024-01" and
+    at least seven lines with sprint="2024-02", one line per metric per sprint."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac5_metrics_a', 'ac5_metrics_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_metrics_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_metrics_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_metrics_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_metrics_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        lines = body.splitlines()
+        lines_01 = [line for line in lines if 'sprint="2024-01"' in line]
+        lines_02 = [line for line in lines if 'sprint="2024-02"' in line]
+        assert len(lines_01) >= 7, f"expected >=7 lines for 2024-01, got {len(lines_01)}"
+        assert len(lines_02) >= 7, f"expected >=7 lines for 2024-02, got {len(lines_02)}"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_no_sprint_prefix_when_empty():
+    """AC6: body does not contain the substring 'sprint_' when no events are stored.
+    No metric lines are emitted for a sprint with no data."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert "sprint_" not in body
+    finally:
+        conn.close()
