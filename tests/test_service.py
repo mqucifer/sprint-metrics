@@ -1250,3 +1250,72 @@ def test_schema_event_card_created_properties():
         assert created["format"] == "date"
     finally:
         conn.close()
+
+
+@requires_db
+def test_health_returns_200_when_db_reachable():
+    """AC1: GET /health returns 200 when SPRINT_METRICS_DB is reachable."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/health")
+        assert status == 200
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_health_returns_200_with_nonempty_body():
+    """AC2: GET /health returns 200 and body has at least one byte when no events stored."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as resp:
+            assert resp.status == 200
+            body = resp.read()
+        assert len(body) >= 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_health_body_is_json_object_not_empty():
+    """AC3: GET /health body is parseable as JSON and length > 2 (not '{}')."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as resp:
+            body = resp.read().decode()
+        parsed = json.loads(body)
+        assert isinstance(parsed, dict)
+        assert len(body) > 2
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_health_returns_non_200_when_db_unreachable():
+    """AC4: GET /health returns non-200 when the Postgres connection is dead."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    # Close the connection to simulate the DB being killed
+    conn.close()
+
+    status, body = _get_json(f"http://127.0.0.1:{port}/health")
+    assert status != 200
