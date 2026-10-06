@@ -111,7 +111,7 @@ jobs:
       - name: Verify service mode
         run: |
           set -euo pipefail
-          CONTAINER_ID=$(docker run -d -p 8080:8080 -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
+          CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
           echo "Service container started: $CONTAINER_ID"
           DEADLINE=$((SECONDS + 30))
           while [ $SECONDS -lt $DEADLINE ]; do
