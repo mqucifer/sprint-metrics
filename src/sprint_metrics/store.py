@@ -198,3 +198,23 @@ def query_range(conn: Connection, start: str, end: str) -> dict[str, list[Card]]
             month = 1
             year += 1
     return result
+
+
+def query_all_sprints(conn: Connection) -> dict[str, list[Card]]:
+    """Reconstruct Card objects for each sprint that has at least one 'finished' event.
+
+    Returns a dict mapping each sprint label to its list of Card objects,
+    in chronological order.
+    """
+    rows = conn.execute(
+        """
+        SELECT DISTINCT sprint FROM sprint_metrics.board_events
+        WHERE type = 'finished'
+        ORDER BY sprint
+        """
+    ).fetchall()
+
+    result: dict[str, list[Card]] = {}
+    for (sprint,) in rows:
+        result[sprint] = query_sprint(conn, sprint)
+    return result
