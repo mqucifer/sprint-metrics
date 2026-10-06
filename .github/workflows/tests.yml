@@ -111,7 +111,7 @@ jobs:
       - name: Verify service mode
         run: |
           set -euo pipefail
-          CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
+          CONTAINER_ID=$(docker run -d -p 8080:8080 -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
           echo "Service container started: $CONTAINER_ID"
           DEADLINE=$((SECONDS + 30))
           while [ $SECONDS -lt $DEADLINE ]; do
@@ -122,6 +122,8 @@ jobs:
           done
           if [ $SECONDS -ge $DEADLINE ]; then
             echo "ERROR: /health did not become reachable within 30 seconds"
+            echo "Container logs:"
+            docker logs "$CONTAINER_ID" 2>&1 || true
             docker stop "$CONTAINER_ID" 2>/dev/null || true
             docker rm "$CONTAINER_ID" 2>/dev/null || true
             exit 1
