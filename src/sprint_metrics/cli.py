@@ -47,6 +47,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.service:
+        from sprint_metrics.service import run
+
+        return run()
+
     if args.sprint_date is not None:
         try:
             sprint_date = date.fromisoformat(args.sprint_date)
@@ -358,6 +363,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--scrape",
         action="store_true",
         help="Start an HTTP server that serves the metrics at /metrics for scraping.",
+    )
+    parser.add_argument(
+        "--service",
+        action="store_true",
+        help="Start the stateful service that accepts board events over HTTP.",
     )
     parser.add_argument(
         "--port",
