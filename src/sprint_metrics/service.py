@@ -22,6 +22,7 @@ from sprint_metrics.metrics import (
     calculate_wip_violations,
 )
 from sprint_metrics.report import format_json_report
+from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import init_db, insert_event, query_all_sprints, query_range, query_sprint
 
@@ -76,6 +77,10 @@ def _start_service(conn, port: int) -> int:
 
     class ServiceHandler(http.server.BaseHTTPRequestHandler):
         def do_POST(self) -> None:  # noqa: N802
+            if self.path == "/schema/event":
+                self._send_json(405, {"error": "method not allowed"})
+                return
+
             if self.path != "/events":
                 self._send_json(404, {"error": "not found"})
                 return
@@ -166,6 +171,9 @@ def _start_service(conn, port: int) -> int:
                 self.send_header("Content-Length", str(len(encoded)))
                 self.end_headers()
                 self.wfile.write(encoded)
+                return
+            elif self.path == "/schema/event":
+                self._send_json(200, EVENT_INTAKE_SCHEMA)
                 return
             self._send_json(404, {"error": "not found"})
 
