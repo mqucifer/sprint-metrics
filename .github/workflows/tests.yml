@@ -22,6 +22,22 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sprint_metrics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      SPRINT_METRICS_DB: postgresql://postgres:postgres@localhost:5432/sprint_metrics
     steps:
       - uses: actions/checkout@v4
       - name: Verify FROM line is pinned by digest
@@ -92,3 +108,62 @@ jobs:
             exit 1
           fi
           echo "OK: container stopped and removed, port 9100 free"
+      - name: Verify service mode
+        run: |
+          set -euo pipefail
+          CONTAINER_ID=$(docker run -d -p 8080:8080 -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
+          echo "Service container started: $CONTAINER_ID"
+          DEADLINE=$((SECONDS + 30))
+          while [ $SECONDS -lt $DEADLINE ]; do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          if [ $SECONDS -ge $DEADLINE ]; then
+            echo "ERROR: /health did not become reachable within 30 seconds"
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Service is healthy"
+          POST_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/events \
+            -H 'Content-Type: application/json' \
+            -d '{"api_version":"1","card_id":"c1","type":"started","timestamp":"2024-01-03T10:00:00Z","sprint":"2024-01","card":{"created":"2024-01-01"}}')
+          if [ "$POST_STATUS" != "200" ]; then
+            echo "ERROR: POST /events returned $POST_STATUS, expected 200"
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "OK: POST /events returned 200"
+          SPRINT_BODY=$(curl -sf http://localhost:8080/sprint?label=2024-01)
+          echo "$SPRINT_BODY"
+          echo "$SPRINT_BODY" | grep -q '"api_version"'
+          echo "OK: response contains api_version"
+          echo "$SPRINT_BODY" | grep -q '"throughput"'
+          echo "OK: response contains throughput"
+          echo "Verifying service without SPRINT_METRICS_DB exits non-zero"
+          START=$SECONDS
+          set +e
+          NO_DB_OUTPUT=$(docker run --rm sprint-metrics-smoke --service 2>&1)
+          NO_DB_EXIT=$?
+          set -e
+          ELAPSED=$((SECONDS - START))
+          echo "$NO_DB_OUTPUT"
+          if [ "$NO_DB_EXIT" -eq 0 ]; then
+            echo "ERROR: service without SPRINT_METRICS_DB exited 0, expected non-zero"
+            exit 1
+          fi
+          if [ "$ELAPSED" -gt 15 ]; then
+            echo "ERROR: service without SPRINT_METRICS_DB took ${ELAPSED}s, expected <15s"
+            exit 1
+          fi
+          echo "OK: service without SPRINT_METRICS_DB exited with code $NO_DB_EXIT in ${ELAPSED}s"
+          docker stop "$CONTAINER_ID"
+          docker rm "$CONTAINER_ID"
+          if docker ps -q --filter "publish=8080" | grep -q .; then
+            echo "ERROR: A container is still publishing port 8080"
+            exit 1
+          fi
+          echo "OK: service container stopped and removed, port 8080 free"
