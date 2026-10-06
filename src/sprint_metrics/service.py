@@ -24,7 +24,14 @@ from sprint_metrics.metrics import (
 from sprint_metrics.report import format_json_report
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
-from sprint_metrics.store import init_db, insert_event, query_all_sprints, query_range, query_sprint
+from sprint_metrics.store import (
+    health_check,
+    init_db,
+    insert_event,
+    query_all_sprints,
+    query_range,
+    query_sprint,
+)
 
 VALID_EVENT_TYPES = frozenset({"started", "blocked", "unblocked", "finished", "escalated"})
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
@@ -174,6 +181,13 @@ def _start_service(conn, port: int) -> int:
                 return
             elif self.path == "/schema/event":
                 self._send_json(200, EVENT_INTAKE_SCHEMA)
+                return
+            elif self.path == "/health":
+                healthy = health_check(conn)
+                if healthy:
+                    self._send_json(200, {"status": "ok"})
+                else:
+                    self._send_json(503, {"status": "unavailable", "error": "database unreachable"})
                 return
             self._send_json(404, {"error": "not found"})
 
