@@ -483,3 +483,369 @@ def test_sprint_throughput_and_cycle_zero_for_cross_sprint_card():
         assert body["cycle_time_days"] == 0
     finally:
         conn.close()
+
+
+@requires_db
+def test_range_response_metrics_and_keys():
+    """AC1: GET /range?start=2024-01&end=2024-02 returns 200, api_version '1',
+    sprints has keys '2024-01' and '2024-02' with correct throughput and cycle_time_days."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac1_range', 'ac2_range')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: card created 2024-01-01, started 2024-01-03, finished 2024-01-07
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_range",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_range",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # Sprint 2024-02: card created 2024-02-01, started 2024-02-03, finished 2024-02-06
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_range",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_range",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        assert body["api_version"] == "1"
+        assert set(body["sprints"].keys()) == {"2024-01", "2024-02"}
+        assert body["sprints"]["2024-01"]["throughput"] == 1
+        assert body["sprints"]["2024-01"]["cycle_time_days"] == 4
+        assert body["sprints"]["2024-02"]["throughput"] == 1
+        assert body["sprints"]["2024-02"]["cycle_time_days"] == 3
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_prior_and_delta():
+    """AC2: 2024-01 has prior=null and delta=null; 2024-02 has prior.throughput=1
+    and delta.throughput=0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac2_range_a', 'ac2_range_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_range_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_range_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_range_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_range_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        assert body["sprints"]["2024-01"]["prior"] is None
+        assert body["sprints"]["2024-01"]["delta"] is None
+        assert body["sprints"]["2024-02"]["prior"]["throughput"] == 1
+        assert body["sprints"]["2024-02"]["delta"]["throughput"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_start_after_end_returns_400():
+    """AC3: GET /range?start=2024-02&end=2024-01 returns 400 with error referencing
+    the invalid range."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-02&end=2024-01")
+        assert status == 400
+        assert "error" in body
+        assert "range" in body["error"] or "2024-02" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_sprints_in_chronological_order():
+    """AC4: the sprints object has exactly two keys and '2024-01' appears before
+    '2024-02' in the serialized JSON (chronological order)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac4_range_a', 'ac4_range_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02", timeout=5
+        ) as resp:
+            raw_body = resp.read().decode()
+
+        body = json.loads(raw_body)
+        assert len(body["sprints"]) == 2
+        assert list(body["sprints"].keys()) == ["2024-01", "2024-02"]
+        # Verify in the raw serialized JSON: "2024-01" appears before "2024-02"
+        idx_01 = raw_body.index('"2024-01"')
+        idx_02 = raw_body.index('"2024-02"')
+        assert idx_01 < idx_02
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_first_sprint_prior_and_delta_are_null():
+    """AC5: the '2024-01' entry has prior with a JSON null value and delta with a
+    JSON null value, because 2024-01 is the first sprint in the range."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac5_range_a', 'ac5_range_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_range_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_range_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_range_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_range_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02", timeout=5
+        ) as resp:
+            raw_body = resp.read().decode()
+
+        body = json.loads(raw_body)
+        # prior must be JSON null (not the string 'null', not an empty object)
+        assert body["sprints"]["2024-01"]["prior"] is None
+        assert body["sprints"]["2024-01"]["delta"] is None
+        # Verify the raw JSON contains 'null' not '"null"' or '{}'
+        assert '"prior": null' in raw_body or '"prior":null' in raw_body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_second_sprint_prior_and_delta_values():
+    """AC6: the '2024-02' entry's prior object has throughput=1 and
+    cycle_time_days=4, and its delta object has throughput=0 and cycle_time_days=-1."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac6_range_a', 'ac6_range_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: throughput 1, cycle_time 4
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_range_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_range_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # Sprint 2024-02: throughput 1, cycle_time 3
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_range_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_range_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        assert body["sprints"]["2024-02"]["prior"]["throughput"] == 1
+        assert body["sprints"]["2024-02"]["prior"]["cycle_time_days"] == 4
+        assert body["sprints"]["2024-02"]["delta"]["throughput"] == 0
+        assert body["sprints"]["2024-02"]["delta"]["cycle_time_days"] == -1
+    finally:
+        conn.close()

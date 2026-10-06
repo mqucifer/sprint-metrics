@@ -11,9 +11,11 @@ import json
 import os
 import sys
 import threading
+from urllib.parse import parse_qs, urlparse
 
 from sprint_metrics.report import format_json_report
-from sprint_metrics.store import init_db, insert_event, query_sprint
+from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
+from sprint_metrics.store import init_db, insert_event, query_range, query_sprint
 
 VALID_EVENT_TYPES = frozenset({"started", "blocked", "unblocked", "finished", "escalated"})
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
@@ -113,6 +115,34 @@ def _start_service(conn, port: int) -> int:
                     self._send_json(500, {"error": f"database error: {exc}"})
                     return
                 body = _sprint_json(cards)
+                self._send_json(200, json.loads(body))
+                return
+            elif self.path.startswith("/range?"):
+                parsed = urlparse(self.path)
+                params = parse_qs(parsed.query)
+                start = params.get("start", [""])[0]
+                end = params.get("end", [""])[0]
+                if not start or not end:
+                    self._send_json(400, {"error": "missing start or end parameter"})
+                    return
+                try:
+                    start_parsed = _parse_sprint_label(start)
+                    end_parsed = _parse_sprint_label(end)
+                except ValueError as exc:
+                    self._send_json(400, {"error": str(exc)})
+                    return
+                if start_parsed > end_parsed:
+                    self._send_json(
+                        400, {"error": f"invalid range: start {start!r} is after end {end!r}"}
+                    )
+                    return
+                try:
+                    sprints = query_range(conn, start, end)
+                except Exception as exc:
+                    self._send_json(500, {"error": f"database error: {exc}"})
+                    return
+                labels = list(sprints.keys())
+                body = format_sprint_range_json(sprints, labels)
                 self._send_json(200, json.loads(body))
                 return
             self._send_json(404, {"error": "not found"})
