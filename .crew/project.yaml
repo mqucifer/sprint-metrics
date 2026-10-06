@@ -25,6 +25,9 @@ intent:
     - An MCP server, for now. The crew calls the tool directly, through its command
       line or, once it runs as one, its service API.
   release:
+    # Private by the Sponsor's choice (2026-10-06): "It's for me so far." The
+    # release check skips reading it instead of asking for it to be made public.
+    image: private
     deploys: false
     publishes: true
     where: A version tag vX.Y.Z on the sprint-metrics repo, with a GitHub Release,
