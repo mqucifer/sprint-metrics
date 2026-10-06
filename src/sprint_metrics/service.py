@@ -12,19 +12,8 @@ import os
 import sys
 import threading
 
-from sprint_metrics.metrics import (
-    calculate_blocked_aging,
-    calculate_cycle_time_and_lead_time,
-    calculate_escalation_rate,
-    calculate_failure_breakdown,
-    calculate_first_attempt_rate,
-    calculate_throughput,
-    calculate_top_failure_causes,
-    calculate_wip_violations,
-)
-from sprint_metrics.report import API_VERSION
+from sprint_metrics.report import format_json_report
 from sprint_metrics.store import init_db, insert_event, query_sprint
-from sprint_metrics.thresholds import calculate_flags
 
 VALID_EVENT_TYPES = frozenset({"started", "blocked", "unblocked", "finished", "escalated"})
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
@@ -148,29 +137,4 @@ def _start_service(conn, port: int) -> int:
 
 def _sprint_json(cards) -> str:
     """Compute sprint metrics from stored cards and return the JSON report string."""
-    cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
-    throughput = calculate_throughput(cards)
-    wip_violations = calculate_wip_violations(cards)
-    blocked_aging = calculate_blocked_aging(cards)
-    escalation_rate = calculate_escalation_rate(cards)
-    first_attempt_rate = calculate_first_attempt_rate(cards)
-    failure_breakdown = calculate_failure_breakdown(cards)
-    top_causes = calculate_top_failure_causes(cards)
-    flags = calculate_flags(cards, None, 0, None, None)
-
-    report: dict[str, object] = {
-        "api_version": API_VERSION,
-        "cycle_time_days": cycle_time,
-        "lead_time_days": lead_time,
-        "throughput": throughput,
-        "wip_violations": wip_violations,
-        "blocked_aging_days": blocked_aging,
-        "escalation_rate_percent": escalation_rate,
-        "first_attempt_rate_percent": first_attempt_rate,
-        "failure_breakdown": [
-            {"class": cls, "role": role, "count": count} for cls, role, count in failure_breakdown
-        ],
-        "top_failure_causes": top_causes,
-        "flags": flags,
-    }
-    return json.dumps(report)
+    return format_json_report(cards)

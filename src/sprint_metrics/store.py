@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
 def init_db(conn: Connection) -> None:
     """Create the sprint_metrics schema and board_events table if they do not exist."""
     conn.execute(_DDL)
+    conn.commit()
 
 
 def insert_event(conn: Connection, event: dict) -> None:
@@ -64,6 +65,7 @@ def insert_event(conn: Connection, event: dict) -> None:
             card.get("failure_role") if is_finished else None,
         ),
     )
+    conn.commit()
 
 
 def query_sprint(conn: Connection, label: str) -> list[Card]:
