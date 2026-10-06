@@ -23,6 +23,7 @@ BEGIN:cli-args
 - `--json`: Output the report as a JSON object. (default: False)
 - `--schema`: Output the JSON Schema for the API response (requires --json). (default: False)
 - `--scrape`: Start an HTTP server that serves the metrics at /metrics for scraping. (default: False)
+- `--service`: Start the stateful service that accepts board events over HTTP. (default: False)
 - `--port`: Port for the scrape server (default: 9100). Use 0 for an ephemeral port. (default: 9100)
 - `--thresholds`: JSON file of metric thresholds keyed by metric name, e.g. {"cycle_time_days": 3}; overrides the built-in defaults for the metrics it specifies.
 - `--metrics`: Comma-separated list of metric names to include in the output.
