@@ -178,3 +178,23 @@ def health_check(conn: Connection) -> bool:
         return True
     except psycopg.Error:
         return False
+
+
+def query_range(conn: Connection, start: str, end: str) -> dict[str, list[Card]]:
+    """Reconstruct Card objects for each sprint label in the inclusive range start..end.
+
+    Returns a dict mapping each label to its list of Card objects, in chronological order.
+    """
+    start_year, start_month = int(start[:4]), int(start[5:7])
+    end_year, end_month = int(end[:4]), int(end[5:7])
+
+    result: dict[str, list[Card]] = {}
+    year, month = start_year, start_month
+    while (year, month) <= (end_year, end_month):
+        label = f"{year:04d}-{month:02d}"
+        result[label] = query_sprint(conn, label)
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return result
