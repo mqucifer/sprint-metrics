@@ -235,3 +235,13 @@ def _metrics_text(sprints: dict[str, list]) -> str:
         lines.append(f"sprint_first_attempt_rate_percent{{{label}}} {first_attempt_rate}")
 
     return "\n".join(lines)
+
+
+SERVICE_ENDPOINTS = (
+    ("POST", "/events", "Accept a board event (started, blocked, unblocked, finished, escalated)"),
+    ("GET", "/sprint", "Query a single sprint's metrics"),
+    ("GET", "/range", "Query a range of sprints"),
+    ("GET", "/metrics", "Prometheus text exposition of stored history, sprint-labelled"),
+    ("GET", "/schema/event", "JSON Schema for the event intake format"),
+    ("GET", "/health", "Liveness/readiness check; 200 when the database is reachable"),
+)

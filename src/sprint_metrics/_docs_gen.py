@@ -13,6 +13,7 @@ from sprint_metrics.metrics import ALL_METRICS
 from sprint_metrics.report import _METRIC_COLUMNS
 from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
 from sprint_metrics.serve import serve_metrics
+from sprint_metrics.service import SERVICE_ENDPOINTS
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 
 
@@ -151,6 +152,7 @@ def _generate_section_content(marker_id: str) -> str:
         "formats": _generate_formats_content,
         "thresholds": _generate_thresholds_content,
         "scrape": _generate_scrape_content,
+        "service": _generate_service_content,
     }
     gen = generators.get(marker_id)
     if gen is None:
@@ -207,6 +209,7 @@ def generate_all() -> None:
         "docs/formats.md",
         "docs/thresholds.md",
         "docs/scrape.md",
+        "docs/service.md",
     ):
         path = repo_root / relative_path
         if not path.exists():
@@ -222,6 +225,19 @@ def main() -> int:
     except SystemExit as e:
         return e.code if isinstance(e.code, int) else 1
     return 0
+
+
+def _generate_service_content() -> str:
+    """Generate the text for the 'service' marked section."""
+    lines = [
+        "Long-lived HTTP service that accepts board events and answers sprint, range, and trend queries from Postgres.",
+        "",
+        "| Method | Path | Description |",
+        "|---|---|---|",
+    ]
+    for method, path, description in SERVICE_ENDPOINTS:
+        lines.append(f"| {method} | {path} | {description} |")
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":
