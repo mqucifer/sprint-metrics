@@ -1489,3 +1489,469 @@ def test_get_sprint_without_otel_endpoint_returns_200(monkeypatch):
         assert body["api_version"] == "1"
     finally:
         conn.close()
+
+
+@requires_db
+def test_trend_cycle_time_three_sprints():
+    """AC1: GET /trend?metric=cycle_time_days&start=2024-02&end=2024-04 returns
+    200 with three entries: 2024-02 value 3, 2024-03 value 0, 2024-04 value 6."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('ac1_trend_a', 'ac1_trend_b', 'ac1_trend_c', 'ac1_trend_d')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: one card, cycle 4 (created 01-01, started 01-02, finished 01-06)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_a",
+                event_type="started",
+                timestamp="2024-01-02T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_a",
+                event_type="finished",
+                timestamp="2024-01-06T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # 2024-02: two cards, each cycle 3 (created 02-01, started 02-02, finished 02-05)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_b",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_b",
+                event_type="finished",
+                timestamp="2024-02-05T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_c",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_c",
+                event_type="finished",
+                timestamp="2024-02-05T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        # 2024-04: one card, cycle 6 (created 04-01, started 04-02, finished 04-08)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_d",
+                event_type="started",
+                timestamp="2024-04-02T10:00:00Z",
+                sprint="2024-04",
+                created="2024-04-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_d",
+                event_type="finished",
+                timestamp="2024-04-08T15:00:00Z",
+                sprint="2024-04",
+                created="2024-04-01",
+            ),
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/trend?metric=cycle_time_days&start=2024-02&end=2024-04",
+            timeout=5,
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["api_version"] == "1"
+        assert len(body["values"]) == 3
+        assert body["values"][0] == {"sprint": "2024-02", "value": 3}
+        assert body["values"][1] == {"sprint": "2024-03", "value": 0}
+        assert body["values"][2] == {"sprint": "2024-04", "value": 6}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_empty_db_all_zeros():
+    """AC2: GET /trend?metric=throughput&start=2024-01&end=2024-03 on an empty DB
+    returns 200 with three entries, all value 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-03"
+        )
+        assert status == 200
+        assert body["api_version"] == "1"
+        assert len(body["values"]) == 3
+        assert body["values"][0] == {"sprint": "2024-01", "value": 0}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 0}
+        assert body["values"][2] == {"sprint": "2024-03", "value": 0}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_invalid_metric_returns_400():
+    """AC3: GET /trend?metric=bogus_metric&start=2024-01&end=2024-03 returns 400
+    with error containing 'bogus_metric'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=bogus_metric&start=2024-01&end=2024-03"
+        )
+        assert status == 400
+        assert "bogus_metric" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_start_after_end_returns_400():
+    """AC4: GET /trend?metric=throughput&start=2024-03&end=2024-01 returns 400
+    with error naming both '2024-03' and '2024-01'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-03&end=2024-01"
+        )
+        assert status == 400
+        assert "2024-03" in body["error"]
+        assert "2024-01" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_first_attempt_rate_two_sprints():
+    """AC5: GET /trend?metric=first_attempt_rate_percent&start=2024-01&end=2024-02
+    returns 200 with two entries: 2024-01 value 100 (one card, attempts=1),
+    2024-02 value 0 (one card, attempts=2)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac5_trend_a', 'ac5_trend_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: one completed card, default attempts=1 → 100%
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_trend_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_trend_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # 2024-02: one completed card, attempts=2 → 0%
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_trend_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_trend_b",
+                event_type="finished",
+                timestamp="2024-02-07T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+                attempts=2,
+                failure_class="parse",
+                failure_role="Developer",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=first_attempt_rate_percent"
+            f"&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["api_version"] == "1"
+        assert len(body["values"]) == 2
+        assert body["values"][0]["sprint"] == "2024-01"
+        assert body["values"][0]["value"] == 100
+        assert body["values"][1]["sprint"] == "2024-02"
+        assert body["values"][1]["value"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_response_includes_metric_and_span_labels():
+    """UX6: GET /trend?metric=cycle_time_days&start=2024-01&end=2024-02 response
+    has top-level keys whose values are 'cycle_time_days', '2024-01', '2024-02'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac6_trend_a', 'ac6_trend_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_trend_a",
+                event_type="started",
+                timestamp="2024-01-02T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_trend_a",
+                event_type="finished",
+                timestamp="2024-01-06T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_trend_b",
+                event_type="started",
+                timestamp="2024-02-01T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac6_trend_b",
+                event_type="finished",
+                timestamp="2024-02-04T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=cycle_time_days&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        values = list(body.values())
+        assert "cycle_time_days" in values
+        assert "2024-01" in values
+        assert "2024-02" in values
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_six_sprints_zero_fill_empty_sprint():
+    """UX7: GET /trend?metric=throughput&start=2024-01&end=2024-06 with no events
+    for 2024-03 returns six entries in order, 2024-03 has value 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('ac7_trend_a', 'ac7_trend_b', 'ac7_trend_c', 'ac7_trend_d', 'ac7_trend_e')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Add one finished card to each of 2024-01, 02, 04, 05, 06 (not 03)
+        sprints_with_data = ["2024-01", "2024-02", "2024-04", "2024-05", "2024-06"]
+        for i, sprint in enumerate(sprints_with_data):
+            card_id = f"ac7_trend_{chr(ord('a') + i)}"
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp=f"{sprint}-03T10:00:00Z",
+                    sprint=sprint,
+                    created=f"{sprint}-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp=f"{sprint}-07T15:00:00Z",
+                    sprint=sprint,
+                    created=f"{sprint}-01",
+                ),
+            )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-06"
+        )
+        assert status == 200
+        assert len(body["values"]) == 6
+        expected_order = ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06"]
+        for entry, label in zip(body["values"], expected_order, strict=True):
+            assert entry["sprint"] == label
+        assert body["values"][2]["value"] == 0
+        assert body["values"][0]["value"] == 1
+        assert body["values"][1]["value"] == 1
+        assert body["values"][3]["value"] == 1
+        assert body["values"][4]["value"] == 1
+        assert body["values"][5]["value"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_first_attempt_rate_integer_not_string_or_float():
+    """UX8: GET /trend?metric=first_attempt_rate_percent with 2024-01 attempts=2
+    (value 0) and 2024-02 attempts=1 (value 100) returns JSON integers."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac8_trend_a', 'ac8_trend_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: one card with attempts=2 → 0%
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac8_trend_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac8_trend_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                attempts=2,
+                failure_class="parse",
+                failure_role="Developer",
+            ),
+        )
+        # 2024-02: one card with attempts=1 (default) → 100%
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac8_trend_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac8_trend_b",
+                event_type="finished",
+                timestamp="2024-02-07T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=first_attempt_rate_percent"
+            f"&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["values"][0]["sprint"] == "2024-01"
+        assert body["values"][0]["value"] == 0
+        assert isinstance(body["values"][0]["value"], int)
+        assert not isinstance(body["values"][0]["value"], bool)
+        assert body["values"][1]["sprint"] == "2024-02"
+        assert body["values"][1]["value"] == 100
+        assert isinstance(body["values"][1]["value"], int)
+        assert not isinstance(body["values"][1]["value"], bool)
+    finally:
+        conn.close()

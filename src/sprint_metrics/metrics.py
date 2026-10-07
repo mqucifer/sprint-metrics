@@ -270,3 +270,28 @@ def blocked_aging_detail(
     return [
         (created, blocked_since) for aging, created, blocked_since in agings if aging == max_aging
     ]
+
+
+def metric_value(metric: str, cards: Iterable[Card | Mapping[str, object]]) -> int:
+    """Return the integer value of the named metric for the given cards.
+
+    Raises ValueError if the metric name is not in ALL_METRICS.
+    """
+    if metric not in ALL_METRICS:
+        raise ValueError(f"unknown metric: {metric!r}")
+    if metric == "cycle_time_days":
+        return calculate_cycle_time_and_lead_time(cards)[0]
+    if metric == "lead_time_days":
+        return calculate_cycle_time_and_lead_time(cards)[1]
+    if metric == "throughput":
+        return calculate_throughput(cards)
+    if metric == "wip_violations":
+        return calculate_wip_violations(cards, None)
+    if metric == "blocked_aging_days":
+        return calculate_blocked_aging(cards, None)
+    if metric == "escalation_rate_percent":
+        return calculate_escalation_rate(cards, 0)
+    if metric == "first_attempt_rate_percent":
+        return calculate_first_attempt_rate(cards)
+    breakdown = calculate_failure_breakdown(cards)
+    return sum(count for _, _, count in breakdown)

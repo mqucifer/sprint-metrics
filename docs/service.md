@@ -32,6 +32,7 @@ Long-lived HTTP service that accepts board events and answers sprint, range, and
 | POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated) |
 | GET | /sprint | Query a single sprint's metrics |
 | GET | /range | Query a range of sprints |
+| GET | /trend | Query a single metric's value across an inclusive sprint range |
 | GET | /metrics | Prometheus text exposition of stored history, sprint-labelled |
 | GET | /schema/event | JSON Schema for the event intake format |
 | GET | /health | Liveness/readiness check; 200 when the database is reachable |
