@@ -314,15 +314,17 @@ SERVICE_ENDPOINTS = (
 
 def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
     """Emit a structured log record via the configured OpenTelemetry logger."""
-    logger = get_logger()
-    record = LogRecord(
-        timestamp=int(time.time() * 1_000_000_000),
-        observed_timestamp=None,
-        severity_number=severity,
-        severity_text=severity.name,
-        body=body,
-        event_name=None,
-        attributes=attributes,
-        limits=0,
-    )
-    logger.emit(record)
+    try:
+        logger = get_logger()
+        record = LogRecord(
+            timestamp=int(time.time() * 1_000_000_000),
+            observed_timestamp=None,
+            severity_number=severity,
+            severity_text=severity.name,
+            body=body,
+            event_name=None,
+            attributes=attributes,
+        )
+        logger.emit(record)
+    except Exception:
+        pass
