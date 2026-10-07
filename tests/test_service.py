@@ -1348,3 +1348,144 @@ def test_service_works_without_otel_endpoint(monkeypatch, capsys):
         assert "connection refused" not in captured.err
     finally:
         conn.close()
+
+
+@requires_db
+def test_post_events_span_name_and_attributes(monkeypatch):
+    """AC1: POST /events → exactly one span named 'POST /events' with http.method and http.route."""
+    import psycopg
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from sprint_metrics.telemetry import init_telemetry
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    exporter = InMemorySpanExporter()
+    init_telemetry(span_exporter=exporter)
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_span'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(card_id="ac1_span")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+
+        spans = exporter.get_finished_spans()
+        matching = [s for s in spans if "POST" in s.name and "/events" in s.name]
+        assert len(matching) == 1
+        span = matching[0]
+        assert span.attributes["http.method"] == "POST"
+        assert span.attributes["http.route"] == "/events"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_get_sprint_span_ok_status(monkeypatch):
+    """AC2: GET /sprint?label=2024-01 → span has http.method=GET, http.route=/sprint, status OK."""
+    import psycopg
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import StatusCode
+
+    from sprint_metrics.telemetry import init_telemetry
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    exporter = InMemorySpanExporter()
+    init_telemetry(span_exporter=exporter)
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_span'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac2_span",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+
+        spans = exporter.get_finished_spans()
+        get_spans = [s for s in spans if s.name == "GET /sprint"]
+        assert len(get_spans) == 1
+        span = get_spans[0]
+        assert span.attributes["http.method"] == "GET"
+        assert span.attributes["http.route"] == "/sprint"
+        assert span.status.status_code == StatusCode.OK
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_invalid_type_span_error_status(monkeypatch):
+    """AC3: POST /events with invalid type 'frobnicated' → span status is not OK."""
+    import psycopg
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import StatusCode
+
+    from sprint_metrics.telemetry import init_telemetry
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    exporter = InMemorySpanExporter()
+    init_telemetry(span_exporter=exporter)
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(event_type="frobnicated")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+
+        spans = exporter.get_finished_spans()
+        matching = [s for s in spans if "POST" in s.name and "/events" in s.name]
+        assert len(matching) == 1
+        span = matching[0]
+        assert span.status.status_code != StatusCode.OK
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_get_sprint_without_otel_endpoint_returns_200(monkeypatch):
+    """AC4: OTEL endpoint not set → GET /sprint returns 200 with api_version='1'."""
+    import psycopg
+
+    from sprint_metrics.telemetry import init_telemetry
+
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_SERVICE_NAME", raising=False)
+    init_telemetry()
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_span'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac4_span",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["api_version"] == "1"
+    finally:
+        conn.close()
