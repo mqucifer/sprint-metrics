@@ -1492,6 +1492,74 @@ def test_get_sprint_without_otel_endpoint_returns_200(monkeypatch):
 
 
 @requires_db
+def test_post_valid_event_emits_info_log_record(monkeypatch):
+    """AC1: valid POST /events → in-memory log exporter has a record with severity INFO,
+    body includes card_id and event type."""
+    import psycopg
+    from opentelemetry._logs import SeverityNumber
+    from opentelemetry.sdk._logs.export.in_memory_log_exporter import InMemoryLogExporter
+
+    from sprint_metrics.telemetry import init_telemetry
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    log_exporter = InMemoryLogExporter()
+    init_telemetry(log_exporter=log_exporter)
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c1'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(card_id="c1", event_type="started")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+
+        logs = log_exporter.get_finished_logs()
+        matching = [
+            ld
+            for ld in logs
+            if "c1" in (ld.log_record.body or "") and "started" in (ld.log_record.body or "")
+        ]
+        assert len(matching) >= 1
+        assert matching[0].log_record.severity_number == SeverityNumber.INFO
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_invalid_type_emits_error_log_record(monkeypatch):
+    """AC2: invalid type POST /events → in-memory log exporter has a record with severity ERROR,
+    body includes the invalid type value."""
+    import psycopg
+    from opentelemetry._logs import SeverityNumber
+    from opentelemetry.sdk._logs.export.in_memory_log_exporter import InMemoryLogExporter
+
+    from sprint_metrics.telemetry import init_telemetry
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    log_exporter = InMemoryLogExporter()
+    init_telemetry(log_exporter=log_exporter)
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(event_type="frobnicated")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+
+        logs = log_exporter.get_finished_logs()
+        matching = [ld for ld in logs if "frobnicated" in (ld.log_record.body or "")]
+        assert len(matching) >= 1
+        assert matching[0].log_record.severity_number >= SeverityNumber.ERROR
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_trend_cycle_time_three_sprints():
     """AC1: GET /trend?metric=cycle_time_days&start=2024-02&end=2024-04 returns
     200 with three entries: 2024-02 value 3, 2024-03 value 0, 2024-04 value 6."""
