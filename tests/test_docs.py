@@ -866,3 +866,47 @@ def test_service_md_startup_failure_and_sprint_rule():
     assert "where it finishes" in before, (
         "hand-written content does not state the sprint-counting rule"
     )
+
+
+def test_service_md_documents_otel_environment_variables():
+    """AC1: OTEL env vars are documented with descriptions and the default service name."""
+    path = Path("docs/service.md")
+    text = path.read_text()
+    begin = text.index("BEGIN:service")
+    end = text.index("END:service") + len("END:service")
+    handwritten = text[:begin] + text[end:]
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT" in handwritten
+    assert "OTLP receiver URL" in handwritten
+    assert "OTEL_SERVICE_NAME" in handwritten
+    assert "sprint-metrics" in handwritten
+
+
+def test_service_md_shows_sample_span_and_log_record():
+    """AC2: A sample span and log record are shown in the hand-written Telemetry section."""
+    path = Path("docs/service.md")
+    text = path.read_text()
+    begin = text.index("BEGIN:service")
+    end = text.index("END:service") + len("END:service")
+    handwritten = text[:begin] + text[end:]
+    # Sample span: name, service name, HTTP attribute
+    assert "POST /events" in handwritten
+    assert "sprint-metrics" in handwritten
+    assert "http.method" in handwritten
+    # Sample log record: severity and event action in body
+    assert "INFO" in handwritten
+    assert "started" in handwritten
+
+
+def test_service_md_telemetry_section_survives_docs_gen(tmp_path):
+    """AC3: The hand-written Telemetry section is not modified by the docs generator."""
+    from sprint_metrics._docs_gen import generate_file
+
+    src = Path("docs/service.md")
+    original = src.read_text()
+    dest = tmp_path / "service.md"
+    dest.write_text(original)
+    generate_file(dest)
+    regenerated = dest.read_text()
+    orig_telemetry = original[original.index("END:service") :]
+    new_telemetry = regenerated[regenerated.index("END:service") :]
+    assert orig_telemetry == new_telemetry
