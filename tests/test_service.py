@@ -1319,3 +1319,32 @@ def test_health_returns_non_200_when_db_unreachable():
 
     status, body = _get_json(f"http://127.0.0.1:{port}/health")
     assert status != 200
+
+
+@requires_db
+def test_service_works_without_otel_endpoint(monkeypatch, capsys):
+    """AC3: endpoint not set → service responds 200, no error key, no ConnectionError on stderr."""
+    import psycopg
+
+    from sprint_metrics.telemetry import init_telemetry
+
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_SERVICE_NAME", raising=False)
+    init_telemetry()
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac3_telemetry'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(card_id="ac3_telemetry")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+        captured = capsys.readouterr()
+        assert "ConnectionError" not in captured.err
+        assert "connection refused" not in captured.err
+    finally:
+        conn.close()

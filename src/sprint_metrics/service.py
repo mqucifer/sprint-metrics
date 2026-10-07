@@ -32,6 +32,7 @@ from sprint_metrics.store import (
     query_range,
     query_sprint,
 )
+from sprint_metrics.telemetry import init_telemetry
 
 VALID_EVENT_TYPES = frozenset({"started", "blocked", "unblocked", "finished", "escalated"})
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
@@ -66,6 +67,8 @@ def run(db_url: str | None = None, port: int = 8080) -> int:
         print(f"sprint-metrics: cannot initialise database schema: {exc}", file=sys.stderr)
         conn.close()
         return 1
+
+    init_telemetry()
 
     actual_port = _start_service(conn, port)
     print(f"sprint-metrics: service listening on http://0.0.0.0:{actual_port}", flush=True)
