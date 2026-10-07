@@ -13,6 +13,8 @@ import sys
 import threading
 from urllib.parse import parse_qs, urlparse
 
+from opentelemetry.trace import StatusCode
+
 from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
@@ -32,7 +34,7 @@ from sprint_metrics.store import (
     query_range,
     query_sprint,
 )
-from sprint_metrics.telemetry import init_telemetry
+from sprint_metrics.telemetry import get_tracer, init_telemetry
 
 VALID_EVENT_TYPES = frozenset({"started", "blocked", "unblocked", "finished", "escalated"})
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
@@ -87,112 +89,159 @@ def _start_service(conn, port: int) -> int:
 
     class ServiceHandler(http.server.BaseHTTPRequestHandler):
         def do_POST(self) -> None:  # noqa: N802
-            if self.path == "/schema/event":
-                self._send_json(405, {"error": "method not allowed"})
-                return
+            route = self.path.split("?")[0]
+            status = 500
+            tracer = get_tracer()
+            with tracer.start_as_current_span(
+                f"POST {route}",
+                attributes={"http.method": "POST", "http.route": route},
+            ) as span:
+                try:
+                    if self.path == "/schema/event":
+                        self._send_json(405, {"error": "method not allowed"})
+                        status = 405
+                        return
 
-            if self.path != "/events":
-                self._send_json(404, {"error": "not found"})
-                return
+                    if self.path != "/events":
+                        self._send_json(404, {"error": "not found"})
+                        status = 404
+                        return
 
-            try:
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(content_length)
-                event = json.loads(body)
-            except (json.JSONDecodeError, ValueError):
-                self._send_json(400, {"error": "invalid JSON body"})
-                return
+                    try:
+                        content_length = int(self.headers.get("Content-Length", 0))
+                        body = self.rfile.read(content_length)
+                        event = json.loads(body)
+                    except (json.JSONDecodeError, ValueError):
+                        self._send_json(400, {"error": "invalid JSON body"})
+                        status = 400
+                        return
 
-            for field in REQUIRED_FIELDS:
-                if field not in event:
-                    self._send_json(400, {"error": f"missing required field: {field!r}"})
-                    return
+                    for field in REQUIRED_FIELDS:
+                        if field not in event:
+                            self._send_json(400, {"error": f"missing required field: {field!r}"})
+                            status = 400
+                            return
 
-            event_type = event["type"]
-            if event_type not in VALID_EVENT_TYPES:
-                self._send_json(400, {"error": f"unknown event type: {event_type!r}"})
-                return
+                    event_type = event["type"]
+                    if event_type not in VALID_EVENT_TYPES:
+                        self._send_json(400, {"error": f"unknown event type: {event_type!r}"})
+                        status = 400
+                        return
 
-            card = event["card"]
-            if not isinstance(card, dict) or "created" not in card:
-                self._send_json(400, {"error": "card.created is required"})
-                return
+                    card = event["card"]
+                    if not isinstance(card, dict) or "created" not in card:
+                        self._send_json(400, {"error": "card.created is required"})
+                        status = 400
+                        return
 
-            try:
-                insert_event(conn, event)
-            except Exception as exc:
-                self._send_json(500, {"error": f"database error: {exc}"})
-                return
+                    try:
+                        insert_event(conn, event)
+                    except Exception as exc:
+                        self._send_json(500, {"error": f"database error: {exc}"})
+                        status = 500
+                        return
 
-            self._send_json(200, {})
+                    self._send_json(200, {})
+                    status = 200
+                finally:
+                    span.set_attribute("http.status_code", status)
+                    span.set_status(StatusCode.OK if status < 400 else StatusCode.ERROR)
 
         def do_GET(self) -> None:  # noqa: N802
-            if self.path.startswith("/sprint?label="):
-                label = self.path[len("/sprint?label=") :]
-                if not label:
-                    self._send_json(400, {"error": "missing label parameter"})
-                    return
+            route = self.path.split("?")[0]
+            status = 500
+            tracer = get_tracer()
+            with tracer.start_as_current_span(
+                f"GET {route}",
+                attributes={"http.method": "GET", "http.route": route},
+            ) as span:
                 try:
-                    cards = query_sprint(conn, label)
-                except Exception as exc:
-                    self._send_json(500, {"error": f"database error: {exc}"})
-                    return
-                body = _sprint_json(cards)
-                self._send_json(200, json.loads(body))
-                return
-            elif self.path.startswith("/range?"):
-                parsed = urlparse(self.path)
-                params = parse_qs(parsed.query)
-                start = params.get("start", [""])[0]
-                end = params.get("end", [""])[0]
-                if not start or not end:
-                    self._send_json(400, {"error": "missing start or end parameter"})
-                    return
-                try:
-                    start_parsed = _parse_sprint_label(start)
-                    end_parsed = _parse_sprint_label(end)
-                except ValueError as exc:
-                    self._send_json(400, {"error": str(exc)})
-                    return
-                if start_parsed > end_parsed:
-                    self._send_json(
-                        400, {"error": f"invalid range: start {start!r} is after end {end!r}"}
-                    )
-                    return
-                try:
-                    sprints = query_range(conn, start, end)
-                except Exception as exc:
-                    self._send_json(500, {"error": f"database error: {exc}"})
-                    return
-                labels = list(sprints.keys())
-                body = format_sprint_range_json(sprints, labels)
-                self._send_json(200, json.loads(body))
-                return
-            elif self.path == "/metrics":
-                try:
-                    sprints = query_all_sprints(conn)
-                except Exception as exc:
-                    self._send_json(500, {"error": f"database error: {exc}"})
-                    return
-                body = _metrics_text(sprints)
-                encoded = body.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-                self.send_header("Content-Length", str(len(encoded)))
-                self.end_headers()
-                self.wfile.write(encoded)
-                return
-            elif self.path == "/schema/event":
-                self._send_json(200, EVENT_INTAKE_SCHEMA)
-                return
-            elif self.path == "/health":
-                healthy = health_check(conn)
-                if healthy:
-                    self._send_json(200, {"status": "ok"})
-                else:
-                    self._send_json(503, {"status": "unavailable", "error": "database unreachable"})
-                return
-            self._send_json(404, {"error": "not found"})
+                    if self.path.startswith("/sprint?label="):
+                        label = self.path[len("/sprint?label=") :]
+                        if not label:
+                            self._send_json(400, {"error": "missing label parameter"})
+                            status = 400
+                            return
+                        try:
+                            cards = query_sprint(conn, label)
+                        except Exception as exc:
+                            self._send_json(500, {"error": f"database error: {exc}"})
+                            status = 500
+                            return
+                        body = _sprint_json(cards)
+                        self._send_json(200, json.loads(body))
+                        status = 200
+                        return
+                    elif self.path.startswith("/range?"):
+                        parsed = urlparse(self.path)
+                        params = parse_qs(parsed.query)
+                        start = params.get("start", [""])[0]
+                        end = params.get("end", [""])[0]
+                        if not start or not end:
+                            self._send_json(400, {"error": "missing start or end parameter"})
+                            status = 400
+                            return
+                        try:
+                            start_parsed = _parse_sprint_label(start)
+                            end_parsed = _parse_sprint_label(end)
+                        except ValueError as exc:
+                            self._send_json(400, {"error": str(exc)})
+                            status = 400
+                            return
+                        if start_parsed > end_parsed:
+                            self._send_json(
+                                400,
+                                {"error": f"invalid range: start {start!r} is after end {end!r}"},
+                            )
+                            status = 400
+                            return
+                        try:
+                            sprints = query_range(conn, start, end)
+                        except Exception as exc:
+                            self._send_json(500, {"error": f"database error: {exc}"})
+                            status = 500
+                            return
+                        labels = list(sprints.keys())
+                        body = format_sprint_range_json(sprints, labels)
+                        self._send_json(200, json.loads(body))
+                        status = 200
+                        return
+                    elif self.path == "/metrics":
+                        try:
+                            sprints = query_all_sprints(conn)
+                        except Exception as exc:
+                            self._send_json(500, {"error": f"database error: {exc}"})
+                            status = 500
+                            return
+                        body = _metrics_text(sprints)
+                        encoded = body.encode("utf-8")
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+                        self.send_header("Content-Length", str(len(encoded)))
+                        self.end_headers()
+                        self.wfile.write(encoded)
+                        status = 200
+                        return
+                    elif self.path == "/schema/event":
+                        self._send_json(200, EVENT_INTAKE_SCHEMA)
+                        status = 200
+                        return
+                    elif self.path == "/health":
+                        healthy = health_check(conn)
+                        if healthy:
+                            self._send_json(200, {"status": "ok"})
+                            status = 200
+                        else:
+                            self._send_json(
+                                503, {"status": "unavailable", "error": "database unreachable"}
+                            )
+                            status = 503
+                        return
+                    self._send_json(404, {"error": "not found"})
+                    status = 404
+                finally:
+                    span.set_attribute("http.status_code", status)
+                    span.set_status(StatusCode.OK if status < 400 else StatusCode.ERROR)
 
         def _send_json(self, status: int, obj: dict) -> None:
             body = json.dumps(obj)
