@@ -11,8 +11,11 @@ import json
 import os
 import sys
 import threading
+import time
 from urllib.parse import parse_qs, urlparse
 
+from opentelemetry._logs import SeverityNumber
+from opentelemetry.sdk._logs._internal import LogRecord
 from opentelemetry.trace import StatusCode
 
 from sprint_metrics.metrics import (
@@ -34,7 +37,7 @@ from sprint_metrics.store import (
     query_range,
     query_sprint,
 )
-from sprint_metrics.telemetry import get_tracer, init_telemetry
+from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 
 VALID_EVENT_TYPES = frozenset({"started", "blocked", "unblocked", "finished", "escalated"})
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
@@ -125,6 +128,11 @@ def _start_service(conn, port: int) -> int:
                     event_type = event["type"]
                     if event_type not in VALID_EVENT_TYPES:
                         self._send_json(400, {"error": f"unknown event type: {event_type!r}"})
+                        _emit_log(
+                            SeverityNumber.ERROR,
+                            f"event rejected: unknown type {event_type}",
+                            {"card_id": event["card_id"], "event_type": event_type},
+                        )
                         status = 400
                         return
 
@@ -141,6 +149,11 @@ def _start_service(conn, port: int) -> int:
                         status = 500
                         return
 
+                    _emit_log(
+                        SeverityNumber.INFO,
+                        f"event accepted: card_id={event['card_id']} type={event_type}",
+                        {"card_id": event["card_id"], "event_type": event_type},
+                    )
                     self._send_json(200, {})
                     status = 200
                 finally:
@@ -297,3 +310,21 @@ SERVICE_ENDPOINTS = (
     ("GET", "/schema/event", "JSON Schema for the event intake format"),
     ("GET", "/health", "Liveness/readiness check; 200 when the database is reachable"),
 )
+
+
+def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
+    """Emit a structured log record via the configured OpenTelemetry logger."""
+    try:
+        logger = get_logger()
+        record = LogRecord(
+            timestamp=int(time.time() * 1_000_000_000),
+            observed_timestamp=None,
+            severity_number=severity,
+            severity_text=severity.name,
+            body=body,
+            event_name=None,
+            attributes=attributes,
+        )
+        logger.emit(record)
+    except Exception:
+        pass
