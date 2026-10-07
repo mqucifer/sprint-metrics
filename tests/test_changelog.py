@@ -127,8 +127,8 @@ def test_changelog_1_0_1_section_dated_with_entry_and_unreleased_above():
     assert match_100.start() > match.start(), "[1.0.0] should appear below [1.0.1]"
 
 
-def test_pyproject_version_is_1_0_2():
-    """AC1: pyproject.toml version field reads 1.0.2 with other fields unchanged."""
+def test_pyproject_version_is_1_1_0():
+    """AC1: pyproject.toml version field reads 1.1.0 with other fields unchanged."""
     import tomllib
     from pathlib import Path
 
@@ -136,7 +136,7 @@ def test_pyproject_version_is_1_0_2():
     with open(pyproject, "rb") as f:
         data = tomllib.load(f)
     project = data["project"]
-    assert project["version"] == "1.0.2"
+    assert project["version"] == "1.1.0"
     assert project["name"] == "sprint-metrics"
     assert project["description"] == "Delivery metrics for the crew's own board."
     assert project["requires-python"] == ">=3.12,<3.13"
@@ -147,10 +147,10 @@ def test_pyproject_version_is_1_0_2():
     ]
 
 
-def test_changelog_heading_order_unreleased_1_0_2_1_0_1_1_0_0():
-    """AC2: versioned headings in order are [Unreleased], [1.0.2] - date,
-    [1.0.1] - 2025-07-14, [1.0.0] - 2025-07-13; no other versioned heading
-    between Unreleased and 1.0.0."""
+def test_changelog_heading_order_unreleased_1_1_0_1_0_2_1_0_1_1_0_0():
+    """AC2: versioned headings in order are [Unreleased], [1.1.0] - date,
+    [1.0.2] - 2025-07-15, [1.0.1] - 2025-07-14, [1.0.0] - 2025-07-13;
+    no version-numbered heading before [Unreleased]."""
     import re
     from pathlib import Path
 
@@ -158,21 +158,24 @@ def test_changelog_heading_order_unreleased_1_0_2_1_0_1_1_0_0():
     lines = changelog.read_text().splitlines()
     pattern = re.compile(r"^## \[.+\]")
     matched_lines = [line for line in lines if pattern.match(line)]
-    assert len(matched_lines) >= 4, (
-        f"Expected at least 4 versioned headings, got {len(matched_lines)}"
+    assert len(matched_lines) == 5, (
+        f"Expected exactly 5 versioned headings, got {len(matched_lines)}"
     )
     assert matched_lines[0] == "## [Unreleased]", (
         f"First heading is {matched_lines[0]!r}, expected '## [Unreleased]'"
     )
     second = matched_lines[1]
-    assert re.match(r"^## \[1\.0\.2\] - \d{4}-\d{2}-\d{2}$", second), (
-        f"Second heading is {second!r}, expected '## [1.0.2] - YYYY-MM-DD'"
+    assert re.match(r"^## \[1\.1\.0\] - \d{4}-\d{2}-\d{2}$", second), (
+        f"Second heading is {second!r}, expected '## [1.1.0] - YYYY-MM-DD'"
     )
-    assert matched_lines[2] == "## [1.0.1] - 2025-07-14", (
-        f"Third heading is {matched_lines[2]!r}, expected '## [1.0.1] - 2025-07-14'"
+    assert matched_lines[2] == "## [1.0.2] - 2025-07-15", (
+        f"Third heading is {matched_lines[2]!r}, expected '## [1.0.2] - 2025-07-15'"
     )
-    assert matched_lines[3] == "## [1.0.0] - 2025-07-13", (
-        f"Fourth heading is {matched_lines[3]!r}, expected '## [1.0.0] - 2025-07-13'"
+    assert matched_lines[3] == "## [1.0.1] - 2025-07-14", (
+        f"Fourth heading is {matched_lines[3]!r}, expected '## [1.0.1] - 2025-07-14'"
+    )
+    assert matched_lines[4] == "## [1.0.0] - 2025-07-13", (
+        f"Fifth heading is {matched_lines[4]!r}, expected '## [1.0.0] - 2025-07-13'"
     )
     # No version-numbered heading before [Unreleased]
     unreleased_idx = lines.index("## [Unreleased]")
@@ -181,3 +184,80 @@ def test_changelog_heading_order_unreleased_1_0_2_1_0_1_1_0_0():
         assert not version_pattern.match(line), (
             f"Version-numbered heading {line!r} appears before '## [Unreleased]'"
         )
+
+
+def test_changelog_1_1_0_section_has_stateful_service_entry():
+    """AC5: the [1.1.0] section has exactly four subheadings in order; the first
+    non-blank line after '### Added' is a bullet containing the five required
+    substrings; and zero bullet lines under Changed, Fixed, and Removed."""
+    import re
+    from pathlib import Path
+
+    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+    lines = changelog.read_text().splitlines()
+
+    start = None
+    for i, line in enumerate(lines):
+        if re.match(r"^## \[1\.1\.0\] - \d{4}-\d{2}-\d{2}$", line):
+            start = i
+            break
+    assert start is not None, "Missing '## [1.1.0] - YYYY-MM-DD' heading"
+
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith("## "):
+            end = i
+            break
+
+    section_lines = lines[start + 1 : end]
+
+    subheadings = ["### Added", "### Changed", "### Fixed", "### Removed"]
+    found_headings = [line for line in section_lines if line.startswith("### ")]
+    assert found_headings == subheadings, (
+        f"Subheadings are {found_headings}, expected {subheadings}"
+    )
+
+    added_idx = section_lines.index("### Added")
+    next_idx = added_idx + 1
+    while next_idx < len(section_lines) and section_lines[next_idx].strip() == "":
+        next_idx += 1
+    assert next_idx < len(section_lines), "No content after ### Added"
+    first_line = section_lines[next_idx]
+    assert first_line.startswith("- "), (
+        f"Line after ### Added is {first_line!r}, expected to start with '- '"
+    )
+    for substring in [
+        "board events over HTTP",
+        "Postgres",
+        "Prometheus /metrics",
+        "health-check",
+        "schema",
+    ]:
+        assert substring in first_line, f"Line after ### Added missing {substring!r}"
+
+    for heading in ["### Changed", "### Fixed", "### Removed"]:
+        heading_idx = section_lines.index(heading)
+        for j in range(heading_idx + 1, len(section_lines)):
+            line = section_lines[j]
+            if line.startswith("### ") or line.startswith("## "):
+                break
+            assert not line.startswith("- "), f"Bullet line {line!r} found under {heading!r}"
+
+
+def test_changelog_1_1_0_date_is_valid_and_after_1_0_2():
+    """AC6: the date in the [1.1.0] heading is a valid ISO date strictly after
+    2025-07-15 (the [1.0.2] release date)."""
+    import re
+    from datetime import date
+    from pathlib import Path
+
+    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+    content = changelog.read_text()
+
+    match = re.search(r"^## \[1\.1\.0\] - (\d{4}-\d{2}-\d{2})$", content, re.MULTILINE)
+    assert match, "Missing '## [1.1.0] - YYYY-MM-DD' heading"
+
+    parsed = date.fromisoformat(match.group(1))
+    assert parsed > date(2025, 7, 15), (
+        f"[1.1.0] date {match.group(1)} is not after [1.0.2] date 2025-07-15"
+    )
