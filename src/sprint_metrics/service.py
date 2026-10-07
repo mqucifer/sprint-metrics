@@ -29,7 +29,7 @@ from sprint_metrics.metrics import (
     metric_value,
 )
 from sprint_metrics.report import API_VERSION, format_json_report
-from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
+from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
     health_check,
@@ -289,6 +289,10 @@ def _start_service(conn, port: int) -> int:
                         return
                     elif self.path == "/schema/event":
                         self._send_json(200, EVENT_INTAKE_SCHEMA)
+                        status = 200
+                        return
+                    elif self.path == "/schema/trend":
+                        self._send_json(200, TREND_SCHEMA)
                         status = 200
                         return
                     elif self.path == "/health":

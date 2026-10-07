@@ -121,3 +121,27 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         },
     },
 }
+
+
+TREND_SCHEMA: dict[str, object] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": ["api_version", "values"],
+    "properties": {
+        "api_version": {"type": "string"},
+        "metric": {"type": "string"},
+        "start": {"type": "string"},
+        "end": {"type": "string"},
+        "values": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["sprint", "value"],
+                "properties": {
+                    "sprint": {"type": "string"},
+                    "value": {"type": "integer"},
+                },
+            },
+        },
+    },
+}
