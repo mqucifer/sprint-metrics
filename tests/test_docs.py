@@ -21,6 +21,7 @@ ALL_DOCS = [
     "formats.md",
     "thresholds.md",
     "scrape.md",
+    "service.md",
 ]
 
 MARKER_IDS = {
@@ -30,6 +31,7 @@ MARKER_IDS = {
     "formats.md": "formats",
     "thresholds.md": "thresholds",
     "scrape.md": "scrape",
+    "service.md": "service",
 }
 
 DRIFT_FILES = [(f, MARKER_IDS[f]) for f in ALL_DOCS]
@@ -785,3 +787,82 @@ def test_formats_empty_sprint_json_output(tmp_path, capsys):
     assert flags["wip_violations"] is False
     assert flags["blocked_aging_days"] is False
     assert flags["escalation_rate_percent"] is False
+
+
+def test_service_md_has_handwritten_intro():
+    """AC1: docs/service.md's hand-written content before BEGIN:service states
+    SPRINT_METRICS_DB, shows a docker run command publishing port 8080, and
+    names POST /events and GET /sprint."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "SPRINT_METRICS_DB" in before, "hand-written content does not mention SPRINT_METRICS_DB"
+    assert "docker run" in before, "hand-written content does not show a docker run command"
+    assert "8080" in before, "docker run command does not publish port 8080"
+    assert "POST /events" in before, "hand-written content does not name POST /events"
+    assert "GET /sprint" in before, "hand-written content does not name GET /sprint"
+
+
+def test_service_md_generated_section_contains_all_endpoints():
+    """AC2: the text between BEGIN:service and END:service in docs/service.md
+    contains a line or table row for each of the six service endpoints."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    section = _extract_marked_section(text, "service")
+    lines = section.splitlines()
+    for method, path_part in [
+        ("POST", "/events"),
+        ("GET", "/sprint"),
+        ("GET", "/range"),
+        ("GET", "/metrics"),
+        ("GET", "/schema"),
+        ("GET", "/health"),
+    ]:
+        matching = [line for line in lines if method in line and path_part in line]
+        assert matching, f"docs/service.md marked section missing a row for {method} {path_part}"
+
+
+def test_drift_check_service_md_detects_manual_edit(tmp_path):
+    """AC4: when the content between BEGIN:service and END:service in docs/service.md
+    has been manually edited so it no longer matches what _docs_gen would produce,
+    the drift check fails with an assertion message containing 'docs/service.md'."""
+    original_text = (DOCS_DIR / "service.md").read_text()
+    lines = original_text.splitlines(keepends=True)
+    begin_idx = next(i for i, line in enumerate(lines) if line.startswith("BEGIN:service"))
+    end_idx = next(i for i, line in enumerate(lines) if line.strip() == "END:service")
+    stale = (
+        "".join(lines[: begin_idx + 1])
+        + "manually edited stale content\n"
+        + "".join(lines[end_idx:])
+    )
+    doc_path = tmp_path / "service.md"
+    doc_path.write_text(stale)
+    with pytest.raises(AssertionError, match="docs/service.md"):
+        _check_no_drift(doc_path, "service", "docs/service.md")
+
+
+def test_service_md_names_all_event_types():
+    """AC5: the hand-written content before BEGIN:service in docs/service.md
+    contains each of the five accepted event type names."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    for event_type in ("started", "blocked", "unblocked", "finished", "escalated"):
+        assert event_type in before, (
+            f"hand-written content does not mention event type {event_type!r}"
+        )
+
+
+def test_service_md_startup_failure_and_sprint_rule():
+    """AC6: the hand-written content before BEGIN:service in docs/service.md
+    contains 'non-zero' in the context of a startup failure, and contains
+    'where it finishes' stating the sprint-counting rule."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "non-zero" in before, (
+        "hand-written content does not mention non-zero exit on startup failure"
+    )
+    assert "where it finishes" in before, (
+        "hand-written content does not state the sprint-counting rule"
+    )
