@@ -10,7 +10,7 @@ dependencies = ["psycopg>=3.1", "opentelemetry-sdk>=1.24", "opentelemetry-export
 sprint-metrics = "sprint_metrics.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6", "pyyaml>=6.0"]
+dev = ["pytest>=8.0", "ruff>=0.6", "pyyaml>=6.0", "jsonschema>=4.0"]
 
 [build-system]
 requires = ["hatchling"]

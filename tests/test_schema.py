@@ -94,3 +94,38 @@ def test_schema_without_json_exits_2(capsys):
     assert exit_code == 2
     assert "only valid with --json" in captured.err
     assert captured.out == ""
+
+
+def test_trend_schema_top_level_structure():
+    """AC1: TREND_SCHEMA is a dict with correct $schema, type, and required keys."""
+    from sprint_metrics.schema import TREND_SCHEMA
+
+    assert isinstance(TREND_SCHEMA, dict)
+    assert TREND_SCHEMA["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert TREND_SCHEMA["type"] == "object"
+    assert "api_version" in TREND_SCHEMA["required"]
+    # Exactly one additional key beyond api_version
+    extra = [k for k in TREND_SCHEMA["required"] if k != "api_version"]
+    assert extra == ["values"]
+
+
+def test_trend_schema_values_items_structure():
+    """AC2: values is an array of objects each requiring sprint and value."""
+    from sprint_metrics.schema import TREND_SCHEMA
+
+    values_prop = TREND_SCHEMA["properties"]["values"]
+    assert values_prop["type"] == "array"
+    items = values_prop["items"]
+    assert items["type"] == "object"
+    assert items["required"] == ["sprint", "value"]
+
+
+def test_trend_schema_properties_types():
+    """AC5 (UX): properties include metric/start/end as string and values as array."""
+    from sprint_metrics.schema import TREND_SCHEMA
+
+    props = TREND_SCHEMA["properties"]
+    assert props["metric"]["type"] == "string"
+    assert props["start"]["type"] == "string"
+    assert props["end"]["type"] == "string"
+    assert props["values"]["type"] == "array"

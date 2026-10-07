@@ -2023,3 +2023,79 @@ def test_trend_first_attempt_rate_integer_not_string_or_float():
         assert not isinstance(body["values"][1]["value"], bool)
     finally:
         conn.close()
+
+
+@requires_db
+def test_schema_trend_get_returns_200_json_schema():
+    """AC3: GET /schema/trend returns 200, application/json, correct $schema and required."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/schema/trend", timeout=5) as resp:
+            status = resp.status
+            content_type = resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+        assert status == 200
+        assert "application/json" in content_type
+        assert body["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+        assert "api_version" in body["required"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_response_validates_against_schema():
+    """AC4 (UX): a /trend response validates against TREND_SCHEMA with no errors."""
+    import jsonschema
+    import psycopg
+
+    from sprint_metrics.schema import TREND_SCHEMA
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('ac4_schema_a', 'ac4_schema_b', 'ac4_schema_c')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Three sprints with one finished card each (throughput = 1 each)
+        for sprint, card_id in [
+            ("2024-01", "ac4_schema_a"),
+            ("2024-02", "ac4_schema_b"),
+            ("2024-03", "ac4_schema_c"),
+        ]:
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp=f"{sprint}-03T10:00:00Z",
+                    sprint=sprint,
+                    created=f"{sprint}-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp=f"{sprint}-07T15:00:00Z",
+                    sprint=sprint,
+                    created=f"{sprint}-01",
+                ),
+            )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-03"
+        )
+        assert status == 200
+        jsonschema.validate(instance=body, schema=TREND_SCHEMA)
+    finally:
+        conn.close()
