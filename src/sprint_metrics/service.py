@@ -19,14 +19,16 @@ from opentelemetry.sdk._logs._internal import LogRecord
 from opentelemetry.trace import StatusCode
 
 from sprint_metrics.metrics import (
+    ALL_METRICS,
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
     calculate_first_attempt_rate,
     calculate_throughput,
     calculate_wip_violations,
+    metric_value,
 )
-from sprint_metrics.report import format_json_report
+from sprint_metrics.report import API_VERSION, format_json_report
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
@@ -219,6 +221,56 @@ def _start_service(conn, port: int) -> int:
                         self._send_json(200, json.loads(body))
                         status = 200
                         return
+                    elif self.path.startswith("/trend?"):
+                        parsed = urlparse(self.path)
+                        params = parse_qs(parsed.query)
+                        metric = params.get("metric", [""])[0]
+                        start = params.get("start", [""])[0]
+                        end = params.get("end", [""])[0]
+                        if not metric or not start or not end:
+                            self._send_json(
+                                400, {"error": "missing metric, start, or end parameter"}
+                            )
+                            status = 400
+                            return
+                        if metric not in ALL_METRICS:
+                            self._send_json(400, {"error": f"unknown metric: {metric!r}"})
+                            status = 400
+                            return
+                        try:
+                            start_parsed = _parse_sprint_label(start)
+                            end_parsed = _parse_sprint_label(end)
+                        except ValueError as exc:
+                            self._send_json(400, {"error": str(exc)})
+                            status = 400
+                            return
+                        if start_parsed > end_parsed:
+                            self._send_json(
+                                400,
+                                {"error": f"invalid range: start {start!r} is after end {end!r}"},
+                            )
+                            status = 400
+                            return
+                        try:
+                            sprints = query_range(conn, start, end)
+                        except Exception as exc:
+                            self._send_json(500, {"error": f"database error: {exc}"})
+                            status = 500
+                            return
+                        values = [
+                            {"sprint": label, "value": metric_value(metric, sprints[label])}
+                            for label in sprints
+                        ]
+                        response = {
+                            "api_version": API_VERSION,
+                            "metric": metric,
+                            "start": start,
+                            "end": end,
+                            "values": values,
+                        }
+                        self._send_json(200, response)
+                        status = 200
+                        return
                     elif self.path == "/metrics":
                         try:
                             sprints = query_all_sprints(conn)
@@ -306,6 +358,7 @@ SERVICE_ENDPOINTS = (
     ("POST", "/events", "Accept a board event (started, blocked, unblocked, finished, escalated)"),
     ("GET", "/sprint", "Query a single sprint's metrics"),
     ("GET", "/range", "Query a range of sprints"),
+    ("GET", "/trend", "Query a single metric's value across an inclusive sprint range"),
     ("GET", "/metrics", "Prometheus text exposition of stored history, sprint-labelled"),
     ("GET", "/schema/event", "JSON Schema for the event intake format"),
     ("GET", "/health", "Liveness/readiness check; 200 when the database is reachable"),
