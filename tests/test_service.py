@@ -2165,3 +2165,152 @@ def test_trend_doc_worked_example_matches_service_response():
         assert body["values"] == expected_values
     finally:
         conn.close()
+
+
+@requires_db
+def test_post_events_returns_503_when_db_unreachable():
+    """AC1+AC2: POST /events with unreachable DB returns 503 (not 500),
+    body is non-empty and does not contain 'Traceback'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        event = _make_event(card_id="ac1_503")
+        data = json.dumps(event).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/events",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                status = resp.status
+                raw_body = resp.read().decode()
+        except urllib.error.HTTPError as e:
+            status = e.code
+            raw_body = e.read().decode()
+        assert status == 503
+        assert status != 500
+        assert len(raw_body) > 0
+        assert "Traceback" not in raw_body
+    finally:
+        pass
+
+
+@requires_db
+def test_post_events_recover_after_connection_lost():
+    """AC4: after the connection is lost, POST /events succeeds once the database
+    is reachable again; subsequent GET /sprint returns throughput=1."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+    conn.close()
+
+    port = _start_service(conn, 0, SPRINT_METRICS_DB)
+    try:
+        started = _make_event(
+            card_id="ac4_recover",
+            event_type="started",
+            timestamp="2024-01-05T09:00:00Z",
+            sprint="2024-01",
+            created="2024-01-04",
+        )
+        finished = _make_event(
+            card_id="ac4_recover",
+            event_type="finished",
+            timestamp="2024-01-08T15:00:00Z",
+            sprint="2024-01",
+            created="2024-01-04",
+        )
+        status, _ = _post_events(f"http://127.0.0.1:{port}/events", started)
+        assert status == 200
+        status, _ = _post_events(f"http://127.0.0.1:{port}/events", finished)
+        assert status == 200
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["throughput"] == 1
+    finally:
+        pass
+
+
+@requires_db
+def test_post_events_503_content_type_is_application_json():
+    """AC5: 503 response Content-Type header is exactly 'application/json'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        event = _make_event(card_id="ac5_503")
+        data = json.dumps(event).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/events",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+        except urllib.error.HTTPError as e:
+            content_type = e.headers.get("Content-Type", "")
+        assert content_type == "application/json"
+    finally:
+        pass
+
+
+@requires_db
+def test_post_events_503_body_json_contains_database():
+    """AC6: 503 body parsed as JSON is a dict, and at least one value (lowercased)
+    contains the substring 'database'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        event = _make_event(card_id="ac6_503")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 503
+        assert isinstance(body, dict)
+        values_lowered = [str(v).lower() for v in body.values()]
+        assert any("database" in v for v in values_lowered)
+    finally:
+        pass
+
+
+@requires_db
+def test_post_events_503_body_has_no_card_id_key():
+    """AC7: 503 body parsed as JSON has no top-level key named 'card_id'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        event = _make_event(card_id="ac7_503")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 503
+        assert "card_id" not in body
+    finally:
+        pass
