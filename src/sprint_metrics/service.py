@@ -32,7 +32,6 @@ from sprint_metrics.report import API_VERSION, format_json_report
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
-    health_check,
     init_db,
     insert_event,
     query_all_sprints,
@@ -359,8 +358,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         status = 200
                         return
                     elif self.path == "/health":
-                        healthy = health_check(conn_holder[0])
-                        if healthy:
+                        if self._ensure_db():
                             self._send_json(200, {"status": "ok"})
                             status = 200
                         else:
