@@ -46,6 +46,33 @@ sprint-metrics cards.json
 
 Full documentation lives in [docs/](docs/): card input format, metric definitions, output formats, thresholds, and scrape mode.
 
+## JSON Schemas
+
+Every API endpoint has a JSON Schema that defines its response (or request) shape. The schemas live in `schemas/` at the repository root. Each is pinned to the release tag you run.
+
+| File | Direction | Endpoint |
+|---|---|---|
+| `schemas/event-intake.json` | sent — the request body the service validates | POST /events |
+| `schemas/single-sprint.json` | received — the response you validate | GET /sprint |
+| `schemas/sprint-range.json` | received — the response you validate | GET /range |
+| `schemas/trend.json` | received — the response you validate | GET /trend |
+
+**Direction.** "Sent" means the schema describes the input the service validates before accepting an event. "Received" means the schema describes the output the service returns. Validate your POST /events body against the sent schema; validate the service's response against the received schema for the endpoint you called.
+
+**Fetch a schema at a tag.** Replace `v1.1.0` with the version tag you run:
+
+```
+curl https://raw.githubusercontent.com/mqucifer/sprint-metrics/v1.1.0/schemas/single-sprint.json
+```
+
+If you already have a clone:
+
+```
+git show v1.1.0:schemas/single-sprint.json
+```
+
+**You do not keep a copy.** Point your validation library at the schema URL for the tag you run, or pin the tag in a CI check. The schema at the tag is the contract; a local copy goes stale.
+
 ## Versioning
 
 Versions follow SemVer:
