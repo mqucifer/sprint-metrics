@@ -53,6 +53,12 @@ Long-lived HTTP service that accepts board events and answers sprint, range, and
 | GET | /health | Liveness/readiness check; 200 when the database is reachable |
 END:service
 
+## Automatic recovery
+
+If the Postgres server restarts (for example, when Docker Desktop restarts), the service reconnects to its database automatically. No container restart is required for the service to resume answering requests.
+
+While the database is unavailable, all query endpoints return HTTP 503. Once the database is reachable again, the endpoints resume returning HTTP 200 without any operator intervention.
+
 ## Telemetry
 
 The service emits its logs and traces as OpenTelemetry over OTLP. No custom collector is required.
