@@ -206,7 +206,17 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(400, {"error": "missing label parameter"})
                             status = 400
                             return
-                        self._ensure_db()
+                        if not self._ensure_db():
+                            self._send_json(
+                                503,
+                                {
+                                    "status": "unavailable",
+                                    "error": "database temporarily unavailable",
+                                    "retryable": True,
+                                },
+                            )
+                            status = 503
+                            return
                         try:
                             cards = query_sprint(conn_holder[0], label)
                         except Exception as exc:
@@ -240,7 +250,17 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             )
                             status = 400
                             return
-                        self._ensure_db()
+                        if not self._ensure_db():
+                            self._send_json(
+                                503,
+                                {
+                                    "status": "unavailable",
+                                    "error": "database temporarily unavailable",
+                                    "retryable": True,
+                                },
+                            )
+                            status = 503
+                            return
                         try:
                             sprints = query_range(conn_holder[0], start, end)
                         except Exception as exc:
@@ -282,7 +302,17 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             )
                             status = 400
                             return
-                        self._ensure_db()
+                        if not self._ensure_db():
+                            self._send_json(
+                                503,
+                                {
+                                    "status": "unavailable",
+                                    "error": "database temporarily unavailable",
+                                    "retryable": True,
+                                },
+                            )
+                            status = 503
+                            return
                         try:
                             sprints = query_range(conn_holder[0], start, end)
                         except Exception as exc:
