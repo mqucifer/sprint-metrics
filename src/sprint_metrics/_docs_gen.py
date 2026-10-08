@@ -153,6 +153,7 @@ def _generate_section_content(marker_id: str) -> str:
         "thresholds": _generate_thresholds_content,
         "scrape": _generate_scrape_content,
         "service": _generate_service_content,
+        "trend-format": _generate_trend_format_content,
     }
     gen = generators.get(marker_id)
     if gen is None:
@@ -161,7 +162,7 @@ def _generate_section_content(marker_id: str) -> str:
 
 
 def generate_file(path: Path) -> None:
-    """Replace the marked section in the given docs file with generated content.
+    """Replace all marked sections in the given docs file with generated content.
 
     If the file does not contain a BEGIN marker, writes an error to stderr
     and raises SystemExit(1). The file is left byte-identical.
@@ -169,34 +170,34 @@ def generate_file(path: Path) -> None:
     text = path.read_text()
     lines = text.splitlines(keepends=True)
 
-    begin_idx = None
-    marker_id = None
+    markers: list[tuple[int, str]] = []
     for i, line in enumerate(lines):
         stripped = line.rstrip("\r\n")
         if stripped.startswith("BEGIN:"):
-            begin_idx = i
             marker_id = stripped[len("BEGIN:") :]
-            break
+            markers.append((i, marker_id))
 
-    if begin_idx is None:
+    if not markers:
         print(f"_docs_gen: no BEGIN marker found in {path}", file=sys.stderr)
         raise SystemExit(1)
 
-    end_idx = None
-    for i in range(begin_idx + 1, len(lines)):
-        stripped = lines[i].rstrip("\r\n")
-        if stripped == f"END:{marker_id}":
-            end_idx = i
-            break
+    for begin_idx, marker_id in reversed(markers):
+        end_idx = None
+        for i in range(begin_idx + 1, len(lines)):
+            stripped = lines[i].rstrip("\r\n")
+            if stripped == f"END:{marker_id}":
+                end_idx = i
+                break
 
-    if end_idx is None:
-        print(f"_docs_gen: no END:{marker_id} marker found in {path}", file=sys.stderr)
-        raise SystemExit(1)
+        if end_idx is None:
+            print(f"_docs_gen: no END:{marker_id} marker found in {path}", file=sys.stderr)
+            raise SystemExit(1)
 
-    content = _generate_section_content(marker_id)
+        content = _generate_section_content(marker_id)
+        new_text = "".join(lines[: begin_idx + 1]) + content + "".join(lines[end_idx:])
+        lines = new_text.splitlines(keepends=True)
 
-    new_text = "".join(lines[: begin_idx + 1]) + content + "".join(lines[end_idx:])
-    path.write_text(new_text)
+    path.write_text("".join(lines))
 
 
 def generate_all() -> None:
@@ -237,6 +238,46 @@ def _generate_service_content() -> str:
     ]
     for method, path, description in SERVICE_ENDPOINTS:
         lines.append(f"| {method} | {path} | {description} |")
+    return "\n".join(lines) + "\n"
+
+
+def _generate_trend_format_content() -> str:
+    """Generate the text for the 'trend-format' marked section in docs/formats.md."""
+    example = {
+        "api_version": "1",
+        "metric": "throughput",
+        "start": "2024-01",
+        "end": "2024-04",
+        "values": [
+            {"sprint": "2024-01", "value": 2},
+            {"sprint": "2024-02", "value": 1},
+            {"sprint": "2024-03", "value": 0},
+            {"sprint": "2024-04", "value": 3},
+        ],
+    }
+    lines = [
+        "The /trend response is a JSON object with the following top-level fields:",
+        "",
+        '- `api_version` \u2014 string, currently `"1"`',
+        "- `metric` \u2014 the metric name requested",
+        "- `start` \u2014 the start sprint label (YYYY-MM)",
+        "- `end` \u2014 the end sprint label (YYYY-MM)",
+        "- `values` \u2014 an ordered array of objects, one per sprint in the inclusive range, each with:",
+        "  - `sprint` \u2014 the sprint label (YYYY-MM)",
+        "  - `value` \u2014 the metric's integer value for that sprint; 0 when no events are stored",
+        "",
+        "### Worked example",
+        "",
+        "Request: `GET /trend?metric=throughput&start=2024-01&end=2024-04`",
+        "",
+        "Response:",
+        "",
+        "```json",
+        json.dumps(example, indent=2),
+        "```",
+        "",
+        "Sprint 2024-03 has no stored events and appears with value 0 rather than being omitted.",
+    ]
     return "\n".join(lines) + "\n"
 
 

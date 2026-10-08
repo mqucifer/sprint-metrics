@@ -2099,3 +2099,69 @@ def test_trend_response_validates_against_schema():
         jsonschema.validate(instance=body, schema=TREND_SCHEMA)
     finally:
         conn.close()
+
+
+@requires_db
+def test_trend_doc_worked_example_matches_service_response():
+    """AC4: the trend worked example in docs/formats.md, when its events are stored via
+    POST /events and queried via GET /trend, produces a response whose values match
+    the example's sprint labels and values exactly."""
+    import re
+    from pathlib import Path
+
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'doc_trend_%'")
+    conn.commit()
+
+    text = (Path(__file__).parent.parent / "docs" / "formats.md").read_text()
+    section_start = text.index("BEGIN:trend-format")
+    section_end = text.index("END:trend-format")
+    section_text = text[section_start:section_end]
+    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
+    assert match is not None, "no JSON example found in trend-format section"
+    example = json.loads(match.group(1))
+
+    metric = example["metric"]
+    start = example["start"]
+    end = example["end"]
+    expected_values = example["values"]
+
+    port = _start_service(conn, 0)
+    try:
+        for entry in expected_values:
+            sprint = entry["sprint"]
+            value = entry["value"]
+            if metric == "throughput" and value > 0:
+                for i in range(value):
+                    card_id = f"doc_trend_{sprint}_{i}"
+                    _post_events(
+                        f"http://127.0.0.1:{port}/events",
+                        _make_event(
+                            card_id=card_id,
+                            event_type="started",
+                            timestamp=f"{sprint}-03T10:00:00Z",
+                            sprint=sprint,
+                            created=f"{sprint}-01",
+                        ),
+                    )
+                    _post_events(
+                        f"http://127.0.0.1:{port}/events",
+                        _make_event(
+                            card_id=card_id,
+                            event_type="finished",
+                            timestamp=f"{sprint}-07T15:00:00Z",
+                            sprint=sprint,
+                            created=f"{sprint}-01",
+                        ),
+                    )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric={metric}&start={start}&end={end}"
+        )
+        assert status == 200
+        assert body["values"] == expected_values
+    finally:
+        conn.close()

@@ -24,17 +24,17 @@ ALL_DOCS = [
     "service.md",
 ]
 
-MARKER_IDS = {
-    "usage.md": "cli-args",
-    "cards.md": "input-format",
-    "metrics.md": "metrics",
-    "formats.md": "formats",
-    "thresholds.md": "thresholds",
-    "scrape.md": "scrape",
-    "service.md": "service",
+MARKER_IDS: dict[str, list[str]] = {
+    "usage.md": ["cli-args"],
+    "cards.md": ["input-format"],
+    "metrics.md": ["metrics"],
+    "formats.md": ["formats", "trend-format"],
+    "thresholds.md": ["thresholds"],
+    "scrape.md": ["scrape"],
+    "service.md": ["service"],
 }
 
-DRIFT_FILES = [(f, MARKER_IDS[f]) for f in ALL_DOCS]
+DRIFT_FILES = [(f, m) for f in ALL_DOCS for m in MARKER_IDS[f]]
 
 
 def _extract_marked_section(text: str, marker_id: str) -> str:
@@ -53,13 +53,13 @@ def test_all_docs_files_exist_with_markers():
         assert path.exists(), f"docs/{filename} does not exist"
         text = path.read_text()
         assert text.strip(), f"docs/{filename} is empty"
-        marker_id = MARKER_IDS[filename]
-        begin = f"BEGIN:{marker_id}"
-        end = f"END:{marker_id}"
-        assert begin in text, f"docs/{filename} missing {begin}"
-        assert end in text, f"docs/{filename} missing {end}"
-        section = _extract_marked_section(text, marker_id)
-        assert section.strip(), f"docs/{filename} marked section is empty"
+        for marker_id in MARKER_IDS[filename]:
+            begin = f"BEGIN:{marker_id}"
+            end = f"END:{marker_id}"
+            assert begin in text, f"docs/{filename} missing {begin}"
+            assert end in text, f"docs/{filename} missing {end}"
+            section = _extract_marked_section(text, marker_id)
+            assert section.strip(), f"docs/{filename} marked section {marker_id!r} is empty"
 
 
 def test_usage_md_lists_all_arguments():
@@ -910,3 +910,20 @@ def test_service_md_telemetry_section_survives_docs_gen(tmp_path):
     orig_telemetry = original[original.index("END:service") :]
     new_telemetry = regenerated[regenerated.index("END:service") :]
     assert orig_telemetry == new_telemetry
+
+
+def test_service_md_trend_row_describes_response_shape():
+    """AC1: the /trend row in docs/service.md's generated section states the response
+    is a JSON object with api_version and an ordered sequence of sprint-label-to-value
+    pairs, so the reader learns the response structure without reading the source."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    section = _extract_marked_section(text, "service")
+    trend_rows = [line for line in section.splitlines() if "/trend" in line]
+    assert trend_rows, "no /trend row found in generated section"
+    row = trend_rows[0]
+    assert "JSON object" in row, "trend row does not state the response is a JSON object"
+    assert "api_version" in row, "trend row does not name the api_version field"
+    assert "ordered sequence of sprint-label-to-value pairs" in row, (
+        "trend row does not describe the values as an ordered sequence of sprint-label-to-value pairs"
+    )
