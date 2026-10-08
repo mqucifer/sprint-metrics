@@ -2469,6 +2469,125 @@ def test_get_trend_503_content_type_and_database_in_body():
 
 
 @requires_db
+def test_health_reconnects_after_connection_lost():
+    """AC1: after the connection is lost and the DB is reachable again,
+    GET /health returns 200 (the service reconnected automatically)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    port = _start_service(conn, 0, SPRINT_METRICS_DB)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/health")
+        assert status == 200
+    finally:
+        pass
+
+
+@requires_db
+def test_sprint_reconnects_after_connection_lost():
+    """AC2: after storing events and the connection is lost, GET /sprint?label=2024-01
+    returns 200 with throughput=1 (the service reconnected and read the stored data)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_reconnect'")
+    conn.commit()
+
+    port = _start_service(conn, 0, SPRINT_METRICS_DB)
+    try:
+        started = _make_event(
+            card_id="ac2_reconnect",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        finished = _make_event(
+            card_id="ac2_reconnect",
+            event_type="finished",
+            timestamp="2024-01-07T15:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        # Simulate DB restart: close the connection the service is using
+        conn.close()
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["throughput"] == 1
+    finally:
+        pass
+
+
+@requires_db
+def test_events_reconnects_after_connection_lost():
+    """AC3: after the connection is lost, POST /events with a valid board event
+    returns 200 and the body does not contain a key named 'error'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac3_reconnect'")
+    conn.commit()
+
+    port = _start_service(conn, 0, SPRINT_METRICS_DB)
+    try:
+        # Verify the service works with a live connection
+        event = _make_event(
+            card_id="ac3_reconnect",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        status, _ = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+
+        # Simulate DB restart: close the connection
+        conn.close()
+
+        # POST a new event — the service should reconnect
+        event2 = _make_event(
+            card_id="c2",
+            event_type="started",
+            timestamp="2024-01-04T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-02",
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event2)
+        assert status == 200
+        assert "error" not in body
+    finally:
+        pass
+
+
+@requires_db
+def test_health_returns_503_when_db_stopped():
+    """AC4: GET /health returns 503 when the database is unreachable and cannot be reconnected."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    # Use an unreachable URL to simulate the DB being stopped (not yet restarted)
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/health")
+        assert status == 503
+    finally:
+        pass
+
+
+@requires_db
 def test_post_sprints_valid_returns_200_no_error():
     """AC1: POST /sprints with valid body returns 200, Content-Type application/json, no error key."""
     import psycopg

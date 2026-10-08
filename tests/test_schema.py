@@ -6,7 +6,7 @@ import jsonschema
 import pytest
 
 from sprint_metrics import main
-from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA
+from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA
 
 
 def test_schema_json_single_sprint(capsys):
@@ -254,3 +254,46 @@ def test_sprint_range_schema_rejects_sprints_as_array():
     }
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(bad, SPRINT_RANGE_SCHEMA)
+
+
+def test_event_intake_valid_event_passes():
+    """AC1: A valid board event passes EVENT_INTAKE_SCHEMA validation without raising."""
+    event = {
+        "api_version": "1",
+        "card_id": "c1",
+        "type": "started",
+        "timestamp": "2024-01-03T10:00:00Z",
+        "sprint": "2024-01",
+        "card": {"created": "2024-01-01"},
+    }
+    jsonschema.validate(event, EVENT_INTAKE_SCHEMA)
+
+
+def test_event_intake_invalid_type_rejected():
+    """AC2: A board event with an invalid type raises ValidationError referencing 'type'."""
+    event = {
+        "api_version": "1",
+        "card_id": "c1",
+        "type": "frobnicated",
+        "timestamp": "2024-01-03T10:00:00Z",
+        "sprint": "2024-01",
+        "card": {"created": "2024-01-01"},
+    }
+    with pytest.raises(jsonschema.ValidationError) as exc_info:
+        jsonschema.validate(event, EVENT_INTAKE_SCHEMA)
+    assert "type" in str(exc_info.value)
+
+
+def test_event_intake_missing_card_created_rejected():
+    """AC3: A board event whose card lacks 'created' raises ValidationError referencing it."""
+    event = {
+        "api_version": "1",
+        "card_id": "c1",
+        "type": "finished",
+        "timestamp": "2024-01-10T09:00:00Z",
+        "sprint": "2024-01",
+        "card": {"started": "2024-01-03", "completed": "2024-01-10"},
+    }
+    with pytest.raises(jsonschema.ValidationError) as exc_info:
+        jsonschema.validate(event, EVENT_INTAKE_SCHEMA)
+    assert "created" in str(exc_info.value)
