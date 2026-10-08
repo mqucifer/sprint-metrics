@@ -2,7 +2,11 @@
 
 import json
 
+import jsonschema
+import pytest
+
 from sprint_metrics import main
+from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
 
 
 def test_schema_json_single_sprint(capsys):
@@ -129,3 +133,68 @@ def test_trend_schema_properties_types():
     assert props["start"]["type"] == "string"
     assert props["end"]["type"] == "string"
     assert props["values"]["type"] == "array"
+
+
+def test_single_sprint_json_output_validates_against_schema(tmp_path, capsys):
+    """AC1: CLI JSON output for a completed card validates against SINGLE_SPRINT_SCHEMA
+    and api_version is the string '1'."""
+    cards = json.dumps(
+        [
+            {
+                "id": "card-1",
+                "title": "A card",
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+            }
+        ]
+    )
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(cards)
+
+    exit_code = main([str(cards_file), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
+    assert result["api_version"] == "1"
+
+
+def test_empty_sprint_json_output_validates_against_schema(tmp_path, capsys):
+    """AC2: CLI JSON output for an empty sprint validates against SINGLE_SPRINT_SCHEMA."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text("[]")
+
+    exit_code = main([str(cards_file), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
+
+
+def test_schema_rejects_type_mismatched_throughput(tmp_path, capsys):
+    """AC3: A type-mismatched throughput (string instead of int) raises ValidationError."""
+    cards = json.dumps(
+        [
+            {
+                "id": "card-1",
+                "title": "A card",
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+            }
+        ]
+    )
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(cards)
+
+    exit_code = main([str(cards_file), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    result["throughput"] = "1"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
