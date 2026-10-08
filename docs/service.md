@@ -26,6 +26,14 @@ The service exposes the following HTTP endpoints: POST /events for event intake,
 
 GET /trend answers the question 'what was this metric in each of these sprints?' by returning a value for every sprint label in the requested calendar range, defaulting to the metric's zero value when no events exist for that sprint. The range is specified by explicit start and end labels consistent with /range: `GET /trend?metric=throughput&start=2024-01&end=2024-04`.
 
+### Error responses
+
+When the database is unreachable, POST /events, GET /sprint, GET /range, and GET /trend each return HTTP 503 with a JSON body identifying the condition as transient. The event or query was not processed; the client should retain the request and retry after a short delay. The 503 body is a JSON object containing an "error" field that names the database as the cause and a "retryable" field set to true, so the sender can safely retry without losing data.
+
+When an internal service error occurs (not caused by the database), the service returns HTTP 500. The client should not retry a 500; it indicates a bug in the service and should be reported as an issue. The 500 body contains a description of the unexpected condition.
+
+A request that fails validation (for example, a /range query whose start label is after its end label) returns HTTP 400 regardless of database state, because validation is performed before any database query is attempted. The client should not retry a 400.
+
 BEGIN:service
 Long-lived HTTP service that accepts board events and answers sprint, range, and trend queries from Postgres.
 
