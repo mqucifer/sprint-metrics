@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "api_version",
+    "sprints"
+  ],
+  "properties": {
+    "api_version": {
+      "type": "string"
+    },
+    "sprints": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "cycle_time_days",
+          "lead_time_days",
+          "throughput",
+          "wip_violations",
+          "blocked_aging_days",
+          "escalation_rate_percent",
+          "first_attempt_rate_percent",
+          "top_failure_causes",
+          "flags",
+          "prior",
+          "delta"
+        ],
+        "properties": {
+          "cycle_time_days": {
+            "type": "integer"
+          },
+          "lead_time_days": {
+            "type": "integer"
+          },
+          "throughput": {
+            "type": "integer"
+          },
+          "wip_violations": {
+            "type": "integer"
+          },
+          "blocked_aging_days": {
+            "type": "integer"
+          },
+          "escalation_rate_percent": {
+            "type": "integer"
+          },
+          "first_attempt_rate_percent": {
+            "type": "integer"
+          },
+          "top_failure_causes": {
+            "type": "object"
+          },
+          "flags": {
+            "type": "object"
+          },
+          "prior": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "delta": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

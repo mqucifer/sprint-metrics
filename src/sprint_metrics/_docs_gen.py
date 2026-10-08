@@ -11,7 +11,12 @@ from pathlib import Path
 from sprint_metrics.cli import build_parser
 from sprint_metrics.metrics import ALL_METRICS
 from sprint_metrics.report import _METRIC_COLUMNS
-from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
+from sprint_metrics.schema import (
+    EVENT_INTAKE_SCHEMA,
+    SINGLE_SPRINT_SCHEMA,
+    SPRINT_RANGE_SCHEMA,
+    TREND_SCHEMA,
+)
 from sprint_metrics.serve import serve_metrics
 from sprint_metrics.service import SERVICE_ENDPOINTS
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
@@ -201,8 +206,9 @@ def generate_file(path: Path) -> None:
 
 
 def generate_all() -> None:
-    """Regenerate all marked sections in the docs/ files."""
+    """Regenerate all marked sections in the docs/ files and the schema files."""
     repo_root = Path(__file__).parent.parent.parent
+    _generate_schema_files(repo_root / "schemas")
     for relative_path in (
         "docs/usage.md",
         "docs/cards.md",
@@ -279,6 +285,19 @@ def _generate_trend_format_content() -> str:
         "Sprint 2024-03 has no stored events and appears with value 0 rather than being omitted.",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _generate_schema_files(output_dir: Path) -> None:
+    """Write the four JSON Schema files to the given directory."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    schemas = {
+        "single-sprint.json": SINGLE_SPRINT_SCHEMA,
+        "sprint-range.json": SPRINT_RANGE_SCHEMA,
+        "trend.json": TREND_SCHEMA,
+        "event-intake.json": EVENT_INTAKE_SCHEMA,
+    }
+    for filename, schema in schemas.items():
+        (output_dir / filename).write_text(json.dumps(schema, indent=2) + "\n")
 
 
 if __name__ == "__main__":
