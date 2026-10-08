@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     PRIMARY KEY (card_id, type, event_time),
     CHECK (type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated'))
 );
+CREATE TABLE IF NOT EXISTS sprint_metrics.sprints (
+    name TEXT PRIMARY KEY,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    timezone TEXT NOT NULL
+);
 """
 
 
@@ -218,3 +224,25 @@ def query_all_sprints(conn: Connection) -> dict[str, list[Card]]:
     for (sprint,) in rows:
         result[sprint] = query_sprint(conn, sprint)
     return result
+
+
+def upsert_sprint(
+    conn: Connection,
+    name: str,
+    start_date: date,
+    end_date: date,
+    timezone: str,
+) -> None:
+    """Insert or update a sprint definition by name."""
+    conn.execute(
+        """
+        INSERT INTO sprint_metrics.sprints (name, start_date, end_date, timezone)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (name) DO UPDATE SET
+            start_date = EXCLUDED.start_date,
+            end_date = EXCLUDED.end_date,
+            timezone = EXCLUDED.timezone
+        """,
+        (name, start_date, end_date, timezone),
+    )
+    conn.commit()
