@@ -2314,3 +2314,155 @@ def test_post_events_503_body_has_no_card_id_key():
         assert "card_id" not in body
     finally:
         pass
+
+
+@requires_db
+def test_get_sprint_returns_503_when_db_unreachable():
+    """AC1: GET /sprint?label=2024-01 with unreachable DB returns 503 and non-empty body."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 503
+        assert len(body) > 0
+    finally:
+        pass
+
+
+@requires_db
+def test_get_range_returns_503_when_db_unreachable():
+    """AC2: GET /range?start=2024-01&end=2024-02 with unreachable DB returns 503 and non-empty body."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 503
+        assert len(body) > 0
+    finally:
+        pass
+
+
+@requires_db
+def test_get_trend_returns_503_when_db_unreachable():
+    """AC3: GET /trend?metric=throughput&start=2024-01&end=2024-02 with unreachable DB
+    returns 503 and non-empty body."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-02"
+        )
+        assert status == 503
+        assert len(body) > 0
+    finally:
+        pass
+
+
+@requires_db
+def test_get_sprint_503_content_type_and_database_in_body():
+    """AC6 (UX): GET /sprint?label=2024-01 with unreachable DB returns Content-Type
+    'application/json' and body has at least one value containing 'database'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/sprint?label=2024-01", timeout=5
+            ) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                body = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            content_type = e.headers.get("Content-Type", "")
+            body = json.loads(e.read().decode())
+        assert content_type == "application/json"
+        assert isinstance(body, dict)
+        values_lowered = [str(v).lower() for v in body.values()]
+        assert any("database" in v for v in values_lowered)
+    finally:
+        pass
+
+
+@requires_db
+def test_get_range_invalid_range_400_no_database_in_error():
+    """AC7 (UX): GET /range?start=2024-02&end=2024-01 with unreachable DB returns 400,
+    Content-Type 'application/json', error contains 'invalid range' but not 'database'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/range?start=2024-02&end=2024-01", timeout=5
+            ) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                body = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            content_type = e.headers.get("Content-Type", "")
+            body = json.loads(e.read().decode())
+        assert content_type == "application/json"
+        assert "error" in body
+        assert "invalid range" in body["error"]
+        assert "database" not in body["error"]
+    finally:
+        pass
+
+
+@requires_db
+def test_get_trend_503_content_type_and_database_in_body():
+    """AC8 (UX): GET /trend?metric=throughput&start=2024-01&end=2024-02 with unreachable
+    DB returns Content-Type 'application/json' and body has at least one value
+    containing 'database'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-02",
+                timeout=5,
+            ) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                body = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            content_type = e.headers.get("Content-Type", "")
+            body = json.loads(e.read().decode())
+        assert content_type == "application/json"
+        assert isinstance(body, dict)
+        values_lowered = [str(v).lower() for v in body.values()]
+        assert any("database" in v for v in values_lowered)
+    finally:
+        pass
