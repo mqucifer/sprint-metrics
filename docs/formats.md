@@ -340,3 +340,54 @@ sprint-metrics: unknown metric 'bogus_metric'
 ```
 
 stdout is empty.
+
+## Trend format
+
+The response shape and a worked example for GET /trend are shown in the generated section below.
+
+BEGIN:trend-format
+The /trend response is a JSON object with the following top-level fields:
+
+- `api_version` — string, currently `"1"`
+- `metric` — the metric name requested
+- `start` — the start sprint label (YYYY-MM)
+- `end` — the end sprint label (YYYY-MM)
+- `values` — an ordered array of objects, one per sprint in the inclusive range, each with:
+  - `sprint` — the sprint label (YYYY-MM)
+  - `value` — the metric's integer value for that sprint; 0 when no events are stored
+
+### Worked example
+
+Request: `GET /trend?metric=throughput&start=2024-01&end=2024-04`
+
+Response:
+
+```json
+{
+  "api_version": "1",
+  "metric": "throughput",
+  "start": "2024-01",
+  "end": "2024-04",
+  "values": [
+    {
+      "sprint": "2024-01",
+      "value": 2
+    },
+    {
+      "sprint": "2024-02",
+      "value": 1
+    },
+    {
+      "sprint": "2024-03",
+      "value": 0
+    },
+    {
+      "sprint": "2024-04",
+      "value": 3
+    }
+  ]
+}
+```
+
+Sprint 2024-03 has no stored events and appears with value 0 rather than being omitted.
+END:trend-format

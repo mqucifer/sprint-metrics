@@ -362,7 +362,12 @@ SERVICE_ENDPOINTS = (
     ("POST", "/events", "Accept a board event (started, blocked, unblocked, finished, escalated)"),
     ("GET", "/sprint", "Query a single sprint's metrics"),
     ("GET", "/range", "Query a range of sprints"),
-    ("GET", "/trend", "Query a single metric's value across an inclusive sprint range"),
+    (
+        "GET",
+        "/trend",
+        "Return a time series for a single metric across an inclusive sprint range "
+        "(params: metric, start, end); sprints with no stored events return the metric's zero value",
+    ),
     ("GET", "/metrics", "Prometheus text exposition of stored history, sprint-labelled"),
     ("GET", "/schema/event", "JSON Schema for the event intake format"),
     ("GET", "/health", "Liveness/readiness check; 200 when the database is reachable"),

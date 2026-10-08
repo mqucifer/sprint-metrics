@@ -24,17 +24,17 @@ ALL_DOCS = [
     "service.md",
 ]
 
-MARKER_IDS = {
-    "usage.md": "cli-args",
-    "cards.md": "input-format",
-    "metrics.md": "metrics",
-    "formats.md": "formats",
-    "thresholds.md": "thresholds",
-    "scrape.md": "scrape",
-    "service.md": "service",
+MARKER_IDS: dict[str, list[str]] = {
+    "usage.md": ["cli-args"],
+    "cards.md": ["input-format"],
+    "metrics.md": ["metrics"],
+    "formats.md": ["formats", "trend-format"],
+    "thresholds.md": ["thresholds"],
+    "scrape.md": ["scrape"],
+    "service.md": ["service"],
 }
 
-DRIFT_FILES = [(f, MARKER_IDS[f]) for f in ALL_DOCS]
+DRIFT_FILES = [(f, m) for f in ALL_DOCS for m in MARKER_IDS[f]]
 
 
 def _extract_marked_section(text: str, marker_id: str) -> str:
@@ -53,13 +53,13 @@ def test_all_docs_files_exist_with_markers():
         assert path.exists(), f"docs/{filename} does not exist"
         text = path.read_text()
         assert text.strip(), f"docs/{filename} is empty"
-        marker_id = MARKER_IDS[filename]
-        begin = f"BEGIN:{marker_id}"
-        end = f"END:{marker_id}"
-        assert begin in text, f"docs/{filename} missing {begin}"
-        assert end in text, f"docs/{filename} missing {end}"
-        section = _extract_marked_section(text, marker_id)
-        assert section.strip(), f"docs/{filename} marked section is empty"
+        for marker_id in MARKER_IDS[filename]:
+            begin = f"BEGIN:{marker_id}"
+            end = f"END:{marker_id}"
+            assert begin in text, f"docs/{filename} missing {begin}"
+            assert end in text, f"docs/{filename} missing {end}"
+            section = _extract_marked_section(text, marker_id)
+            assert section.strip(), f"docs/{filename} marked section {marker_id!r} is empty"
 
 
 def test_usage_md_lists_all_arguments():
