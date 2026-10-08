@@ -12,6 +12,7 @@ import os
 import sys
 import threading
 import time
+from datetime import date
 from urllib.parse import parse_qs, urlparse
 
 from opentelemetry._logs import SeverityNumber
@@ -38,6 +39,7 @@ from sprint_metrics.store import (
     query_all_sprints,
     query_range,
     query_sprint,
+    upsert_sprint,
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 
@@ -122,6 +124,73 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     if self.path == "/schema/event":
                         self._send_json(405, {"error": "method not allowed"})
                         status = 405
+                        return
+
+                    if self.path == "/sprints":
+                        try:
+                            content_length = int(self.headers.get("Content-Length", 0))
+                            body = self.rfile.read(content_length)
+                            sprint_data = json.loads(body)
+                        except (json.JSONDecodeError, ValueError):
+                            self._send_json(400, {"error": "invalid JSON body"})
+                            status = 400
+                            return
+
+                        name = sprint_data.get("name")
+                        if not isinstance(name, str) or not name:
+                            self._send_json(
+                                400, {"error": "missing or empty required field: 'name'"}
+                            )
+                            status = 400
+                            return
+
+                        start_date_str = sprint_data.get("start_date", "")
+                        try:
+                            start_date = date.fromisoformat(start_date_str)
+                        except (ValueError, TypeError):
+                            self._send_json(
+                                400, {"error": f"invalid start_date: {start_date_str!r}"}
+                            )
+                            status = 400
+                            return
+
+                        end_date_str = sprint_data.get("end_date", "")
+                        try:
+                            end_date = date.fromisoformat(end_date_str)
+                        except (ValueError, TypeError):
+                            self._send_json(400, {"error": f"invalid end_date: {end_date_str!r}"})
+                            status = 400
+                            return
+
+                        timezone = sprint_data.get("timezone")
+                        if not isinstance(timezone, str) or not timezone:
+                            self._send_json(
+                                400, {"error": "missing or empty required field: 'timezone'"}
+                            )
+                            status = 400
+                            return
+
+                        if not self._ensure_db():
+                            self._send_json(
+                                503,
+                                {
+                                    "status": "unavailable",
+                                    "error": "database temporarily unavailable",
+                                    "retryable": True,
+                                },
+                            )
+                            status = 503
+                            return
+
+                        try:
+                            upsert_sprint(conn_holder[0], name, start_date, end_date, timezone)
+                        except Exception as exc:
+                            self._send_json(500, {"error": f"database error: {exc}"})
+                            status = 500
+                            return
+
+                        self._send_json(200, {"name": name})
+                        status = 200
                         return
 
                     if self.path != "/events":
@@ -422,6 +491,7 @@ def _metrics_text(sprints: dict[str, list]) -> str:
 
 
 SERVICE_ENDPOINTS = (
+    ("POST", "/sprints", "Register a sprint definition (name, start_date, end_date, timezone)"),
     ("POST", "/events", "Accept a board event (started, blocked, unblocked, finished, escalated)"),
     ("GET", "/sprint", "Query a single sprint's metrics"),
     ("GET", "/range", "Query a range of sprints"),
