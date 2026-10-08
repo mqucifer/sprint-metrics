@@ -20,7 +20,7 @@ The service accepts sprint definitions via POST /sprints. Each sprint is registe
 
 ## Event intake
 
-The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, and escalated. A card's work counts in the sprint where it finishes, wherever it started.
+The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, and escalated. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
 
 The intake format carries an `api_version` field. The current version is "1". The JSON Schema for the event body is available at GET /schema/event.
 
