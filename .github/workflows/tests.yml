@@ -169,3 +169,97 @@ jobs:
             exit 1
           fi
           echo "OK: service container stopped and removed, port 8080 free"
+      - name: Verify database recovery
+        run: |
+          set -euo pipefail
+          POSTGRES_CONTAINER=$(docker ps -q --filter "ancestor=postgres:16")
+          if [ -z "$POSTGRES_CONTAINER" ]; then
+            echo "ERROR: Postgres service container not found"
+            exit 1
+          fi
+          CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
+          echo "Recovery check service started: $CONTAINER_ID"
+          DEADLINE=$((SECONDS + 30))
+          while [ $SECONDS -lt $DEADLINE ]; do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          if [ $SECONDS -ge $DEADLINE ]; then
+            echo "ERROR: /health did not become reachable within 30 seconds"
+            docker logs "$CONTAINER_ID" 2>&1 || true
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Service is healthy"
+          # Stop Postgres and verify /health returns 503
+          docker stop "$POSTGRES_CONTAINER"
+          echo "Postgres stopped"
+          sleep 2
+          STOPPED_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health)
+          if [ "$STOPPED_STATUS" != "503" ]; then
+            echo "ERROR: GET /health while Postgres stopped returned $STOPPED_STATUS, expected 503"
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "OK: GET /health returned 503 while Postgres was stopped"
+          # Restart Postgres and wait for connections
+          docker start "$POSTGRES_CONTAINER"
+          echo "Postgres restarted"
+          PG_DEADLINE=$((SECONDS + 30))
+          while [ $SECONDS -lt $PG_DEADLINE ]; do
+            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          if [ $SECONDS -ge $PG_DEADLINE ]; then
+            echo "ERROR: Postgres did not accept connections within 30 seconds"
+            docker logs "$CONTAINER_ID" 2>&1 || true
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Postgres is accepting connections"
+          # Verify /health returns 200 after recovery
+          HEALTH_DEADLINE=$((SECONDS + 15))
+          RECOVERED=false
+          while [ $SECONDS -lt $HEALTH_DEADLINE ]; do
+            HEALTH_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health)
+            if [ "$HEALTH_STATUS" = "200" ]; then
+              RECOVERED=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$RECOVERED" = "false" ]; then
+            echo "ERROR: GET /health did not return 200 after Postgres restart"
+            echo "Last status: $HEALTH_STATUS"
+            docker logs "$CONTAINER_ID" 2>&1 || true
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "OK: GET /health returned 200 after Postgres restart"
+          # Verify POST /events returns 200 after recovery
+          POST_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/events \
+            -H 'Content-Type: application/json' \
+            -d '{"api_version":"1","card_id":"c1","type":"started","timestamp":"2024-01-03T10:00:00Z","sprint":"2024-01","card":{"created":"2024-01-01"}}')
+          if [ "$POST_STATUS" != "200" ]; then
+            echo "ERROR: POST /events returned $POST_STATUS, expected 200"
+            docker logs "$CONTAINER_ID" 2>&1 || true
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "OK: POST /events returned 200 after recovery"
+          docker stop "$CONTAINER_ID"
+          docker rm "$CONTAINER_ID"
+          if docker ps -q --filter "publish=8080" | grep -q .; then
+            echo "ERROR: A container is still publishing port 8080"
+            exit 1
+          fi
+          echo "OK: recovery check container stopped and removed, port 8080 free"
