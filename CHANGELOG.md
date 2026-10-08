@@ -4,6 +4,8 @@
 
 ### Added
 
+- POST /sprints endpoint to register sprint definitions (name, start_date, end_date, timezone) with upsert semantics
+
 ### Changed
 
 ### Fixed

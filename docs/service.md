@@ -14,6 +14,10 @@ docker run -d -p 8080:8080 \
 
 The service creates and migrates its schema at startup. It listens on port 8080 inside the container.
 
+## Sprint registration
+
+The service accepts sprint definitions via POST /sprints. Each sprint is registered by name before events that reference it are posted. The body carries the sprint's name, start date, end date, and timezone. If a sprint with the same name is already registered, its definition is updated in place.
+
 ## Event intake
 
 The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, and escalated. A card's work counts in the sprint where it finishes, wherever it started.
@@ -22,7 +26,7 @@ The intake format carries an `api_version` field. The current version is "1". Th
 
 ## Endpoints
 
-The service exposes the following HTTP endpoints: POST /events for event intake, GET /sprint for single-sprint queries, GET /range for multi-sprint queries, GET /trend for time-series queries, GET /metrics for Prometheus scraping, GET /schema/event for the event schema, and GET /health for liveness checks.
+The service exposes the following HTTP endpoints: POST /sprints for sprint registration, POST /events for event intake, GET /sprint for single-sprint queries, GET /range for multi-sprint queries, GET /trend for time-series queries, GET /metrics for Prometheus scraping, GET /schema/event for the event schema, and GET /health for liveness checks.
 
 GET /trend answers the question 'what was this metric in each of these sprints?' by returning a value for every sprint label in the requested calendar range, defaulting to the metric's zero value when no events exist for that sprint. The range is specified by explicit start and end labels consistent with /range: `GET /trend?metric=throughput&start=2024-01&end=2024-04`.
 
@@ -39,6 +43,7 @@ Long-lived HTTP service that accepts board events and answers sprint, range, and
 
 | Method | Path | Description |
 |---|---|---|
+| POST | /sprints | Register a sprint definition (name, start_date, end_date, timezone) |
 | POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated) |
 | GET | /sprint | Query a single sprint's metrics |
 | GET | /range | Query a range of sprints |
