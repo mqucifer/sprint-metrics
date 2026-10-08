@@ -366,6 +366,7 @@ SERVICE_ENDPOINTS = (
         "GET",
         "/trend",
         "Return a time series for a single metric across an inclusive sprint range "
+        "as a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs "
         "(params: metric, start, end); sprints with no stored events return the metric's zero value",
     ),
     ("GET", "/metrics", "Prometheus text exposition of stored history, sprint-labelled"),

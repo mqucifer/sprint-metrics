@@ -910,3 +910,20 @@ def test_service_md_telemetry_section_survives_docs_gen(tmp_path):
     orig_telemetry = original[original.index("END:service") :]
     new_telemetry = regenerated[regenerated.index("END:service") :]
     assert orig_telemetry == new_telemetry
+
+
+def test_service_md_trend_row_describes_response_shape():
+    """AC1: the /trend row in docs/service.md's generated section states the response
+    is a JSON object with api_version and an ordered sequence of sprint-label-to-value
+    pairs, so the reader learns the response structure without reading the source."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    section = _extract_marked_section(text, "service")
+    trend_rows = [line for line in section.splitlines() if "/trend" in line]
+    assert trend_rows, "no /trend row found in generated section"
+    row = trend_rows[0]
+    assert "JSON object" in row, "trend row does not state the response is a JSON object"
+    assert "api_version" in row, "trend row does not name the api_version field"
+    assert "ordered sequence of sprint-label-to-value pairs" in row, (
+        "trend row does not describe the values as an ordered sequence of sprint-label-to-value pairs"
+    )
