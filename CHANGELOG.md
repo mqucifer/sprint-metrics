@@ -5,6 +5,7 @@
 ### Added
 
 - POST /sprints endpoint to register sprint definitions (name, start_date, end_date, timezone) with upsert semantics
+- docs/service.md: Automatic recovery section documenting that the service reconnects to its database automatically when the Postgres server restarts, with no container restart required
 
 ### Changed
 
