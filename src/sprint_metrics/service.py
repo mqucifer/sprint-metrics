@@ -212,6 +212,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 400
                             return
 
+                    sprint_name = event.get("sprint")
+                    if not isinstance(sprint_name, str) or not sprint_name:
+                        self._send_json(400, {"error": "sprint must be a non-empty string"})
+                        status = 400
+                        return
+
                     event_type = event["type"]
                     if event_type not in VALID_EVENT_TYPES:
                         self._send_json(400, {"error": f"unknown event type: {event_type!r}"})

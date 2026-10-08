@@ -108,7 +108,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
             "enum": ["started", "blocked", "unblocked", "finished", "escalated"],
         },
         "timestamp": {"type": "string", "format": "date-time"},
-        "sprint": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"},
+        "sprint": {"type": "string", "minLength": 1},
         "card": {
             "type": "object",
             "required": ["created"],
