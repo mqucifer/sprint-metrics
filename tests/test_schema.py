@@ -6,7 +6,7 @@ import jsonschema
 import pytest
 
 from sprint_metrics import main
-from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
+from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA
 
 
 def test_schema_json_single_sprint(capsys):
@@ -198,3 +198,59 @@ def test_schema_rejects_type_mismatched_throughput(tmp_path, capsys):
     result["throughput"] = "1"
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
+
+
+def test_sprint_range_json_output_validates_against_schema(tmp_path, capsys):
+    """AC1: CLI sprint-range JSON output validates against SPRINT_RANGE_SCHEMA and
+    top-level keys are exactly 'api_version' and 'sprints'."""
+    completed_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    sprints = {"2024-01": [completed_card], "2024-02": [completed_card]}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    jsonschema.validate(result, SPRINT_RANGE_SCHEMA)
+    assert set(result.keys()) == {"api_version", "sprints"}
+
+
+def test_sprint_range_single_sprint_empty_validates_against_schema(tmp_path, capsys):
+    """AC2: A single-sprint range with an empty sprint validates against SPRINT_RANGE_SCHEMA."""
+    sprints = {"2024-01": []}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    jsonschema.validate(result, SPRINT_RANGE_SCHEMA)
+
+
+def test_sprint_range_schema_rejects_sprints_as_array():
+    """AC3: A JSON object with 'sprints' as an array (instead of an object keyed by
+    sprint label) raises a jsonschema.ValidationError."""
+    bad = {
+        "api_version": "1",
+        "sprints": [
+            {
+                "cycle_time_days": 4,
+                "lead_time_days": 6,
+                "throughput": 1,
+                "wip_violations": 0,
+                "blocked_aging_days": 0,
+                "escalation_rate_percent": 0,
+                "first_attempt_rate_percent": 100,
+                "top_failure_causes": {},
+                "flags": {},
+                "prior": None,
+                "delta": None,
+            }
+        ],
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(bad, SPRINT_RANGE_SCHEMA)
