@@ -77,7 +77,7 @@ def run(db_url: str | None = None, port: int = 8080) -> int:
 
     init_telemetry()
 
-    actual_port = _start_service(conn, port)
+    actual_port = _start_service(conn, port, db_url)
     print(f"sprint-metrics: service listening on http://0.0.0.0:{actual_port}", flush=True)
 
     try:
@@ -89,10 +89,27 @@ def run(db_url: str | None = None, port: int = 8080) -> int:
     return 0
 
 
-def _start_service(conn, port: int) -> int:
+def _start_service(conn, port: int, db_url: str = "") -> int:
     """Start the HTTP server in a daemon thread and return the actual port."""
+    conn_holder = [conn]
 
     class ServiceHandler(http.server.BaseHTTPRequestHandler):
+        def _ensure_db(self) -> bool:
+            import psycopg
+
+            try:
+                conn_holder[0].execute("SELECT 1")
+                return True
+            except Exception:
+                pass
+            if not db_url:
+                return False
+            try:
+                conn_holder[0] = psycopg.connect(db_url, connect_timeout=5)
+                return True
+            except Exception:
+                return False
+
         def do_POST(self) -> None:  # noqa: N802
             route = self.path.split("?")[0]
             status = 500
@@ -144,8 +161,20 @@ def _start_service(conn, port: int) -> int:
                         status = 400
                         return
 
+                    if not self._ensure_db():
+                        self._send_json(
+                            503,
+                            {
+                                "status": "unavailable",
+                                "error": "database temporarily unavailable",
+                                "retryable": True,
+                            },
+                        )
+                        status = 503
+                        return
+
                     try:
-                        insert_event(conn, event)
+                        insert_event(conn_holder[0], event)
                     except Exception as exc:
                         self._send_json(500, {"error": f"database error: {exc}"})
                         status = 500
@@ -177,8 +206,9 @@ def _start_service(conn, port: int) -> int:
                             self._send_json(400, {"error": "missing label parameter"})
                             status = 400
                             return
+                        self._ensure_db()
                         try:
-                            cards = query_sprint(conn, label)
+                            cards = query_sprint(conn_holder[0], label)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -210,8 +240,9 @@ def _start_service(conn, port: int) -> int:
                             )
                             status = 400
                             return
+                        self._ensure_db()
                         try:
-                            sprints = query_range(conn, start, end)
+                            sprints = query_range(conn_holder[0], start, end)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -251,8 +282,9 @@ def _start_service(conn, port: int) -> int:
                             )
                             status = 400
                             return
+                        self._ensure_db()
                         try:
-                            sprints = query_range(conn, start, end)
+                            sprints = query_range(conn_holder[0], start, end)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -272,8 +304,9 @@ def _start_service(conn, port: int) -> int:
                         status = 200
                         return
                     elif self.path == "/metrics":
+                        self._ensure_db()
                         try:
-                            sprints = query_all_sprints(conn)
+                            sprints = query_all_sprints(conn_holder[0])
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -296,7 +329,7 @@ def _start_service(conn, port: int) -> int:
                         status = 200
                         return
                     elif self.path == "/health":
-                        healthy = health_check(conn)
+                        healthy = health_check(conn_holder[0])
                         if healthy:
                             self._send_json(200, {"status": "ok"})
                             status = 200
