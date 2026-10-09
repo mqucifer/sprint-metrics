@@ -21,6 +21,7 @@
           "blocked_aging_days",
           "escalation_rate_percent",
           "first_attempt_rate_percent",
+          "failure_breakdown",
           "top_failure_causes",
           "flags",
           "prior",
@@ -47,6 +48,12 @@
           },
           "first_attempt_rate_percent": {
             "type": "integer"
+          },
+          "failure_breakdown": {
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "top_failure_causes": {
             "type": "object"

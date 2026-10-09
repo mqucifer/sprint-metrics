@@ -3948,3 +3948,224 @@ def test_trend_single_sprint_with_events_returns_integer():
         assert not isinstance(body["values"][0]["value"], bool)
     finally:
         conn.close()
+
+
+@requires_db
+def test_range_failure_breakdown_two_causes():
+    """AC1: GET /range with two completed cards having distinct failure causes
+    returns failure_breakdown with exactly two objects."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac1_fb_a', 'ac1_fb_b')"
+    )
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_fb_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_fb_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                attempts=3,
+                failure_class="parse",
+                failure_role="Developer",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_fb_b",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_fb_b",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                attempts=2,
+                failure_class="check",
+                failure_role="Code Reviewer",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        fb = body["sprints"]["2024-01"]["failure_breakdown"]
+        assert len(fb) == 2
+        assert {"class": "parse", "role": "Developer", "count": 1} in fb
+        assert {"class": "check", "role": "Code Reviewer", "count": 1} in fb
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_failure_breakdown_empty_when_first_attempt():
+    """AC2: GET /range with a single completed card (attempts=1) returns
+    failure_breakdown as an empty array."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_fb'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_fb",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac2_fb",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        assert body["sprints"]["2024-01"]["failure_breakdown"] == []
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_failure_breakdown_not_truncated_to_three():
+    """AC3 (UX): GET /range with four completed cards each having a distinct
+    (failure_class, failure_role) pair returns failure_breakdown with exactly 4 objects."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'ac3_fb_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        cards = [
+            ("ac3_fb_c1", "PARSE", "Code Reviewer", 3),
+            ("ac3_fb_c2", "VERIFY", "Developer", 7),
+            ("ac3_fb_c3", "SCHEMA", "Architect", 2),
+            ("ac3_fb_c4", "SCHEMA", "Developer", 4),
+        ]
+        for card_id, fc, fr, attempts in cards:
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp="2026-10-07T13:14:07Z",
+                    sprint="2026-10",
+                    created="2026-10-07",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp="2026-10-07T20:52:22Z",
+                    sprint="2026-10",
+                    created="2026-10-07",
+                    attempts=attempts,
+                    failure_class=fc,
+                    failure_role=fr,
+                ),
+            )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
+        assert status == 200
+        fb = body["sprints"]["2026-10"]["failure_breakdown"]
+        assert len(fb) == 4
+        assert {"class": "PARSE", "role": "Code Reviewer", "count": 1} in fb
+        assert {"class": "VERIFY", "role": "Developer", "count": 1} in fb
+        assert {"class": "SCHEMA", "role": "Architect", "count": 1} in fb
+        assert {"class": "SCHEMA", "role": "Developer", "count": 1} in fb
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_failure_breakdown_and_top_failure_causes_coexist():
+    """AC4 (UX): GET /range with one completed card (VERIFY/Developer, attempts 7)
+    returns both failure_breakdown (array with one object) and top_failure_causes
+    (object with VERIFY mapping to 1)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_fb'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_fb",
+                event_type="started",
+                timestamp="2026-10-07T13:14:07Z",
+                sprint="2026-10",
+                created="2026-10-07",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_fb",
+                event_type="finished",
+                timestamp="2026-10-07T20:52:22Z",
+                sprint="2026-10",
+                created="2026-10-07",
+                attempts=7,
+                failure_class="VERIFY",
+                failure_role="Developer",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
+        assert status == 200
+        entry = body["sprints"]["2026-10"]
+        assert entry["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
+        assert entry["top_failure_causes"] == {"VERIFY": 1}
+        assert len(entry["failure_breakdown"]) == 1
+    finally:
+        conn.close()
