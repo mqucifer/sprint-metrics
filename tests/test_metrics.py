@@ -260,3 +260,145 @@ def test_wip_violation_details_empty_when_no_limits():
     assert wip_violation_details(cards) == []
     assert wip_violation_details(cards, None) == []
     assert wip_violation_details(cards, {}) == []
+
+
+def test_calculate_points_delivered_sums_completed_only():
+    """AC1: two completed cards (points 5 and 3) plus one in-flight (points 2) gives 8."""
+    from sprint_metrics.metrics import calculate_points_delivered
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "points": 5,
+            "attempts": 1,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "points": 3,
+            "attempts": 2,
+        },
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "", "points": 2},
+    ]
+    assert calculate_points_delivered(cards) == 8
+
+
+def test_calculate_points_delivered_none_points_contribute_zero():
+    """AC2: a completed card with no points value contributes 0."""
+    from sprint_metrics.metrics import calculate_points_delivered
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 1,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "points": 3,
+            "attempts": 1,
+        },
+    ]
+    assert calculate_points_delivered(cards) == 3
+
+
+def test_calculate_first_attempt_counts():
+    """AC3: three completed cards (two attempts=1, one attempts=2) gives (2, 3)."""
+    from sprint_metrics.metrics import calculate_first_attempt_counts
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 1,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 1,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+        },
+    ]
+    assert calculate_first_attempt_counts(cards) == (2, 3)
+
+
+def test_calculate_points_and_first_attempt_empty():
+    """AC4: empty list gives sum=0, numerator=0, denominator=0."""
+    from sprint_metrics.metrics import calculate_first_attempt_counts, calculate_points_delivered
+
+    assert calculate_points_delivered([]) == 0
+    assert calculate_first_attempt_counts([]) == (0, 0)
+
+
+def test_all_metrics_grew_by_four():
+    """AC5: ALL_METRICS has 12 entries (8 existing + 4 new), each new is snake_case."""
+    from sprint_metrics.metrics import ALL_METRICS
+
+    assert len(ALL_METRICS) == 12
+    new_metrics = {
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
+    }
+    assert new_metrics.issubset(ALL_METRICS)
+    existing = {
+        "cycle_time_days",
+        "lead_time_days",
+        "throughput",
+        "wip_violations",
+        "blocked_aging_days",
+        "escalation_rate_percent",
+        "first_attempt_rate_percent",
+        "failure_breakdown",
+    }
+    assert new_metrics.isdisjoint(existing)
+    for name in new_metrics:
+        assert name == name.lower() and "_" in name
+
+
+def test_calculate_points_delivered_excludes_in_flight():
+    """AC7: three completed (5+3+2) + one in-flight (10) gives 10."""
+    from sprint_metrics.metrics import calculate_points_delivered
+
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07", "points": 5},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07", "points": 3},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07", "points": 2},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "", "points": 10},
+    ]
+    assert calculate_points_delivered(cards) == 10
+
+
+def test_calculate_first_attempt_counts_two_completed():
+    """AC8: two completed (attempts 1 and 3), zero in-flight gives (1, 2)."""
+    from sprint_metrics.metrics import calculate_first_attempt_counts
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 1,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+        },
+    ]
+    assert calculate_first_attempt_counts(cards) == (1, 2)

@@ -52,8 +52,12 @@ def _generate_metrics_content() -> str:
         "|---|---|---|---|",
     ]
     for metric_key in sorted(ALL_METRICS):
-        display_name = _METRIC_COLUMNS[metric_key]
-        func_name = metric_to_func[metric_key]
+        display_name = _METRIC_COLUMNS.get(metric_key)
+        if display_name is None:
+            continue
+        func_name = metric_to_func.get(metric_key)
+        if func_name is None:
+            continue
         func = getattr(metrics_mod, func_name)
         description = _first_doc_line(func)
         if metric_key == "failure_breakdown":
