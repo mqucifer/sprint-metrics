@@ -336,7 +336,7 @@ def test_single_sprint_schema_accepts_valid_non_null_object():
         "escalation_rate_percent": 0,
         "first_attempt_rate_percent": 100,
         "failure_breakdown": [{"class": "parse", "role": "Developer", "count": 2}],
-        "top_failure_causes": {"parse": 2},
+        "top_failure_causes": [{"class": "parse", "count": 2}],
         "flags": {
             "cycle_time_days": False,
             "lead_time_days": False,

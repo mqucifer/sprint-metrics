@@ -43,7 +43,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
                 "required": ["class", "role", "count"],
             },
         },
-        "top_failure_causes": {"type": ["object", "null"]},
+        "top_failure_causes": {"type": ["array", "object", "null"]},
         "flags": {"type": ["object", "null"]},
         "sprint_date": {"type": "string"},
         "prior": {

@@ -109,6 +109,7 @@ BEGIN:formats
     },
     "top_failure_causes": {
       "type": [
+        "array",
         "object",
         "null"
       ]
