@@ -376,12 +376,23 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     return
                                 sprints = query_range(conn_holder[0], start, end)
                                 labels = list(sprints.keys())
+                            has_events: set[str] = set()
+                            for label in labels:
+                                if sprint_has_events(conn_holder[0], label):
+                                    has_events.add(label)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
                         body = format_sprint_range_json(sprints, labels)
-                        self._send_json(200, json.loads(body))
+                        result = json.loads(body)
+                        for i, label in enumerate(labels):
+                            if label not in has_events:
+                                result["sprints"][label] = _null_range_entry()
+                            elif i > 0 and labels[i - 1] not in has_events:
+                                result["sprints"][label]["prior"] = None
+                                result["sprints"][label]["delta"] = None
+                        self._send_json(200, result)
                         status = 200
                         return
                     elif self.path.startswith("/trend?"):
@@ -605,4 +616,22 @@ def _null_sprint_response() -> dict:
         "failure_breakdown": None,
         "top_failure_causes": None,
         "flags": None,
+    }
+
+
+def _null_range_entry() -> dict:
+    """Return the null-filled per-sprint entry for a range response."""
+    return {
+        "cycle_time_days": None,
+        "lead_time_days": None,
+        "throughput": None,
+        "wip_violations": None,
+        "blocked_aging_days": None,
+        "escalation_rate_percent": None,
+        "first_attempt_rate_percent": None,
+        "failure_breakdown": None,
+        "top_failure_causes": None,
+        "flags": None,
+        "prior": None,
+        "delta": None,
     }
