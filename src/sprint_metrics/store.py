@@ -287,3 +287,41 @@ def upsert_sprint(
         (name, start_date, end_date, timezone),
     )
     conn.commit()
+
+
+def resolve_sprint_range(conn: Connection, start: str, end: str) -> list[str] | None:
+    """Resolve a sprint range by registered start dates.
+
+    Returns an ordered list of sprint names (by start_date) if both `start` and `end`
+    exist in the sprints table with start.start_date <= end.start_date.
+    Returns None if either label is not in the sprints table.
+    Raises ValueError if start.start_date > end.start_date.
+    """
+    rows = conn.execute(
+        """
+        SELECT name, start_date FROM sprint_metrics.sprints
+        WHERE name IN (%s, %s)
+        """,
+        (start, end),
+    ).fetchall()
+
+    if len(rows) < 2:
+        return None
+
+    by_name = {name: sd for name, sd in rows}
+    start_date = by_name[start]
+    end_date = by_name[end]
+
+    if start_date > end_date:
+        raise ValueError(f"invalid range: start {start!r} is after end {end!r}")
+
+    ordered = conn.execute(
+        """
+        SELECT name FROM sprint_metrics.sprints
+        WHERE start_date BETWEEN %s AND %s
+        ORDER BY start_date
+        """,
+        (start_date, end_date),
+    ).fetchall()
+
+    return [name for (name,) in ordered]
