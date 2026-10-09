@@ -23,7 +23,8 @@
         "blocked",
         "unblocked",
         "finished",
-        "escalated"
+        "escalated",
+        "attempt_failed"
       ]
     },
     "timestamp": {
@@ -54,6 +55,15 @@
           "type": "string"
         }
       }
+    },
+    "attempt_number": {
+      "type": "integer"
+    },
+    "failure_class": {
+      "type": "string"
+    },
+    "failure_role": {
+      "type": "string"
     }
   }
 }

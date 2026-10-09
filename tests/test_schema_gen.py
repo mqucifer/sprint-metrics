@@ -45,7 +45,7 @@ def test_single_sprint_schema_required_and_cycle_time(tmp_path):
 
 
 def test_event_intake_schema_type_enum_and_required(tmp_path):
-    """AC3: event-intake.json type enum has 5 values in order and required has 6 entries."""
+    """AC3: event-intake.json type enum has 6 values in order and required has 6 entries."""
     _generate_schema_files(tmp_path)
     data = json.loads((tmp_path / "event-intake.json").read_text())
 
@@ -55,6 +55,7 @@ def test_event_intake_schema_type_enum_and_required(tmp_path):
         "unblocked",
         "finished",
         "escalated",
+        "attempt_failed",
     ]
     for key in ("api_version", "card_id", "type", "timestamp", "sprint", "card"):
         assert key in data["required"]

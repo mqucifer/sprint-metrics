@@ -1139,7 +1139,7 @@ def test_schema_event_get_returns_200_json_schema():
 @requires_db
 def test_schema_event_card_and_type_constraints():
     """AC2: schema's properties include a card object whose required includes 'created',
-    and the schema constrains type to the five values."""
+    and the schema constrains type to the six accepted values."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1152,7 +1152,14 @@ def test_schema_event_card_and_type_constraints():
         card = body["properties"]["card"]
         assert "created" in card["required"]
         type_enum = body["properties"]["type"]["enum"]
-        assert set(type_enum) == {"started", "blocked", "unblocked", "finished", "escalated"}
+        assert set(type_enum) == {
+            "started",
+            "blocked",
+            "unblocked",
+            "finished",
+            "escalated",
+            "attempt_failed",
+        }
     finally:
         conn.close()
 
@@ -1207,8 +1214,8 @@ def test_schema_event_top_level_structure():
 
 @requires_db
 def test_schema_event_type_enum_exact():
-    """UX5: properties.type.enum is an array of exactly five strings in order:
-    started, blocked, unblocked, finished, escalated."""
+    """AC3+UX4: properties.type.enum is an array of exactly six strings in order:
+    started, blocked, unblocked, finished, escalated, attempt_failed."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1224,6 +1231,7 @@ def test_schema_event_type_enum_exact():
             "unblocked",
             "finished",
             "escalated",
+            "attempt_failed",
         ]
     finally:
         conn.close()
@@ -2982,5 +2990,170 @@ def test_get_sprint_free_form_label_never_sent():
         assert body["throughput"] == 0
         assert body["cycle_time_days"] == 0
         assert body["first_attempt_rate_percent"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_attempt_failed_returns_200_no_error():
+    """AC1: POST /events with type 'attempt_failed' returns 200, Content-Type
+    application/json, and body has no 'error' key."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_attempt'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac1_attempt",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        event = {
+            "api_version": "1",
+            "card_id": "ac1_attempt",
+            "type": "attempt_failed",
+            "timestamp": "2024-01-12T14:00:00Z",
+            "sprint": "Sprint 18",
+            "attempt_number": 1,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+            "card": {"created": "2024-01-10"},
+        }
+        data = json.dumps(event).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/events",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            status = resp.status
+            content_type = resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+        assert status == 200
+        assert "application/json" in content_type
+        assert "error" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_first_attempt_rate_zero_with_attempt_failed():
+    """AC2: after started + attempt_failed + finished, GET /sprint returns
+    first_attempt_rate_percent=0 and throughput=1."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_attempt'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac2_attempt",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        attempt_failed = {
+            "api_version": "1",
+            "card_id": "ac2_attempt",
+            "type": "attempt_failed",
+            "timestamp": "2024-01-12T14:00:00Z",
+            "sprint": "Sprint 18",
+            "attempt_number": 1,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+            "card": {"created": "2024-01-10"},
+        }
+        _post_events(f"http://127.0.0.1:{port}/events", attempt_failed)
+
+        finished = _make_event(
+            card_id="ac2_attempt",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+            attempts=2,
+            failure_class="parse",
+            failure_role="Developer",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_rate_percent"] == 0
+        assert body["throughput"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_failure_breakdown_with_multiple_attempts():
+    """UX5: after started + six attempt_failed + finished (attempts 7),
+    GET /sprint returns first_attempt_rate_percent=0, throughput=1, and
+    failure_breakdown with exactly one element."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac5_attempt'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac5_attempt",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        failure_classes = ["VERIFY", "SCHEMA", "VERIFY", "TEST", "SCHEMA", "VERIFY"]
+        for i, fc in enumerate(failure_classes, start=1):
+            event = {
+                "api_version": "1",
+                "card_id": "ac5_attempt",
+                "type": "attempt_failed",
+                "timestamp": f"2024-01-12T{10 + i}:00:00Z",
+                "sprint": "Sprint 18",
+                "attempt_number": i,
+                "failure_class": fc,
+                "failure_role": "Developer",
+                "card": {"created": "2024-01-10"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ac5_attempt",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+            attempts=7,
+            failure_class="VERIFY",
+            failure_role="Developer",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_rate_percent"] == 0
+        assert body["throughput"] == 1
+        assert body["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
     finally:
         conn.close()
