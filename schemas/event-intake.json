@@ -53,6 +53,9 @@
         },
         "failure_role": {
           "type": "string"
+        },
+        "points": {
+          "type": "integer"
         }
       }
     },
