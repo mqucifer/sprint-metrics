@@ -1551,8 +1551,8 @@ def test_json_flags_first_attempt_rate_flagged_when_below_default_threshold(tmp_
 def test_json_schema_includes_first_attempt_rate_and_failure_breakdown(capsys):
     """AC5: --schema --json produces a JSON Schema whose top-level required array
     includes first_attempt_rate_percent and failure_breakdown, and whose properties
-    includes first_attempt_rate_percent as type integer and failure_breakdown as
-    type array."""
+    includes first_attempt_rate_percent as type [integer, null] and failure_breakdown as
+    type [array, null]."""
     exit_code = main(["--schema", "--json"])
     captured = capsys.readouterr()
 
@@ -1560,8 +1560,8 @@ def test_json_schema_includes_first_attempt_rate_and_failure_breakdown(capsys):
     schema = json.loads(captured.out)
     assert "first_attempt_rate_percent" in schema["required"]
     assert "failure_breakdown" in schema["required"]
-    assert schema["properties"]["first_attempt_rate_percent"] == {"type": "integer"}
-    assert schema["properties"]["failure_breakdown"]["type"] == "array"
+    assert schema["properties"]["first_attempt_rate_percent"] == {"type": ["integer", "null"]}
+    assert schema["properties"]["failure_breakdown"]["type"] == ["array", "null"]
 
 
 def test_json_prior_and_delta_include_first_attempt_rate(tmp_path, capsys):

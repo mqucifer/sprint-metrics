@@ -31,7 +31,10 @@
             "type": "string"
           },
           "value": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         }
       }
