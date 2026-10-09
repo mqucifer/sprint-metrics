@@ -457,12 +457,21 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     status = 400
                                     return
                                 sprints = query_range(conn_holder[0], start, end)
+                            has_events: set[str] = set()
+                            for label in sprints:
+                                if sprint_has_events(conn_holder[0], label):
+                                    has_events.add(label)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
                         values = [
-                            {"sprint": label, "value": metric_value(metric, sprints[label])}
+                            {
+                                "sprint": label,
+                                "value": metric_value(metric, sprints[label])
+                                if label in has_events
+                                else None,
+                            }
                             for label in sprints
                         ]
                         response = {

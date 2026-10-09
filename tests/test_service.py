@@ -1568,7 +1568,7 @@ def test_post_invalid_type_emits_error_log_record(monkeypatch):
 @requires_db
 def test_trend_cycle_time_three_sprints():
     """AC1: GET /trend?metric=cycle_time_days&start=2024-02&end=2024-04 returns
-    200 with three entries: 2024-02 value 3, 2024-03 value 0, 2024-04 value 6."""
+    200 with three entries: 2024-02 value 3, 2024-03 value null, 2024-04 value 6."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1676,7 +1676,7 @@ def test_trend_cycle_time_three_sprints():
         assert body["api_version"] == "1"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-02", "value": 3}
-        assert body["values"][1] == {"sprint": "2024-03", "value": 0}
+        assert body["values"][1] == {"sprint": "2024-03", "value": None}
         assert body["values"][2] == {"sprint": "2024-04", "value": 6}
     finally:
         conn.close()
@@ -1685,7 +1685,7 @@ def test_trend_cycle_time_three_sprints():
 @requires_db
 def test_trend_empty_db_all_zeros():
     """AC2: GET /trend?metric=throughput&start=2024-01&end=2024-03 on an empty DB
-    returns 200 with three entries, all value 0."""
+    returns 200 with three entries, all value null."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1701,16 +1701,16 @@ def test_trend_empty_db_all_zeros():
         assert status == 200
         assert body["api_version"] == "1"
         assert len(body["values"]) == 3
-        assert body["values"][0] == {"sprint": "2024-01", "value": 0}
-        assert body["values"][1] == {"sprint": "2024-02", "value": 0}
-        assert body["values"][2] == {"sprint": "2024-03", "value": 0}
+        assert body["values"][0] == {"sprint": "2024-01", "value": None}
+        assert body["values"][1] == {"sprint": "2024-02", "value": None}
+        assert body["values"][2] == {"sprint": "2024-03", "value": None}
     finally:
         conn.close()
 
 
 @requires_db
 def test_trend_invalid_metric_returns_400():
-    """AC3: GET /trend?metric=bogus_metric&start=2024-01&end=2024-03 returns 400
+    """AC2: GET /trend?metric=bogus_metric&start=2024-01&end=2024-02 returns 400
     with error containing 'bogus_metric'."""
     import psycopg
 
@@ -1720,7 +1720,7 @@ def test_trend_invalid_metric_returns_400():
     port = _start_service(conn, 0)
     try:
         status, body = _get_json(
-            f"http://127.0.0.1:{port}/trend?metric=bogus_metric&start=2024-01&end=2024-03"
+            f"http://127.0.0.1:{port}/trend?metric=bogus_metric&start=2024-01&end=2024-02"
         )
         assert status == 400
         assert "bogus_metric" in body["error"]
@@ -1897,7 +1897,7 @@ def test_trend_response_includes_metric_and_span_labels():
 @requires_db
 def test_trend_six_sprints_zero_fill_empty_sprint():
     """UX7: GET /trend?metric=throughput&start=2024-01&end=2024-06 with no events
-    for 2024-03 returns six entries in order, 2024-03 has value 0."""
+    for 2024-03 returns six entries in order, 2024-03 has value null."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1943,7 +1943,7 @@ def test_trend_six_sprints_zero_fill_empty_sprint():
         expected_order = ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06"]
         for entry, label in zip(body["values"], expected_order, strict=True):
             assert entry["sprint"] == label
-        assert body["values"][2]["value"] == 0
+        assert body["values"][2]["value"] is None
         assert body["values"][0]["value"] == 1
         assert body["values"][1]["value"] == 1
         assert body["values"][3]["value"] == 1
@@ -3741,5 +3741,210 @@ def test_range_known_sprint_after_unknown_prior_gets_null_prior_and_delta():
         assert sprints["2026-11"]["throughput"] is None
         assert sprints["2026-12"]["prior"] is None
         assert sprints["2026-12"]["delta"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_all_sprints_have_events_returns_integers():
+    """AC1: GET /trend?metric=cycle_time_days&start=2024-01&end=2024-02 with events
+    in both sprints returns 200, Content-Type application/json, and the values array
+    has exactly 2 entries: 2024-01 value 4, 2024-02 value 3."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('ac1_trend_ok_a', 'ac1_trend_ok_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: created 2024-01-01, started 2024-01-02, finished 2024-01-06 → cycle 4
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_ok_a",
+                event_type="started",
+                timestamp="2024-01-02T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_ok_a",
+                event_type="finished",
+                timestamp="2024-01-06T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # Sprint 2024-02: created 2024-02-01, started 2024-02-02, finished 2024-02-05 → cycle 3
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_ok_b",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_trend_ok_b",
+                event_type="finished",
+                timestamp="2024-02-05T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/trend?metric=cycle_time_days&start=2024-01&end=2024-02",
+            timeout=5,
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 4}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 3}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_gap_sprint_returns_null():
+    """AC3: GET /trend?metric=cycle_time_days&start=2026-10&end=2026-12 with events
+    in 2026-10 and 2026-12 but not 2026-11 returns 200, Content-Type application/json,
+    values array has exactly 3 entries: 2026-10 value 4, 2026-11 value null, 2026-12 value 2."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('ac3_trend_gap_a', 'ac3_trend_gap_b')"
+    )
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2026-10', '2026-11', '2026-12')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2026-10: created 2026-10-07, started 2026-10-07, finished 2026-10-11 → cycle 4
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_trend_gap_a",
+                event_type="started",
+                timestamp="2026-10-07T10:00:00Z",
+                sprint="2026-10",
+                created="2026-10-07",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_trend_gap_a",
+                event_type="finished",
+                timestamp="2026-10-11T15:00:00Z",
+                sprint="2026-10",
+                created="2026-10-07",
+            ),
+        )
+        # Sprint 2026-12: created 2026-12-01, started 2026-12-01, finished 2026-12-03 → cycle 2
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_trend_gap_b",
+                event_type="started",
+                timestamp="2026-12-01T10:00:00Z",
+                sprint="2026-12",
+                created="2026-12-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_trend_gap_b",
+                event_type="finished",
+                timestamp="2026-12-03T15:00:00Z",
+                sprint="2026-12",
+                created="2026-12-01",
+            ),
+        )
+        # Sprint 2026-11: no events
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/trend?metric=cycle_time_days&start=2026-10&end=2026-12",
+            timeout=5,
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert len(body["values"]) == 3
+        assert body["values"][0] == {"sprint": "2026-10", "value": 4}
+        assert body["values"][1] == {"sprint": "2026-11", "value": None}
+        assert body["values"][2] == {"sprint": "2026-12", "value": 2}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_single_sprint_with_events_returns_integer():
+    """AC4: GET /trend?metric=throughput&start=2026-10&end=2026-10 with events in
+    2026-10 returns 200, values array has exactly 1 entry, sprint 2026-10 value is
+    integer 1 (not null)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_trend_single'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2026-10: one completed card, started and finished same day
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_trend_single",
+                event_type="started",
+                timestamp="2026-10-07T13:14:07Z",
+                sprint="2026-10",
+                created="2026-10-07",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_trend_single",
+                event_type="finished",
+                timestamp="2026-10-07T20:52:22Z",
+                sprint="2026-10",
+                created="2026-10-07",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2026-10&end=2026-10"
+        )
+        assert status == 200
+        assert len(body["values"]) == 1
+        assert body["values"][0]["sprint"] == "2026-10"
+        assert body["values"][0]["value"] == 1
+        assert isinstance(body["values"][0]["value"], int)
+        assert not isinstance(body["values"][0]["value"], bool)
     finally:
         conn.close()
