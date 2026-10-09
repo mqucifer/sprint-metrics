@@ -190,6 +190,10 @@ def format_sprint_range_json(
             }
         per_sprint[label] = {
             **sprint_metrics,
+            "failure_breakdown": [
+                {"class": cls, "role": role, "count": count}
+                for cls, role, count in calculate_failure_breakdown(cards)
+            ],
             "top_failure_causes": calculate_top_failure_causes(cards),
             "flags": calculate_flags(cards, wip_limits, escalations, as_of, thresholds),
             "prior": prior,
