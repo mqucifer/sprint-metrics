@@ -346,30 +346,35 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(400, {"error": str(exc)})
                             status = 400
                             return
-                        if resolved is not None:
-                            sprints = {}
-                            for label in resolved:
-                                sprints[label] = query_sprint(conn_holder[0], label)
-                            labels = resolved
-                        else:
-                            try:
-                                start_parsed = _parse_sprint_label(start)
-                                end_parsed = _parse_sprint_label(end)
-                            except ValueError as exc:
-                                self._send_json(400, {"error": str(exc)})
-                                status = 400
-                                return
-                            if start_parsed > end_parsed:
-                                self._send_json(
-                                    400,
-                                    {
-                                        "error": f"invalid range: start {start!r} is after end {end!r}"
-                                    },
-                                )
-                                status = 400
-                                return
-                            sprints = query_range(conn_holder[0], start, end)
-                            labels = list(sprints.keys())
+                        try:
+                            if resolved is not None:
+                                sprints = {}
+                                for label in resolved:
+                                    sprints[label] = query_sprint(conn_holder[0], label)
+                                labels = resolved
+                            else:
+                                try:
+                                    start_parsed = _parse_sprint_label(start)
+                                    end_parsed = _parse_sprint_label(end)
+                                except ValueError as exc:
+                                    self._send_json(400, {"error": str(exc)})
+                                    status = 400
+                                    return
+                                if start_parsed > end_parsed:
+                                    self._send_json(
+                                        400,
+                                        {
+                                            "error": f"invalid range: start {start!r} is after end {end!r}"
+                                        },
+                                    )
+                                    status = 400
+                                    return
+                                sprints = query_range(conn_holder[0], start, end)
+                                labels = list(sprints.keys())
+                        except Exception as exc:
+                            self._send_json(500, {"error": f"database error: {exc}"})
+                            status = 500
+                            return
                         body = format_sprint_range_json(sprints, labels)
                         self._send_json(200, json.loads(body))
                         status = 200
@@ -422,19 +427,24 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(400, {"error": str(exc)})
                             status = 400
                             return
-                        if resolved is not None:
-                            sprints = {}
-                            for label in resolved:
-                                sprints[label] = query_sprint(conn_holder[0], label)
-                        else:
-                            try:
-                                start_parsed = _parse_sprint_label(start)
-                                end_parsed = _parse_sprint_label(end)
-                            except ValueError as exc:
-                                self._send_json(400, {"error": str(exc)})
-                                status = 400
-                                return
-                            sprints = query_range(conn_holder[0], start, end)
+                        try:
+                            if resolved is not None:
+                                sprints = {}
+                                for label in resolved:
+                                    sprints[label] = query_sprint(conn_holder[0], label)
+                            else:
+                                try:
+                                    start_parsed = _parse_sprint_label(start)
+                                    end_parsed = _parse_sprint_label(end)
+                                except ValueError as exc:
+                                    self._send_json(400, {"error": str(exc)})
+                                    status = 400
+                                    return
+                                sprints = query_range(conn_holder[0], start, end)
+                        except Exception as exc:
+                            self._send_json(500, {"error": f"database error: {exc}"})
+                            status = 500
+                            return
                         values = [
                             {"sprint": label, "value": metric_value(metric, sprints[label])}
                             for label in sprints

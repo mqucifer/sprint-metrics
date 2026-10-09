@@ -3306,7 +3306,8 @@ def test_range_registered_sprints_chronological_order():
 
 @requires_db
 def test_trend_registered_sprints_chronological_order():
-    """AC2: Trend with registered sprints returns values in start_date order."""
+    """AC2: Trend with registered sprints whose lexicographic order differs from
+    chronological order returns values in start_date order."""
     from datetime import date
 
     import psycopg
@@ -3321,12 +3322,14 @@ def test_trend_registered_sprints_chronological_order():
 
     upsert_sprint(conn, "ac2_ts_1", date(2024, 1, 1), date(2024, 1, 14), "UTC")
     upsert_sprint(conn, "ac2_ts_2", date(2024, 2, 1), date(2024, 2, 14), "UTC")
+    upsert_sprint(conn, "ac2_ts_10", date(2024, 3, 1), date(2024, 3, 14), "UTC")
 
     port = _start_service(conn, 0)
     try:
         for sprint, card_id in [
             ("ac2_ts_1", "ac2_ts_c1"),
             ("ac2_ts_2", "ac2_ts_c2"),
+            ("ac2_ts_10", "ac2_ts_c3"),
         ]:
             _post_events(
                 f"http://127.0.0.1:{port}/events",
@@ -3350,11 +3353,12 @@ def test_trend_registered_sprints_chronological_order():
             )
 
         status, body = _get_json(
-            f"http://127.0.0.1:{port}/trend?metric=throughput&start=ac2_ts_1&end=ac2_ts_2"
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=ac2_ts_1&end=ac2_ts_10"
         )
         assert status == 200
         assert body["values"][0]["sprint"] == "ac2_ts_1"
         assert body["values"][1]["sprint"] == "ac2_ts_2"
+        assert body["values"][2]["sprint"] == "ac2_ts_10"
     finally:
         conn.close()
 
