@@ -3241,3 +3241,148 @@ def test_post_event_without_points_stores_null():
         assert rows[0][0] is None
     finally:
         conn.close()
+
+
+@requires_db
+def test_range_registered_sprints_chronological_order():
+    """AC1: Range with registered sprints whose lexicographic order differs from
+    chronological order returns keys in start_date order."""
+    from datetime import date
+
+    import psycopg
+
+    from sprint_metrics.store import upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name LIKE 'ac1_rs_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'ac1_rs_%'")
+    conn.commit()
+
+    upsert_sprint(conn, "ac1_rs_1", date(2024, 1, 1), date(2024, 1, 14), "UTC")
+    upsert_sprint(conn, "ac1_rs_2", date(2024, 2, 1), date(2024, 2, 14), "UTC")
+    upsert_sprint(conn, "ac1_rs_10", date(2024, 3, 1), date(2024, 3, 14), "UTC")
+
+    port = _start_service(conn, 0)
+    try:
+        for sprint, card_id in [
+            ("ac1_rs_1", "ac1_rs_c1"),
+            ("ac1_rs_2", "ac1_rs_c2"),
+            ("ac1_rs_10", "ac1_rs_c3"),
+        ]:
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp="2024-01-03T10:00:00Z",
+                    sprint=sprint,
+                    created="2024-01-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint=sprint,
+                    created="2024-01-01",
+                ),
+            )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/range?start=ac1_rs_1&end=ac1_rs_10", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            raw_body = resp.read().decode()
+
+        body = json.loads(raw_body)
+        assert list(body["sprints"].keys()) == ["ac1_rs_1", "ac1_rs_2", "ac1_rs_10"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_registered_sprints_chronological_order():
+    """AC2: Trend with registered sprints returns values in start_date order."""
+    from datetime import date
+
+    import psycopg
+
+    from sprint_metrics.store import upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name LIKE 'ac2_ts_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'ac2_ts_%'")
+    conn.commit()
+
+    upsert_sprint(conn, "ac2_ts_1", date(2024, 1, 1), date(2024, 1, 14), "UTC")
+    upsert_sprint(conn, "ac2_ts_2", date(2024, 2, 1), date(2024, 2, 14), "UTC")
+
+    port = _start_service(conn, 0)
+    try:
+        for sprint, card_id in [
+            ("ac2_ts_1", "ac2_ts_c1"),
+            ("ac2_ts_2", "ac2_ts_c2"),
+        ]:
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp="2024-01-03T10:00:00Z",
+                    sprint=sprint,
+                    created="2024-01-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint=sprint,
+                    created="2024-01-01",
+                ),
+            )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=ac2_ts_1&end=ac2_ts_2"
+        )
+        assert status == 200
+        assert body["values"][0]["sprint"] == "ac2_ts_1"
+        assert body["values"][1]["sprint"] == "ac2_ts_2"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_registered_start_after_end_returns_400():
+    """AC3: GET /range with registered sprints where start.start_date > end.start_date
+    returns 400 with error referencing the invalid range."""
+    from datetime import date
+
+    import psycopg
+
+    from sprint_metrics.store import upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name LIKE 'ac3_rs_%'")
+    conn.commit()
+
+    upsert_sprint(conn, "ac3_rs_1", date(2024, 1, 1), date(2024, 1, 14), "UTC")
+    upsert_sprint(conn, "ac3_rs_2", date(2024, 2, 1), date(2024, 2, 14), "UTC")
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=ac3_rs_2&end=ac3_rs_1")
+        assert status == 400
+        assert "error" in body
+        assert isinstance(body["error"], str)
+        assert "invalid range" in body["error"] or "ac3_rs_2" in body["error"]
+    finally:
+        conn.close()

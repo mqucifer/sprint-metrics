@@ -38,6 +38,7 @@ from sprint_metrics.store import (
     query_all_sprints,
     query_range,
     query_sprint,
+    resolve_sprint_range,
     upsert_sprint,
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
@@ -312,20 +313,22 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(400, {"error": "missing start or end parameter"})
                             status = 400
                             return
+                        # Quick calendar validation (no DB needed) preserves 400 for
+                        # invalid YYYY-MM ranges even when the DB is unreachable.
                         try:
-                            start_parsed = _parse_sprint_label(start)
-                            end_parsed = _parse_sprint_label(end)
-                        except ValueError as exc:
-                            self._send_json(400, {"error": str(exc)})
-                            status = 400
-                            return
-                        if start_parsed > end_parsed:
-                            self._send_json(
-                                400,
-                                {"error": f"invalid range: start {start!r} is after end {end!r}"},
-                            )
-                            status = 400
-                            return
+                            _start_parsed = _parse_sprint_label(start)
+                            _end_parsed = _parse_sprint_label(end)
+                            if _start_parsed > _end_parsed:
+                                self._send_json(
+                                    400,
+                                    {
+                                        "error": f"invalid range: start {start!r} is after end {end!r}"
+                                    },
+                                )
+                                status = 400
+                                return
+                        except ValueError:
+                            pass
                         if not self._ensure_db():
                             self._send_json(
                                 503,
@@ -338,12 +341,35 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 503
                             return
                         try:
-                            sprints = query_range(conn_holder[0], start, end)
-                        except Exception as exc:
-                            self._send_json(500, {"error": f"database error: {exc}"})
-                            status = 500
+                            resolved = resolve_sprint_range(conn_holder[0], start, end)
+                        except ValueError as exc:
+                            self._send_json(400, {"error": str(exc)})
+                            status = 400
                             return
-                        labels = list(sprints.keys())
+                        if resolved is not None:
+                            sprints = {}
+                            for label in resolved:
+                                sprints[label] = query_sprint(conn_holder[0], label)
+                            labels = resolved
+                        else:
+                            try:
+                                start_parsed = _parse_sprint_label(start)
+                                end_parsed = _parse_sprint_label(end)
+                            except ValueError as exc:
+                                self._send_json(400, {"error": str(exc)})
+                                status = 400
+                                return
+                            if start_parsed > end_parsed:
+                                self._send_json(
+                                    400,
+                                    {
+                                        "error": f"invalid range: start {start!r} is after end {end!r}"
+                                    },
+                                )
+                                status = 400
+                                return
+                            sprints = query_range(conn_holder[0], start, end)
+                            labels = list(sprints.keys())
                         body = format_sprint_range_json(sprints, labels)
                         self._send_json(200, json.loads(body))
                         status = 200
@@ -364,20 +390,21 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(400, {"error": f"unknown metric: {metric!r}"})
                             status = 400
                             return
+                        # Quick calendar validation (no DB needed)
                         try:
-                            start_parsed = _parse_sprint_label(start)
-                            end_parsed = _parse_sprint_label(end)
-                        except ValueError as exc:
-                            self._send_json(400, {"error": str(exc)})
-                            status = 400
-                            return
-                        if start_parsed > end_parsed:
-                            self._send_json(
-                                400,
-                                {"error": f"invalid range: start {start!r} is after end {end!r}"},
-                            )
-                            status = 400
-                            return
+                            _start_parsed = _parse_sprint_label(start)
+                            _end_parsed = _parse_sprint_label(end)
+                            if _start_parsed > _end_parsed:
+                                self._send_json(
+                                    400,
+                                    {
+                                        "error": f"invalid range: start {start!r} is after end {end!r}"
+                                    },
+                                )
+                                status = 400
+                                return
+                        except ValueError:
+                            pass
                         if not self._ensure_db():
                             self._send_json(
                                 503,
@@ -390,11 +417,24 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 503
                             return
                         try:
-                            sprints = query_range(conn_holder[0], start, end)
-                        except Exception as exc:
-                            self._send_json(500, {"error": f"database error: {exc}"})
-                            status = 500
+                            resolved = resolve_sprint_range(conn_holder[0], start, end)
+                        except ValueError as exc:
+                            self._send_json(400, {"error": str(exc)})
+                            status = 400
                             return
+                        if resolved is not None:
+                            sprints = {}
+                            for label in resolved:
+                                sprints[label] = query_sprint(conn_holder[0], label)
+                        else:
+                            try:
+                                start_parsed = _parse_sprint_label(start)
+                                end_parsed = _parse_sprint_label(end)
+                            except ValueError as exc:
+                                self._send_json(400, {"error": str(exc)})
+                                status = 400
+                                return
+                            sprints = query_range(conn_holder[0], start, end)
                         values = [
                             {"sprint": label, "value": metric_value(metric, sprints[label])}
                             for label in sprints
