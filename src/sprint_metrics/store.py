@@ -26,12 +26,14 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     failure_class TEXT,
     failure_role TEXT,
     attempt_number INT,
+    points INT,
     PRIMARY KEY (card_id, type, event_time),
     CONSTRAINT board_events_type_check CHECK (
         type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed')
     )
 );
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS attempt_number INT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS points INT;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
     type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed')
@@ -55,7 +57,8 @@ def insert_event(conn: Connection, event: dict) -> None:
     """Insert a board event, doing nothing if it already exists (idempotent upsert).
 
     The event dict must have keys: card_id, type, timestamp, sprint, card (with 'created').
-    Optional card fields: attempts, failure_class, failure_role (stored only on 'finished' rows).
+    Optional card fields: attempts, failure_class, failure_role (stored only on 'finished' rows),
+    points (stored on every event row that carries it; NULL when absent).
     Optional top-level fields: attempt_number, failure_class, failure_role
     (stored only on 'attempt_failed' rows).
     """
@@ -81,8 +84,8 @@ def insert_event(conn: Connection, event: dict) -> None:
         """
         INSERT INTO sprint_metrics.board_events
             (card_id, type, event_time, sprint, card_created,
-             attempts, failure_class, failure_role, attempt_number)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+             attempts, failure_class, failure_role, attempt_number, points)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO NOTHING
         """,
         (
@@ -95,6 +98,7 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_failure_class,
             ev_failure_role,
             ev_attempt_number,
+            card.get("points"),
         ),
     )
     conn.commit()

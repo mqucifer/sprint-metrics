@@ -124,6 +124,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "attempts": {"type": "integer"},
                 "failure_class": {"type": "string"},
                 "failure_role": {"type": "string"},
+                "points": {"type": "integer"},
             },
         },
         "attempt_number": {"type": "integer"},

@@ -3157,3 +3157,87 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
         assert body["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
     finally:
         conn.close()
+
+
+@requires_db
+def test_post_event_with_points_stores_value():
+    """AC1+AC2+UX4: POST /events with card.points=5 returns 200, no error key,
+    and SELECT points FROM board_events WHERE card_id='453' AND type='started'
+    returns exactly one row whose points column holds the integer 5."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = '453'")
+    conn.commit()
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = 'Sprint 18'")
+    conn.commit()
+    conn.execute(
+        "INSERT INTO sprint_metrics.sprints (name, start_date, end_date, timezone) "
+        "VALUES ('Sprint 18', '2026-10-07', '2026-10-07', 'America/Chicago')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "453",
+            "type": "started",
+            "sprint": "Sprint 18",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "card": {"created": "2026-10-07", "points": 5},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT points FROM sprint_metrics.board_events WHERE card_id = '453' AND type = 'started'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == 5
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_event_without_points_stores_null():
+    """AC3+UX5: POST /events without card.points returns 200, no error key,
+    and SELECT points FROM board_events WHERE card_id='455' AND type='started'
+    returns exactly one row whose points column is NULL."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = '455'")
+    conn.commit()
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = 'Sprint 18'")
+    conn.commit()
+    conn.execute(
+        "INSERT INTO sprint_metrics.sprints (name, start_date, end_date, timezone) "
+        "VALUES ('Sprint 18', '2026-10-07', '2026-10-07', 'America/Chicago')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "455",
+            "type": "started",
+            "sprint": "Sprint 18",
+            "timestamp": "2026-10-07T09:15:00Z",
+            "card": {"created": "2026-10-06"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT points FROM sprint_metrics.board_events WHERE card_id = '455' AND type = 'started'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] is None
+    finally:
+        conn.close()
