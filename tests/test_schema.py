@@ -11,7 +11,8 @@ from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, SINGLE_SPRINT_SCHEMA, SPR
 
 def test_schema_json_single_sprint(capsys):
     """AC1: --schema --json without a cards file exits 0 and stdout is a valid
-    JSON Schema (draft 2020-12) whose required array includes all eight keys."""
+    JSON Schema (draft 2020-12) whose required array includes all eight keys
+    and whose metric properties accept null."""
     exit_code = main(["--schema", "--json"])
     captured = capsys.readouterr()
 
@@ -29,12 +30,23 @@ def test_schema_json_single_sprint(capsys):
         "flags",
     ):
         assert key in schema["required"]
+    for key in (
+        "cycle_time_days",
+        "lead_time_days",
+        "throughput",
+        "wip_violations",
+        "blocked_aging_days",
+        "escalation_rate_percent",
+        "first_attempt_rate_percent",
+    ):
+        assert schema["properties"][key]["type"] == ["integer", "null"]
 
 
 def test_schema_json_sprint_range(capsys):
     """AC2: --schema --sprint-range 2024-01..2024-02 --json exits 0 and stdout is a
     JSON Schema whose top-level required includes api_version and sprints, and each
-    sprint value's schema includes the six metric keys, flags, prior, and delta."""
+    sprint value's schema includes the six metric keys, flags, prior, and delta,
+    with metric types accepting null."""
     exit_code = main(["--schema", "--sprint-range", "2024-01..2024-02", "--json"])
     captured = capsys.readouterr()
 
@@ -56,6 +68,16 @@ def test_schema_json_sprint_range(capsys):
         "delta",
     ):
         assert key in sprint_schema["required"]
+    for key in (
+        "cycle_time_days",
+        "lead_time_days",
+        "throughput",
+        "wip_violations",
+        "blocked_aging_days",
+        "escalation_rate_percent",
+        "first_attempt_rate_percent",
+    ):
+        assert sprint_schema["properties"][key]["type"] == ["integer", "null"]
 
 
 def test_schema_markdown_exits_2(capsys):
@@ -71,7 +93,7 @@ def test_schema_markdown_exits_2(capsys):
 
 def test_schema_json_required_keys_and_properties(capsys):
     """AC2: --schema --json exits 0; stdout is JSON whose required array contains
-    the named keys and whose properties include cycle_time_days typed as integer."""
+    the named keys and whose properties include cycle_time_days typed as [integer, null]."""
     exit_code = main(["--schema", "--json"])
     captured = capsys.readouterr()
 
@@ -86,7 +108,7 @@ def test_schema_json_required_keys_and_properties(capsys):
         "flags",
     ):
         assert key in schema["required"]
-    assert schema["properties"]["cycle_time_days"] == {"type": "integer"}
+    assert schema["properties"]["cycle_time_days"] == {"type": ["integer", "null"]}
 
 
 def test_schema_without_json_exits_2(capsys):
@@ -114,7 +136,7 @@ def test_trend_schema_top_level_structure():
 
 
 def test_trend_schema_values_items_structure():
-    """AC2: values is an array of objects each requiring sprint and value."""
+    """AC2: values is an array of objects each requiring sprint and value, with value accepting null."""
     from sprint_metrics.schema import TREND_SCHEMA
 
     values_prop = TREND_SCHEMA["properties"]["values"]
@@ -122,6 +144,7 @@ def test_trend_schema_values_items_structure():
     items = values_prop["items"]
     assert items["type"] == "object"
     assert items["required"] == ["sprint", "value"]
+    assert items["properties"]["value"]["type"] == ["integer", "null"]
 
 
 def test_trend_schema_properties_types():
@@ -297,3 +320,107 @@ def test_event_intake_missing_card_created_rejected():
     with pytest.raises(jsonschema.ValidationError) as exc_info:
         jsonschema.validate(event, EVENT_INTAKE_SCHEMA)
     assert "created" in str(exc_info.value)
+
+
+def test_single_sprint_schema_accepts_valid_non_null_object():
+    """AC1: A complete non-null JSON object validates against SINGLE_SPRINT_SCHEMA."""
+    from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
+
+    valid = {
+        "api_version": "1",
+        "throughput": 1,
+        "cycle_time_days": 4,
+        "lead_time_days": 6,
+        "wip_violations": 0,
+        "blocked_aging_days": 0,
+        "escalation_rate_percent": 0,
+        "first_attempt_rate_percent": 100,
+        "failure_breakdown": [{"class": "parse", "role": "Developer", "count": 2}],
+        "top_failure_causes": {"parse": 2},
+        "flags": {
+            "cycle_time_days": False,
+            "lead_time_days": False,
+            "throughput": False,
+            "wip_violations": False,
+            "blocked_aging_days": False,
+            "escalation_rate_percent": False,
+            "first_attempt_rate_percent": False,
+        },
+    }
+    jsonschema.validate(valid, SINGLE_SPRINT_SCHEMA)
+
+
+def test_single_sprint_schema_rejects_string_failure_breakdown():
+    """AC2: failure_breakdown as a string (not an array) fails validation."""
+    from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
+
+    invalid = {
+        "api_version": "1",
+        "throughput": 1,
+        "cycle_time_days": 4,
+        "lead_time_days": 6,
+        "wip_violations": 0,
+        "blocked_aging_days": 0,
+        "escalation_rate_percent": 0,
+        "first_attempt_rate_percent": 100,
+        "failure_breakdown": "not_an_array",
+        "top_failure_causes": {},
+        "flags": {
+            "cycle_time_days": False,
+            "lead_time_days": False,
+            "throughput": False,
+            "wip_violations": False,
+            "blocked_aging_days": False,
+            "escalation_rate_percent": False,
+            "first_attempt_rate_percent": False,
+        },
+    }
+    with pytest.raises(jsonschema.ValidationError) as exc_info:
+        jsonschema.validate(invalid, SINGLE_SPRINT_SCHEMA)
+    assert "failure_breakdown" in str(exc_info.value)
+
+
+def test_single_sprint_schema_accepts_all_null_metrics():
+    """AC3: Every metric property accepts null alongside its non-null type."""
+    from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
+
+    all_null = {
+        "api_version": "1",
+        "throughput": None,
+        "cycle_time_days": None,
+        "lead_time_days": None,
+        "wip_violations": None,
+        "blocked_aging_days": None,
+        "escalation_rate_percent": None,
+        "first_attempt_rate_percent": None,
+        "failure_breakdown": None,
+        "top_failure_causes": None,
+        "flags": None,
+    }
+    jsonschema.validate(all_null, SINGLE_SPRINT_SCHEMA)
+
+
+def test_sprint_range_schema_accepts_all_null_sprint_entry():
+    """AC4: The per-sprint object in SPRINT_RANGE_SCHEMA accepts null for every field."""
+    from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
+
+    all_null_sprint = {
+        "api_version": "1",
+        "sprints": {
+            "2026-11": {
+                "cycle_time_days": None,
+                "lead_time_days": None,
+                "throughput": None,
+                "wip_violations": None,
+                "blocked_aging_days": None,
+                "escalation_rate_percent": None,
+                "first_attempt_rate_percent": None,
+                "failure_breakdown": None,
+                "top_failure_causes": None,
+                "flags": None,
+                "prior": None,
+                "delta": None,
+            }
+        },
+    }
+    jsonschema.validate(all_null_sprint, SPRINT_RANGE_SCHEMA)

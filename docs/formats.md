@@ -41,28 +41,52 @@ BEGIN:formats
       "type": "string"
     },
     "cycle_time_days": {
-      "type": "integer"
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "lead_time_days": {
-      "type": "integer"
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "throughput": {
-      "type": "integer"
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "wip_violations": {
-      "type": "integer"
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "blocked_aging_days": {
-      "type": "integer"
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "escalation_rate_percent": {
-      "type": "integer"
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "first_attempt_rate_percent": {
-      "type": "integer"
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "failure_breakdown": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "items": {
         "type": "object",
         "properties": {
@@ -84,10 +108,16 @@ BEGIN:formats
       }
     },
     "top_failure_causes": {
-      "type": "object"
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "flags": {
-      "type": "object"
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "sprint_date": {
       "type": "string"
@@ -96,28 +126,52 @@ BEGIN:formats
       "type": "object",
       "properties": {
         "cycle_time_days": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "lead_time_days": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "throughput": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "wip_violations": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "blocked_aging_days": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "escalation_rate_percent": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "first_attempt_rate_percent": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "top_failure_causes": {
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         }
       }
     },
@@ -125,25 +179,46 @@ BEGIN:formats
       "type": "object",
       "properties": {
         "cycle_time_days": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "lead_time_days": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "throughput": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "wip_violations": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "blocked_aging_days": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "escalation_rate_percent": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "first_attempt_rate_percent": {
-          "type": "integer"
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       }
     }
