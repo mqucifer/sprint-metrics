@@ -281,8 +281,7 @@ def test_sprint_excludes_card_finishing_in_different_sprint():
 
 @requires_db
 def test_sprint_empty_db_returns_all_zeros():
-    """AC3: GET /sprint?label=2024-03 with no events returns 200, all metrics 0,
-    and every flag false."""
+    """AC3: GET /sprint?label=2024-03 with no events returns 200 and all metrics null."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -294,14 +293,13 @@ def test_sprint_empty_db_returns_all_zeros():
     try:
         status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-03")
         assert status == 200
-        assert body["throughput"] == 0
-        assert body["cycle_time_days"] == 0
-        assert body["lead_time_days"] == 0
-        assert body["wip_violations"] == 0
-        assert body["blocked_aging_days"] == 0
-        assert body["escalation_rate_percent"] == 0
-        for key, value in body["flags"].items():
-            assert value is False, f"flags[{key!r}] is {value!r}, expected False"
+        assert body["throughput"] is None
+        assert body["cycle_time_days"] is None
+        assert body["lead_time_days"] is None
+        assert body["wip_violations"] is None
+        assert body["blocked_aging_days"] is None
+        assert body["escalation_rate_percent"] is None
+        assert body["flags"] is None
     finally:
         conn.close()
 
@@ -2971,8 +2969,7 @@ def test_get_sprint_free_form_label_same_day_completion():
 @requires_db
 def test_get_sprint_free_form_label_never_sent():
     """UX6: GET /sprint?label=Never%20Sent with no events returns 200,
-    Content-Type application/json, throughput=0, cycle_time_days=0,
-    first_attempt_rate_percent=0."""
+    Content-Type application/json, and all metrics null."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -2987,9 +2984,9 @@ def test_get_sprint_free_form_label_never_sent():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["throughput"] == 0
-        assert body["cycle_time_days"] == 0
-        assert body["first_attempt_rate_percent"] == 0
+        assert body["throughput"] is None
+        assert body["cycle_time_days"] is None
+        assert body["first_attempt_rate_percent"] is None
     finally:
         conn.close()
 
@@ -3388,5 +3385,115 @@ def test_range_registered_start_after_end_returns_400():
         assert "error" in body
         assert isinstance(body["error"], str)
         assert "invalid range" in body["error"] or "ac3_rs_2" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_started_no_finished_returns_zeros():
+    """AC1: a started event with no finished event returns zeros, not nulls."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_null'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-05'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac1_null",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-05",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=2024-05", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["throughput"] == 0
+        assert body["cycle_time_days"] == 0
+        assert body["lead_time_days"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_no_events_returns_all_nulls():
+    """AC3 (UX): no events for the sprint returns all metrics null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-11'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=2026-11", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["api_version"] == "1"
+        assert body["throughput"] is None
+        assert body["cycle_time_days"] is None
+        assert body["lead_time_days"] is None
+        assert body["failure_breakdown"] is None
+        assert body["top_failure_causes"] is None
+        assert body["flags"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_same_day_completion_with_failure_data():
+    """AC4 (UX): same-day completion with failure data returns computed values, not nulls."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_null'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac4_null",
+            event_type="started",
+            timestamp="2026-10-07T13:14:07Z",
+            sprint="2026-10",
+            created="2026-10-07",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        finished = _make_event(
+            card_id="ac4_null",
+            event_type="finished",
+            timestamp="2026-10-07T20:52:22Z",
+            sprint="2026-10",
+            created="2026-10-07",
+            attempts=7,
+            failure_class="VERIFY",
+            failure_role="Developer",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-10")
+        assert status == 200
+        assert body["throughput"] == 1
+        assert body["cycle_time_days"] == 0
+        assert isinstance(body["failure_breakdown"], list)
+        assert len(body["failure_breakdown"]) == 1
+        assert body["first_attempt_rate_percent"] == 0
     finally:
         conn.close()
