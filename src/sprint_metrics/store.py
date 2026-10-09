@@ -325,3 +325,12 @@ def resolve_sprint_range(conn: Connection, start: str, end: str) -> list[str] | 
     ).fetchall()
 
     return [name for (name,) in ordered]
+
+
+def sprint_has_events(conn: Connection, label: str) -> bool:
+    """Return True if any row in board_events has sprint = label."""
+    row = conn.execute(
+        "SELECT 1 FROM sprint_metrics.board_events WHERE sprint = %s LIMIT 1",
+        (label,),
+    ).fetchone()
+    return row is not None

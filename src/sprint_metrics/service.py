@@ -39,6 +39,7 @@ from sprint_metrics.store import (
     query_range,
     query_sprint,
     resolve_sprint_range,
+    sprint_has_events,
     upsert_sprint,
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
@@ -295,6 +296,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 503
                             return
                         try:
+                            if not sprint_has_events(conn_holder[0], label):
+                                self._send_json(200, _null_sprint_response())
+                                status = 200
+                                return
                             cards = query_sprint(conn_holder[0], label)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
@@ -584,3 +589,20 @@ def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
         logger.emit(record)
     except Exception:
         pass
+
+
+def _null_sprint_response() -> dict:
+    """Return the null-filled response for a sprint with no stored events."""
+    return {
+        "api_version": API_VERSION,
+        "cycle_time_days": None,
+        "lead_time_days": None,
+        "throughput": None,
+        "wip_violations": None,
+        "blocked_aging_days": None,
+        "escalation_rate_percent": None,
+        "first_attempt_rate_percent": None,
+        "failure_breakdown": None,
+        "top_failure_causes": None,
+        "flags": None,
+    }
