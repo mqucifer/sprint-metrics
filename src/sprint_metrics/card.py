@@ -23,6 +23,7 @@ class Card:
     attempts: int = 1
     failure_class: str | None = None
     failure_role: str | None = None
+    points: int | None = None
 
     @property
     def is_completed(self) -> bool:
@@ -66,6 +67,9 @@ def parse_card(raw: Mapping[str, object]) -> Card:
         attempts = 1
     elif attempts < 1:
         raise ValueError(f"attempts must be >= 1, got {attempts!r}")
+    points = raw.get("points")
+    if points is not None:
+        points = int(points)
     return Card(
         created=created,
         started=_parse_date(raw.get("started"), "started"),
@@ -74,6 +78,7 @@ def parse_card(raw: Mapping[str, object]) -> Card:
         attempts=attempts,
         failure_class=raw.get("failure_class"),
         failure_role=raw.get("failure_role"),
+        points=points,
     )
 
 

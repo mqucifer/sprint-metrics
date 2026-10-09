@@ -159,6 +159,10 @@ ALL_METRICS: frozenset[str] = frozenset(
         "escalation_rate_percent",
         "first_attempt_rate_percent",
         "failure_breakdown",
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
     }
 )
 
@@ -272,7 +276,11 @@ def blocked_aging_detail(
     ]
 
 
-def metric_value(metric: str, cards: Iterable[Card | Mapping[str, object]]) -> int:
+def metric_value(
+    metric: str,
+    cards: Iterable[Card | Mapping[str, object]],
+    escalations: int = 0,
+) -> int:
     """Return the integer value of the named metric for the given cards.
 
     Raises ValueError if the metric name is not in ALL_METRICS.
@@ -293,5 +301,37 @@ def metric_value(metric: str, cards: Iterable[Card | Mapping[str, object]]) -> i
         return calculate_escalation_rate(cards, 0)
     if metric == "first_attempt_rate_percent":
         return calculate_first_attempt_rate(cards)
+    if metric == "points_delivered":
+        return calculate_points_delivered(cards)
+    if metric == "first_attempt_numerator":
+        return calculate_first_attempt_counts(cards)[0]
+    if metric == "first_attempt_denominator":
+        return calculate_first_attempt_counts(cards)[1]
+    if metric == "escalation_count":
+        return escalations
     breakdown = calculate_failure_breakdown(cards)
     return sum(count for _, _, count in breakdown)
+
+
+def calculate_points_delivered(cards: Iterable[Card | Mapping[str, object]]) -> int:
+    """Return the sum of points values on completed cards.
+
+    Cards still in flight are ignored. A completed card with no points value
+    (``points`` is ``None``) contributes 0. An empty list returns 0.
+    """
+    completed = [card for card in _as_cards(cards) if card.is_completed]
+    return sum(card.points or 0 for card in completed)
+
+
+def calculate_first_attempt_counts(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> tuple[int, int]:
+    """Return the numerator and denominator of the first-attempt rate.
+
+    The numerator is the count of completed cards whose ``attempts`` equals 1.
+    The denominator is the total count of completed cards. An empty list
+    returns ``(0, 0)``.
+    """
+    completed = [card for card in _as_cards(cards) if card.is_completed]
+    numerator = sum(1 for card in completed if card.attempts == 1)
+    return (numerator, len(completed))

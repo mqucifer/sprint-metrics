@@ -45,6 +45,10 @@ def _generate_metrics_content() -> str:
         "escalation_rate_percent": "calculate_escalation_rate",
         "first_attempt_rate_percent": "calculate_first_attempt_rate",
         "failure_breakdown": "calculate_failure_breakdown",
+        "points_delivered": "calculate_points_delivered",
+        "first_attempt_numerator": "calculate_first_attempt_counts",
+        "first_attempt_denominator": "calculate_first_attempt_counts",
+        "escalation_count": "calculate_escalation_rate",
     }
 
     lines = [

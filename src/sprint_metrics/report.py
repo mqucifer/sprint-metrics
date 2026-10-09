@@ -584,6 +584,10 @@ _METRIC_COLUMNS: dict[str, str] = {
     "escalation_rate_percent": "Escalation rate",
     "first_attempt_rate_percent": "First attempt",
     "failure_breakdown": "Top causes",
+    "points_delivered": "Points delivered",
+    "first_attempt_numerator": "First-attempt numerator",
+    "first_attempt_denominator": "First-attempt denominator",
+    "escalation_count": "Escalation count",
 }
 
 

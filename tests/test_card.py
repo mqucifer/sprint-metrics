@@ -151,3 +151,13 @@ def test_parse_card_partial_failure_fields():
     assert card.attempts == 2
     assert card.failure_class == "edit"
     assert card.failure_role is None
+
+
+def test_parse_card_reads_points():
+    """AC6: parse_card reads points from the input; missing points gives None."""
+    from sprint_metrics.card import parse_card
+
+    card = parse_card({"created": "2024-01-01", "points": 5, "attempts": 1})
+    assert card.points == 5
+    card_no_points = parse_card({"created": "2024-01-01", "attempts": 1})
+    assert card_no_points.points is None
