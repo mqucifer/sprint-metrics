@@ -105,7 +105,14 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "card_id": {"type": "string"},
         "type": {
             "type": "string",
-            "enum": ["started", "blocked", "unblocked", "finished", "escalated"],
+            "enum": [
+                "started",
+                "blocked",
+                "unblocked",
+                "finished",
+                "escalated",
+                "attempt_failed",
+            ],
         },
         "timestamp": {"type": "string", "format": "date-time"},
         "sprint": {"type": "string", "minLength": 1},
@@ -119,6 +126,9 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "failure_role": {"type": "string"},
             },
         },
+        "attempt_number": {"type": "integer"},
+        "failure_class": {"type": "string"},
+        "failure_role": {"type": "string"},
     },
 }
 

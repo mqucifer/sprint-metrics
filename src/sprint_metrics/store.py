@@ -25,8 +25,16 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     attempts INT,
     failure_class TEXT,
     failure_role TEXT,
+    attempt_number INT,
     PRIMARY KEY (card_id, type, event_time),
-    CHECK (type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated'))
+    CONSTRAINT board_events_type_check CHECK (
+        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed')
+    )
+);
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS attempt_number INT;
+ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
+ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
+    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed')
 );
 CREATE TABLE IF NOT EXISTS sprint_metrics.sprints (
     name TEXT PRIMARY KEY,
@@ -48,16 +56,33 @@ def insert_event(conn: Connection, event: dict) -> None:
 
     The event dict must have keys: card_id, type, timestamp, sprint, card (with 'created').
     Optional card fields: attempts, failure_class, failure_role (stored only on 'finished' rows).
+    Optional top-level fields: attempt_number, failure_class, failure_role
+    (stored only on 'attempt_failed' rows).
     """
     card = event.get("card", {})
     event_type = event["type"]
     is_finished = event_type == "finished"
+    is_attempt_failed = event_type == "attempt_failed"
+
+    if is_finished:
+        ev_failure_class = card.get("failure_class")
+        ev_failure_role = card.get("failure_role")
+        ev_attempt_number = None
+    elif is_attempt_failed:
+        ev_failure_class = event.get("failure_class")
+        ev_failure_role = event.get("failure_role")
+        ev_attempt_number = event.get("attempt_number")
+    else:
+        ev_failure_class = None
+        ev_failure_role = None
+        ev_attempt_number = None
 
     conn.execute(
         """
         INSERT INTO sprint_metrics.board_events
-            (card_id, type, event_time, sprint, card_created, attempts, failure_class, failure_role)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (card_id, type, event_time, sprint, card_created,
+             attempts, failure_class, failure_role, attempt_number)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO NOTHING
         """,
         (
@@ -67,8 +92,9 @@ def insert_event(conn: Connection, event: dict) -> None:
             event["sprint"],
             card["created"],
             card.get("attempts") if is_finished else None,
-            card.get("failure_class") if is_finished else None,
-            card.get("failure_role") if is_finished else None,
+            ev_failure_class,
+            ev_failure_role,
+            ev_attempt_number,
         ),
     )
     conn.commit()
@@ -116,7 +142,12 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
 
 
 def _reconstruct_card(events: list[tuple]) -> Card | None:
-    """Reconstruct a Card from its stored events."""
+    """Reconstruct a Card from its stored events.
+
+    The card's attempts count is derived from the number of 'attempt_failed'
+    rows in its history (1 + count) when any exist; otherwise it falls back
+    to the attempts column on the 'finished' row (default 1).
+    """
     if not events:
         return None
 
@@ -129,6 +160,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
 
     blocked_events: list[date] = []
     unblocked_events: list[date] = []
+    attempt_failed_count = 0
 
     for (
         event_type,
@@ -153,6 +185,11 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
             blocked_events.append(event_date)
         elif event_type == "unblocked":
             unblocked_events.append(event_date)
+        elif event_type == "attempt_failed":
+            attempt_failed_count += 1
+
+    if attempt_failed_count > 0:
+        attempts = 1 + attempt_failed_count
 
     blocked_since: date | None = None
     if blocked_events:
