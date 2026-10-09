@@ -144,6 +144,8 @@ def format_sprint_range_json(
     in each metric from the prior period to the current period, or ``null`` for
     the first sprint.
     """
+    from sprint_metrics.metrics import calculate_first_attempt_counts, calculate_points_delivered
+
     per_sprint: dict[str, object] = {}
     for index, label in enumerate(labels):
         cards = sprints[label]
@@ -152,10 +154,14 @@ def format_sprint_range_json(
             "cycle_time_days": cycle_time,
             "lead_time_days": lead_time,
             "throughput": calculate_throughput(cards),
+            "points_delivered": calculate_points_delivered(cards),
             "wip_violations": calculate_wip_violations(cards, wip_limits),
             "blocked_aging_days": calculate_blocked_aging(cards, as_of),
             "escalation_rate_percent": calculate_escalation_rate(cards, escalations),
+            "escalation_count": escalations,
             "first_attempt_rate_percent": calculate_first_attempt_rate(cards),
+            "first_attempt_numerator": calculate_first_attempt_counts(cards)[0],
+            "first_attempt_denominator": calculate_first_attempt_counts(cards)[1],
         }
         if index == 0:
             prior = None
@@ -168,24 +174,36 @@ def format_sprint_range_json(
                 "cycle_time_days": prior_cycle,
                 "lead_time_days": prior_lead,
                 "throughput": calculate_throughput(prior_cards),
+                "points_delivered": calculate_points_delivered(prior_cards),
                 "wip_violations": calculate_wip_violations(prior_cards, wip_limits),
                 "blocked_aging_days": calculate_blocked_aging(prior_cards, as_of),
                 "escalation_rate_percent": calculate_escalation_rate(prior_cards, escalations),
+                "escalation_count": escalations,
                 "first_attempt_rate_percent": calculate_first_attempt_rate(prior_cards),
+                "first_attempt_numerator": calculate_first_attempt_counts(prior_cards)[0],
+                "first_attempt_denominator": calculate_first_attempt_counts(prior_cards)[1],
             }
             delta = {
                 "cycle_time_days": sprint_metrics["cycle_time_days"] - prior["cycle_time_days"],
                 "lead_time_days": sprint_metrics["lead_time_days"] - prior["lead_time_days"],
                 "throughput": sprint_metrics["throughput"] - prior["throughput"],
+                "points_delivered": sprint_metrics["points_delivered"] - prior["points_delivered"],
                 "wip_violations": sprint_metrics["wip_violations"] - prior["wip_violations"],
                 "blocked_aging_days": sprint_metrics["blocked_aging_days"]
                 - prior["blocked_aging_days"],
                 "escalation_rate_percent": (
                     sprint_metrics["escalation_rate_percent"] - prior["escalation_rate_percent"]
                 ),
+                "escalation_count": 0,
                 "first_attempt_rate_percent": (
                     sprint_metrics["first_attempt_rate_percent"]
                     - prior["first_attempt_rate_percent"]
+                ),
+                "first_attempt_numerator": (
+                    sprint_metrics["first_attempt_numerator"] - prior["first_attempt_numerator"]
+                ),
+                "first_attempt_denominator": (
+                    sprint_metrics["first_attempt_denominator"] - prior["first_attempt_denominator"]
                 ),
             }
         per_sprint[label] = {

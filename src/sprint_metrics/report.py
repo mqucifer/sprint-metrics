@@ -13,7 +13,9 @@ from sprint_metrics.metrics import (
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
     calculate_failure_breakdown,
+    calculate_first_attempt_counts,
     calculate_first_attempt_rate,
+    calculate_points_delivered,
     calculate_throughput,
     calculate_top_failure_causes,
     calculate_wip_violations,
@@ -38,7 +40,7 @@ def format_performance_table(
     third row labelled Delta shows the signed change in each metric from the
     prior period to the current period.
 
-    When ``thresholds`` is provided, a \u26a0\ufe0f marker is appended to any metric cell
+    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric cell
     in the Current row whose value exceeds its threshold (strict greater-than;
     meeting the threshold exactly is not a breach). The Prior and Delta rows are
     never flagged.
@@ -48,10 +50,12 @@ def format_performance_table(
     """
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
+    points_delivered = calculate_points_delivered(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
     first_attempt_rate = calculate_first_attempt_rate(cards)
+    first_attempt_num, first_attempt_den = calculate_first_attempt_counts(cards)
     failure_breakdown = calculate_failure_breakdown(cards)
     sprint_label = as_of.isoformat() if as_of is not None else "Current"
 
@@ -68,10 +72,14 @@ def format_performance_table(
         "cycle_time_days": f"{cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')}",
         "lead_time_days": f"{lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')}",
         "throughput": f"{throughput}{_flag(throughput, thresholds, 'throughput')}",
+        "points_delivered": f"{points_delivered}",
         "wip_violations": f"{wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}",
         "blocked_aging_days": f"{blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
         "escalation_rate_percent": f"{escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
+        "escalation_count": f"{escalations}",
         "first_attempt_rate_percent": f"{first_attempt_rate}%{_flag(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}",
+        "first_attempt_numerator": f"{first_attempt_num}",
+        "first_attempt_denominator": f"{first_attempt_den}",
         "failure_breakdown": _format_failure_breakdown(failure_breakdown),
     }
     current_row = f"| {sprint_label} | " + " | ".join(current_cells[m] for m in selected) + " |"
@@ -81,19 +89,25 @@ def format_performance_table(
     if prior_cards is not None:
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
         prior_throughput = calculate_throughput(prior_cards)
+        prior_points = calculate_points_delivered(prior_cards)
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
         prior_first_attempt = calculate_first_attempt_rate(prior_cards)
+        prior_fa_num, prior_fa_den = calculate_first_attempt_counts(prior_cards)
 
         prior_cells: dict[str, str] = {
             "cycle_time_days": f"{prior_cycle} days",
             "lead_time_days": f"{prior_lead} days",
             "throughput": f"{prior_throughput}",
+            "points_delivered": f"{prior_points}",
             "wip_violations": f"{prior_wip}",
             "blocked_aging_days": f"{prior_blocked} days",
             "escalation_rate_percent": f"{prior_escalation}%",
+            "escalation_count": f"{escalations}",
             "first_attempt_rate_percent": f"{prior_first_attempt}%",
+            "first_attempt_numerator": f"{prior_fa_num}",
+            "first_attempt_denominator": f"{prior_fa_den}",
             "failure_breakdown": "\u2014",
         }
         prior_row = "| Prior | " + " | ".join(prior_cells[m] for m in selected) + " |"
@@ -102,10 +116,14 @@ def format_performance_table(
             "cycle_time_days": f"{_signed(cycle_time - prior_cycle)} days",
             "lead_time_days": f"{_signed(lead_time - prior_lead)} days",
             "throughput": f"{_signed(throughput - prior_throughput)}",
+            "points_delivered": f"{_signed(points_delivered - prior_points)}",
             "wip_violations": f"{_signed(wip_violations - prior_wip)}",
             "blocked_aging_days": f"{_signed(blocked_aging - prior_blocked)} days",
             "escalation_rate_percent": f"{_signed(escalation_rate - prior_escalation)}%",
+            "escalation_count": f"{_signed(0)}",
             "first_attempt_rate_percent": f"{_signed(first_attempt_rate - prior_first_attempt)}%",
+            "first_attempt_numerator": f"{_signed(first_attempt_num - prior_fa_num)}",
+            "first_attempt_denominator": f"{_signed(first_attempt_den - prior_fa_den)}",
             "failure_breakdown": "\u2014",
         }
         delta_row = "| Delta | " + " | ".join(delta_cells[m] for m in selected) + " |"
@@ -161,10 +179,10 @@ def _sprint_section(
     first-attempt rate line (always 0%) so the standup report shows both.
 
     When ``prior_cards`` is provided, each metric line includes a directional
-    arrow (\u2193, \u2191, or \u2192) between the current value and the parenthetical,
+    arrow (↓, ↑, or →) between the current value and the parenthetical,
     the prior sprint's value, and the signed change from prior to current.
 
-    When ``thresholds`` is provided, a \u26a0\ufe0f marker followed by a parenthetical
+    When ``thresholds`` is provided, a ⚠️ marker followed by a parenthetical
     naming the configured threshold is appended to any metric line whose value
     exceeds its threshold (strict greater-than; meeting the threshold exactly
     is not a breach).
@@ -176,10 +194,12 @@ def _sprint_section(
         return ["No performance data available", "", "- **First-attempt rate**: 0%"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
+    points_delivered = calculate_points_delivered(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
     first_attempt_rate = calculate_first_attempt_rate(cards)
+    first_attempt_num, first_attempt_den = calculate_first_attempt_counts(cards)
     failure_breakdown = calculate_failure_breakdown(cards)
 
     if metrics is not None:
@@ -190,10 +210,12 @@ def _sprint_section(
     if prior_cards is not None:
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
         prior_throughput = calculate_throughput(prior_cards)
+        prior_points = calculate_points_delivered(prior_cards)
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
         prior_first_attempt = calculate_first_attempt_rate(prior_cards)
+        prior_fa_num, prior_fa_den = calculate_first_attempt_counts(prior_cards)
         lines: list[str] = ["## Current Sprint", ""]
         for metric in selected:
             if metric == "cycle_time_days":
@@ -216,6 +238,12 @@ def _sprint_section(
                     f"- **Throughput**: {throughput} cards {_trend_arrow(delta)} "
                     f"(was {prior_throughput}, {_signed(delta)})"
                     f"{_threshold_context(throughput, thresholds, 'throughput')}"
+                )
+            elif metric == "points_delivered":
+                delta = points_delivered - prior_points
+                lines.append(
+                    f"- **Points delivered**: {points_delivered} {_trend_arrow(delta)} "
+                    f"(was {prior_points}, {_signed(delta)})"
                 )
             elif metric == "wip_violations":
                 delta = wip_violations - prior_wip
@@ -252,6 +280,8 @@ def _sprint_section(
                     lines.append(
                         f"  - {escalations} {esc_word}, {throughput} completed {card_word}"
                     )
+            elif metric == "escalation_count":
+                lines.append(f"- **Escalation count**: {escalations}")
             elif metric == "first_attempt_rate_percent":
                 delta = first_attempt_rate - prior_first_attempt
                 lines.append(
@@ -266,6 +296,18 @@ def _sprint_section(
                     lines.append(
                         f"  - {retry_count} of {throughput} completed cards required a retry"
                     )
+            elif metric == "first_attempt_numerator":
+                delta = first_attempt_num - prior_fa_num
+                lines.append(
+                    f"- **First-attempt numerator**: {first_attempt_num} {_trend_arrow(delta)} "
+                    f"(was {prior_fa_num}, {_signed(delta)})"
+                )
+            elif metric == "first_attempt_denominator":
+                delta = first_attempt_den - prior_fa_den
+                lines.append(
+                    f"- **First-attempt denominator**: {first_attempt_den} {_trend_arrow(delta)} "
+                    f"(was {prior_fa_den}, {_signed(delta)})"
+                )
         if "failure_breakdown" in selected and failure_breakdown:
             lines.append("")
             lines.append("Top failure causes")
@@ -289,6 +331,8 @@ def _sprint_section(
             lines.append(
                 f"- **Throughput**: {throughput} cards{_threshold_context(throughput, thresholds, 'throughput')}"
             )
+        elif metric == "points_delivered":
+            lines.append(f"- **Points delivered**: {points_delivered}")
         elif metric == "wip_violations":
             lines.append(
                 f"- **WIP violations**: {wip_violations}{_threshold_context(wip_violations, thresholds, 'wip_violations')}"
@@ -313,6 +357,8 @@ def _sprint_section(
                 esc_word = "escalation" if escalations == 1 else "escalations"
                 card_word = "card" if throughput == 1 else "cards"
                 lines.append(f"  - {escalations} {esc_word}, {throughput} completed {card_word}")
+        elif metric == "escalation_count":
+            lines.append(f"- **Escalation count**: {escalations}")
         elif metric == "first_attempt_rate_percent":
             lines.append(
                 f"- **First-attempt rate**: {first_attempt_rate}%{_threshold_context(first_attempt_rate, thresholds, 'first_attempt_rate_percent')}"
@@ -320,6 +366,10 @@ def _sprint_section(
             if first_attempt_rate < 100 and throughput > 0:
                 retry_count = sum(1 for card in cards if card.is_completed and card.attempts > 1)
                 lines.append(f"  - {retry_count} of {throughput} completed cards required a retry")
+        elif metric == "first_attempt_numerator":
+            lines.append(f"- **First-attempt numerator**: {first_attempt_num}")
+        elif metric == "first_attempt_denominator":
+            lines.append(f"- **First-attempt denominator**: {first_attempt_den}")
     if "failure_breakdown" in selected and failure_breakdown:
         lines.append("")
         lines.append("Top failure causes")
@@ -468,10 +518,12 @@ def format_json_report(
     parsed = _as_cards(cards)
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
     throughput = calculate_throughput(parsed)
+    points_delivered = calculate_points_delivered(parsed)
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
     escalation_rate = calculate_escalation_rate(parsed, escalations)
     first_attempt_rate = calculate_first_attempt_rate(parsed)
+    first_attempt_num, first_attempt_den = calculate_first_attempt_counts(parsed)
     failure_breakdown = calculate_failure_breakdown(parsed)
     top_causes = calculate_top_failure_causes(parsed)
     flags = calculate_flags(parsed, wip_limits, escalations, as_of, thresholds)
@@ -480,10 +532,14 @@ def format_json_report(
         "cycle_time_days": cycle_time,
         "lead_time_days": lead_time,
         "throughput": throughput,
+        "points_delivered": points_delivered,
         "wip_violations": wip_violations,
         "blocked_aging_days": blocked_aging,
         "escalation_rate_percent": escalation_rate,
+        "escalation_count": escalations,
         "first_attempt_rate_percent": first_attempt_rate,
+        "first_attempt_numerator": first_attempt_num,
+        "first_attempt_denominator": first_attempt_den,
         "failure_breakdown": [
             {"class": cls, "role": role, "count": count} for cls, role, count in failure_breakdown
         ],
@@ -625,10 +681,14 @@ _HEALTH_DISPLAY: dict[str, str] = {
     "cycle_time_days": "Cycle time",
     "lead_time_days": "Lead time",
     "throughput": "Throughput",
+    "points_delivered": "Points delivered",
     "wip_violations": "WIP violations",
     "blocked_aging_days": "Blocked aging",
     "escalation_rate_percent": "Escalation rate",
+    "escalation_count": "Escalation count",
     "first_attempt_rate_percent": "First attempt rate",
+    "first_attempt_numerator": "First-attempt numerator",
+    "first_attempt_denominator": "First-attempt denominator",
 }
 
 _LOWER_IS_BETTER: frozenset[str] = frozenset(
@@ -638,6 +698,7 @@ _LOWER_IS_BETTER: frozenset[str] = frozenset(
         "wip_violations",
         "blocked_aging_days",
         "escalation_rate_percent",
+        "escalation_count",
     )
 )
 
@@ -728,26 +789,34 @@ def _changed_line(
     """
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
+    points_delivered = calculate_points_delivered(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
     first_attempt_rate = calculate_first_attempt_rate(cards)
+    first_attempt_num, first_attempt_den = calculate_first_attempt_counts(cards)
 
     prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
     prior_throughput = calculate_throughput(prior_cards)
+    prior_points = calculate_points_delivered(prior_cards)
     prior_wip = calculate_wip_violations(prior_cards, wip_limits)
     prior_blocked = calculate_blocked_aging(prior_cards, as_of)
     prior_escalation = calculate_escalation_rate(prior_cards, escalations)
     prior_first_attempt = calculate_first_attempt_rate(prior_cards)
+    prior_fa_num, prior_fa_den = calculate_first_attempt_counts(prior_cards)
 
     deltas: dict[str, int] = {
         "cycle_time_days": cycle_time - prior_cycle,
         "lead_time_days": lead_time - prior_lead,
         "throughput": throughput - prior_throughput,
+        "points_delivered": points_delivered - prior_points,
         "wip_violations": wip_violations - prior_wip,
         "blocked_aging_days": blocked_aging - prior_blocked,
         "escalation_rate_percent": escalation_rate - prior_escalation,
+        "escalation_count": 0,
         "first_attempt_rate_percent": first_attempt_rate - prior_first_attempt,
+        "first_attempt_numerator": first_attempt_num - prior_fa_num,
+        "first_attempt_denominator": first_attempt_den - prior_fa_den,
     }
 
     best_metric: str | None = None
@@ -816,10 +885,14 @@ _DEFINITIONS: dict[str, str] = {
     "cycle_time_days": "Mean days from when a card started work to when it completed",
     "lead_time_days": "Mean days from creation to completion",
     "throughput": "Number of cards completed this sprint",
+    "points_delivered": "Sum of points values on cards that have a completed date",
     "wip_violations": "Number of states whose peak occupancy exceeded the configured WIP limit",
     "blocked_aging_days": "Maximum number of days any card has been blocked",
     "escalation_rate_percent": "Escalations as a percentage of completed cards",
+    "escalation_count": "Number of escalated events in the sprint",
     "first_attempt_rate_percent": "Percentage of completed cards that passed on the first attempt",
+    "first_attempt_numerator": "Count of completed cards whose attempts equals 1",
+    "first_attempt_denominator": "Total count of completed cards",
     "failure_breakdown": "Most frequent failure classes among completed cards with attempts greater than 1",
 }
 

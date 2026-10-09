@@ -9,6 +9,10 @@
     "wip_violations",
     "blocked_aging_days",
     "escalation_rate_percent",
+    "points_delivered",
+    "first_attempt_numerator",
+    "first_attempt_denominator",
+    "escalation_count",
     "first_attempt_rate_percent",
     "failure_breakdown",
     "top_failure_causes",
@@ -49,6 +53,30 @@
       ]
     },
     "escalation_rate_percent": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "points_delivered": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "first_attempt_numerator": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "first_attempt_denominator": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "escalation_count": {
       "type": [
         "integer",
         "null"
@@ -140,6 +168,30 @@
             "null"
           ]
         },
+        "points_delivered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_numerator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_denominator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "escalation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "first_attempt_rate_percent": {
           "type": [
             "integer",
@@ -188,6 +240,30 @@
           ]
         },
         "escalation_rate_percent": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "points_delivered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_numerator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_denominator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "escalation_count": {
           "type": [
             "integer",
             "null"

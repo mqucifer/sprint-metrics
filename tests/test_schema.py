@@ -106,9 +106,20 @@ def test_schema_json_required_keys_and_properties(capsys):
         "first_attempt_rate_percent",
         "failure_breakdown",
         "flags",
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
     ):
         assert key in schema["required"]
     assert schema["properties"]["cycle_time_days"] == {"type": ["integer", "null"]}
+    for key in (
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
+    ):
+        assert schema["properties"][key] == {"type": ["integer", "null"]}
 
 
 def test_schema_without_json_exits_2(capsys):
@@ -182,6 +193,10 @@ def test_single_sprint_json_output_validates_against_schema(tmp_path, capsys):
     result = json.loads(captured.out)
     jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
     assert result["api_version"] == "1"
+    assert result["points_delivered"] == 0
+    assert result["first_attempt_numerator"] == 1
+    assert result["first_attempt_denominator"] == 1
+    assert result["escalation_count"] == 0
 
 
 def test_empty_sprint_json_output_validates_against_schema(tmp_path, capsys):
@@ -334,6 +349,10 @@ def test_single_sprint_schema_accepts_valid_non_null_object():
         "wip_violations": 0,
         "blocked_aging_days": 0,
         "escalation_rate_percent": 0,
+        "points_delivered": 0,
+        "first_attempt_numerator": 1,
+        "first_attempt_denominator": 1,
+        "escalation_count": 0,
         "first_attempt_rate_percent": 100,
         "failure_breakdown": [{"class": "parse", "role": "Developer", "count": 2}],
         "top_failure_causes": [{"class": "parse", "count": 2}],
@@ -392,6 +411,10 @@ def test_single_sprint_schema_accepts_all_null_metrics():
         "wip_violations": None,
         "blocked_aging_days": None,
         "escalation_rate_percent": None,
+        "points_delivered": None,
+        "first_attempt_numerator": None,
+        "first_attempt_denominator": None,
+        "escalation_count": None,
         "first_attempt_rate_percent": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
@@ -414,6 +437,10 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
                 "wip_violations": None,
                 "blocked_aging_days": None,
                 "escalation_rate_percent": None,
+                "points_delivered": None,
+                "first_attempt_numerator": None,
+                "first_attempt_denominator": None,
+                "escalation_count": None,
                 "first_attempt_rate_percent": None,
                 "failure_breakdown": None,
                 "top_failure_causes": None,
@@ -424,3 +451,23 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
         },
     }
     jsonschema.validate(all_null_sprint, SPRINT_RANGE_SCHEMA)
+
+
+def test_schema_json_required_includes_four_new_fields_with_integer_null_type(capsys):
+    """AC3/AC7: --schema --json produces a schema whose required array has exactly
+    15 entries (11 existing + 4 new) and whose properties define each new field
+    with type [integer, null]."""
+    exit_code = main(["--schema", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    assert len(schema["required"]) == 15
+    for key in (
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
+    ):
+        assert key in schema["required"]
+        assert schema["properties"][key] == {"type": ["integer", "null"]}
