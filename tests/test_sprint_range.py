@@ -1178,3 +1178,198 @@ def test_sprint_range_markdown_empty_sprint_omits_first_attempt_lines(run_range_
     assert "No performance data available" in section_01
     assert "- **First-attempt rate**" not in section_01
     assert "- **First-attempt rate**: 100%" in section_02
+
+
+def test_sprint_range_json_includes_points_first_attempt_and_escalation_count(tmp_path, capsys):
+    """AC1/AC5: 2024-01 has one completed card (points 5, attempts 1) and 2024-02
+    has two completed cards (points 3 and 2, both attempts 1).
+    --sprint-range 2024-01..2024-02 --json --escalations 1 exits 0.
+    2024-01: points_delivered=5, first_attempt_numerator=1,
+    first_attempt_denominator=1, escalation_count=1.
+    2024-02: points_delivered=5, first_attempt_numerator=2,
+    first_attempt_denominator=2, escalation_count=1.
+    2024-02.prior: points_delivered=5, first_attempt_numerator=1,
+    first_attempt_denominator=1, escalation_count=1.
+    2024-02.delta: points_delivered=0, first_attempt_numerator=1,
+    first_attempt_denominator=1, escalation_count=0.
+    Both entries still contain existing metric keys, flags, prior, and delta."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-02",
+                "completed": "2024-01-07",
+                "points": 5,
+                "attempts": 1,
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-01",
+                "started": "2024-02-02",
+                "completed": "2024-02-07",
+                "points": 3,
+                "attempts": 1,
+            },
+            {
+                "created": "2024-02-01",
+                "started": "2024-02-02",
+                "completed": "2024-02-07",
+                "points": 2,
+                "attempts": 1,
+            },
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main(
+        [str(path), "--sprint-range", "2024-01..2024-02", "--json", "--escalations", "1"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    s01 = data["sprints"]["2024-01"]
+    s02 = data["sprints"]["2024-02"]
+    # AC1: new fields in 2024-01
+    assert s01["points_delivered"] == 5
+    assert s01["first_attempt_numerator"] == 1
+    assert s01["first_attempt_denominator"] == 1
+    assert s01["escalation_count"] == 1
+    # AC1: new fields in 2024-02
+    assert s02["points_delivered"] == 5
+    assert s02["first_attempt_numerator"] == 2
+    assert s02["first_attempt_denominator"] == 2
+    assert s02["escalation_count"] == 1
+    # AC1: existing keys, flags, prior, and delta still present
+    for lbl in ("2024-01", "2024-02"):
+        entry = data["sprints"][lbl]
+        for key in (
+            "cycle_time_days",
+            "lead_time_days",
+            "throughput",
+            "wip_violations",
+            "blocked_aging_days",
+            "escalation_rate_percent",
+            "first_attempt_rate_percent",
+            "failure_breakdown",
+            "top_failure_causes",
+            "flags",
+            "prior",
+            "delta",
+        ):
+            assert key in entry
+    # AC5: prior values match 2024-01
+    assert s02["prior"]["points_delivered"] == 5
+    assert s02["prior"]["first_attempt_numerator"] == 1
+    assert s02["prior"]["first_attempt_denominator"] == 1
+    assert s02["prior"]["escalation_count"] == 1
+    # AC5: delta values
+    assert s02["delta"]["points_delivered"] == 0
+    assert s02["delta"]["first_attempt_numerator"] == 1
+    assert s02["delta"]["first_attempt_denominator"] == 1
+    assert s02["delta"]["escalation_count"] == 0
+
+
+def test_sprint_range_json_empty_sprint_new_metrics_are_zero_integers(tmp_path, capsys):
+    """AC2/AC6: 2024-01 is an empty list and 2024-02 has one completed card
+    (points 4, attempts 2). --sprint-range 2024-01..2024-02 --json exits 0.
+    2024-01: all four new metrics are 0 (integers, not null).
+    2024-02: points_delivered=4, first_attempt_numerator=0,
+    first_attempt_denominator=1.
+    2024-02.prior: all four new metrics are 0.
+    2024-02.delta: points_delivered=4, first_attempt_numerator=0,
+    first_attempt_denominator=1, escalation_count=0."""
+    sprints = {
+        "2024-01": [],
+        "2024-02": [
+            {
+                "created": "2024-02-01",
+                "started": "2024-02-02",
+                "completed": "2024-02-07",
+                "points": 4,
+                "attempts": 2,
+            }
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    s01 = data["sprints"]["2024-01"]
+    s02 = data["sprints"]["2024-02"]
+    # AC2/AC6: empty sprint has all four as integer 0, not null
+    assert s01["points_delivered"] == 0
+    assert s01["first_attempt_numerator"] == 0
+    assert s01["first_attempt_denominator"] == 0
+    assert s01["escalation_count"] == 0
+    # AC2: 2024-02 values
+    assert s02["points_delivered"] == 4
+    assert s02["first_attempt_numerator"] == 0
+    assert s02["first_attempt_denominator"] == 1
+    # AC2: prior has all four as 0
+    assert s02["prior"]["points_delivered"] == 0
+    assert s02["prior"]["first_attempt_numerator"] == 0
+    assert s02["prior"]["first_attempt_denominator"] == 0
+    assert s02["prior"]["escalation_count"] == 0
+    # AC2: delta
+    assert s02["delta"]["points_delivered"] == 4
+    assert s02["delta"]["first_attempt_numerator"] == 0
+    assert s02["delta"]["first_attempt_denominator"] == 1
+    assert s02["delta"]["escalation_count"] == 0
+
+
+def test_sprint_range_json_metrics_filter_new_fields(tmp_path, capsys):
+    """AC4: --sprint-range 2024-01..2024-02 --json --metrics points_delivered,throughput
+    exits 0. Each sprint entry contains points_delivered and throughput, the flags
+    object has exactly those two keys, and the entry does NOT contain
+    cycle_time_days, first_attempt_numerator, first_attempt_denominator,
+    or escalation_count."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-02",
+                "completed": "2024-01-07",
+                "points": 5,
+                "attempts": 1,
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-01",
+                "started": "2024-02-02",
+                "completed": "2024-02-07",
+                "points": 3,
+                "attempts": 1,
+            },
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main(
+        [
+            str(path),
+            "--sprint-range",
+            "2024-01..2024-02",
+            "--json",
+            "--metrics",
+            "points_delivered,throughput",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    for label in ("2024-01", "2024-02"):
+        entry = data["sprints"][label]
+        assert "points_delivered" in entry
+        assert "throughput" in entry
+        assert set(entry["flags"].keys()) == {"points_delivered", "throughput"}
+        assert "cycle_time_days" not in entry
+        assert "first_attempt_numerator" not in entry
+        assert "first_attempt_denominator" not in entry
+        assert "escalation_count" not in entry

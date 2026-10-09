@@ -131,6 +131,7 @@ def format_sprint_range_json(
     escalations: int = 0,
     as_of: date | None = None,
     thresholds: Mapping[str, float] | None = None,
+    metrics: frozenset[str] | None = None,
 ) -> str:
     """Render one JSON object per sprint label in ``labels``, keyed by label, wrapped
     in a top-level object with ``api_version`` and a ``sprints`` key.
@@ -143,6 +144,9 @@ def format_sprint_range_json(
     ``null`` for the first sprint, and a ``delta`` key holding the signed change
     in each metric from the prior period to the current period, or ``null`` for
     the first sprint.
+
+    When ``metrics`` is a non-None frozenset, only the named metric keys are
+    included in each sprint entry, its prior, its delta, and its flags.
     """
     from sprint_metrics.metrics import calculate_first_attempt_counts, calculate_points_delivered
 
@@ -206,6 +210,14 @@ def format_sprint_range_json(
                     sprint_metrics["first_attempt_denominator"] - prior["first_attempt_denominator"]
                 ),
             }
+        flags = calculate_flags(cards, wip_limits, escalations, as_of, thresholds)
+        if metrics is not None:
+            sprint_metrics = {k: v for k, v in sprint_metrics.items() if k in metrics}
+            if prior is not None:
+                prior = {k: v for k, v in prior.items() if k in metrics}
+            if delta is not None:
+                delta = {k: v for k, v in delta.items() if k in metrics}
+            flags = {k: flags.get(k, False) for k in metrics}
         per_sprint[label] = {
             **sprint_metrics,
             "failure_breakdown": [
@@ -213,7 +225,7 @@ def format_sprint_range_json(
                 for cls, role, count in calculate_failure_breakdown(cards)
             ],
             "top_failure_causes": calculate_top_failure_causes(cards),
-            "flags": calculate_flags(cards, wip_limits, escalations, as_of, thresholds),
+            "flags": flags,
             "prior": prior,
             "delta": delta,
         }
