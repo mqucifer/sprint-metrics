@@ -9,6 +9,10 @@ METRIC_KEYS = [
     "wip_violations",
     "blocked_aging_days",
     "escalation_rate_percent",
+    "points_delivered",
+    "first_attempt_numerator",
+    "first_attempt_denominator",
+    "escalation_count",
 ]
 
 SINGLE_SPRINT_SCHEMA: dict[str, object] = {
@@ -30,6 +34,10 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         "wip_violations": {"type": ["integer", "null"]},
         "blocked_aging_days": {"type": ["integer", "null"]},
         "escalation_rate_percent": {"type": ["integer", "null"]},
+        "points_delivered": {"type": ["integer", "null"]},
+        "first_attempt_numerator": {"type": ["integer", "null"]},
+        "first_attempt_denominator": {"type": ["integer", "null"]},
+        "escalation_count": {"type": ["integer", "null"]},
         "first_attempt_rate_percent": {"type": ["integer", "null"]},
         "failure_breakdown": {
             "type": ["array", "null"],

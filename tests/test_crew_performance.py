@@ -2556,3 +2556,90 @@ def test_markdown_card_detail_omitted_with_empty_cards(tmp_path, capsys):
     assert exit_code == 0
     assert "## Definitions" in output
     assert "## Card Detail" not in output
+
+
+def test_json_includes_points_delivered_first_attempt_counts_and_escalation_count(tmp_path, capsys):
+    """AC1/AC6: one completed card (points 5, attempts 1) with --escalations 2
+    produces JSON with the four new integer fields alongside the existing eleven."""
+    card = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "points": 5,
+        "attempts": 1,
+    }
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--json", "--escalations", "2"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["points_delivered"] == 5
+    assert data["first_attempt_numerator"] == 1
+    assert data["first_attempt_denominator"] == 1
+    assert data["escalation_count"] == 2
+    assert data["api_version"] == "1"
+    assert data["cycle_time_days"] == 4
+    assert data["lead_time_days"] == 6
+    assert data["throughput"] == 1
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 200
+    assert data["first_attempt_rate_percent"] == 100
+    assert "failure_breakdown" in data
+    assert "top_failure_causes" in data
+    assert "flags" in data
+
+
+def test_json_empty_cards_new_metrics_are_zero(tmp_path, capsys):
+    """AC2: an empty cards file with --json produces the four new fields at 0
+    alongside all existing keys at their zero values."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["points_delivered"] == 0
+    assert data["first_attempt_numerator"] == 0
+    assert data["first_attempt_denominator"] == 0
+    assert data["escalation_count"] == 0
+    assert data["cycle_time_days"] == 0
+    assert data["lead_time_days"] == 0
+    assert data["throughput"] == 0
+    assert data["wip_violations"] == 0
+    assert data["blocked_aging_days"] == 0
+    assert data["escalation_rate_percent"] == 0
+    assert data["first_attempt_rate_percent"] == 0
+
+
+def test_json_metrics_points_delivered_and_throughput_filtered(tmp_path, capsys):
+    """AC4: --json --metrics points_delivered,throughput on a card with points 5
+    shows only those two metric keys plus api_version, flags, and top_failure_causes,
+    and does NOT contain the other metric keys."""
+    card = {
+        "created": "2024-01-01",
+        "started": "2024-01-03",
+        "completed": "2024-01-07",
+        "points": 5,
+        "attempts": 1,
+    }
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--json", "--metrics", "points_delivered,throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["points_delivered"] == 5
+    assert data["throughput"] == 1
+    assert data["api_version"] == "1"
+    assert "top_failure_causes" in data
+    assert "flags" in data
+    assert "cycle_time_days" not in data
+    assert "lead_time_days" not in data
+    assert "first_attempt_numerator" not in data
+    assert "first_attempt_denominator" not in data
+    assert "escalation_count" not in data

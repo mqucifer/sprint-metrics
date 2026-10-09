@@ -3,7 +3,7 @@
 The JSON response top level carries:
 
 - `api_version` — a string identifying the response shape (currently `"1"`)
-- Eight metric fields: `cycle_time_days`, `lead_time_days`, `throughput`, `wip_violations`, `blocked_aging_days`, `escalation_rate_percent`, `first_attempt_rate_percent`, `failure_breakdown`
+- Twelve metric fields: `cycle_time_days`, `lead_time_days`, `throughput`, `points_delivered`, `wip_violations`, `blocked_aging_days`, `escalation_rate_percent`, `escalation_count`, `first_attempt_rate_percent`, `first_attempt_numerator`, `first_attempt_denominator`, `failure_breakdown`
 - `top_failure_causes` — an object mapping failure cause names to their counts
 - `flags` — an object of booleans indicating which default thresholds were breached
 - `failure_breakdown` — an array of objects, each with `class`, `role`, and `count`
@@ -31,6 +31,10 @@ BEGIN:formats
     "wip_violations",
     "blocked_aging_days",
     "escalation_rate_percent",
+    "points_delivered",
+    "first_attempt_numerator",
+    "first_attempt_denominator",
+    "escalation_count",
     "first_attempt_rate_percent",
     "failure_breakdown",
     "top_failure_causes",
@@ -71,6 +75,30 @@ BEGIN:formats
       ]
     },
     "escalation_rate_percent": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "points_delivered": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "first_attempt_numerator": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "first_attempt_denominator": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "escalation_count": {
       "type": [
         "integer",
         "null"
@@ -162,6 +190,30 @@ BEGIN:formats
             "null"
           ]
         },
+        "points_delivered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_numerator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_denominator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "escalation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "first_attempt_rate_percent": {
           "type": [
             "integer",
@@ -215,6 +267,30 @@ BEGIN:formats
             "null"
           ]
         },
+        "points_delivered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_numerator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "first_attempt_denominator": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "escalation_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "first_attempt_rate_percent": {
           "type": [
             "integer",
@@ -260,7 +336,7 @@ sprint-metrics cards.json --json
 ```
 
 ```json
-{"api_version": "1", "cycle_time_days": 4, "lead_time_days": 6, "throughput": 1, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "first_attempt_rate_percent": 100, "failure_breakdown": [], "top_failure_causes": {}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": false, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": false}}
+{"api_version": "1", "cycle_time_days": 4, "lead_time_days": 6, "throughput": 1, "points_delivered": 0, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "escalation_count": 0, "first_attempt_rate_percent": 100, "first_attempt_numerator": 1, "first_attempt_denominator": 1, "failure_breakdown": [], "top_failure_causes": {}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": false, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": false}}
 ```
 
 ### Markdown
@@ -364,14 +440,14 @@ sprint-metrics cards.json --json
 ```
 
 ```json
-{"api_version": "1", "cycle_time_days": 0, "lead_time_days": 0, "throughput": 0, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "first_attempt_rate_percent": 0, "failure_breakdown": [], "top_failure_causes": {}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": true, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": true}}
+{"api_version": "1", "cycle_time_days": 0, "lead_time_days": 0, "throughput": 0, "points_delivered": 0, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "escalation_count": 0, "first_attempt_rate_percent": 0, "first_attempt_numerator": 0, "first_attempt_denominator": 0, "failure_breakdown": [], "top_failure_causes": {}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": true, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": true}}
 ```
 
 ## --metrics (metric filtering)
 
 The `--metrics` flag restricts the output to a comma-separated list of metric names. Only the requested metrics appear in the output; all others are omitted.
 
-Valid metric names: `cycle_time_days`, `lead_time_days`, `throughput`, `wip_violations`, `blocked_aging_days`, `escalation_rate_percent`, `first_attempt_rate_percent`, `failure_breakdown`.
+Valid metric names: `cycle_time_days`, `lead_time_days`, `throughput`, `points_delivered`, `wip_violations`, `blocked_aging_days`, `escalation_rate_percent`, `escalation_count`, `first_attempt_rate_percent`, `first_attempt_numerator`, `first_attempt_denominator`, `failure_breakdown`.
 
 **Input** (`cards.json`):
 
