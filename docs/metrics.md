@@ -9,10 +9,14 @@ BEGIN:metrics
 |---|---|---|---|
 | Blocked aging | `blocked_aging_days` | Return the maximum number of days any card has been blocked in the sprint. | `sprint_blocked_aging_days` |
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_cycle_time_days` |
+| Escalation count | `escalation_count` | Return the number of escalated events in the sprint. | `sprint_escalation_count` |
 | Escalation rate | `escalation_rate_percent` | Return the escalation rate as a percentage (0-100). | `sprint_escalation_rate_percent` |
 | Top causes | `failure_breakdown` | Return the failure causes grouped by (class, role), sorted by count descending. | `sprint_failure_count` |
+| First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. | `sprint_first_attempt_denominator` |
+| First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. | `sprint_first_attempt_numerator` |
 | First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt. | `sprint_first_attempt_rate_percent` |
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_lead_time_days` |
+| Points delivered | `points_delivered` | Return the sum of points values on completed cards. | `sprint_points_delivered` |
 | Throughput | `throughput` | Return the number of completed cards in the sprint. | `sprint_throughput` |
 | WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. | `sprint_wip_violations` |
 END:metrics
@@ -43,8 +47,22 @@ non-null failure class.
 ### Zero values for an empty sprint
 
 A sprint with no completed cards reports 0 for cycle time, lead time,
-throughput, escalation rate, and first-attempt rate. WIP violations is 0
+throughput, points delivered, first-attempt numerator, first-attempt
+denominator, escalation rate, and first-attempt rate. WIP violations is 0
 when no WIP limits are configured.
+
+### Points delivered for a card without a points value
+
+A completed card with no `points` value contributes 0 to the points
+delivered total.
+
+### Escalation count
+
+The escalation count is the number of escalated events in the sprint. It is
+the numerator behind the escalation-rate percentage, whose denominator is
+throughput. It reflects only the escalations parameter (CLI) or event count
+(service) regardless of whether any card is completed. It is 0 when no
+escalations are recorded.
 
 ### Cycle time for a card without a started date
 

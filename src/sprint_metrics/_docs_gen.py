@@ -45,6 +45,15 @@ def _generate_metrics_content() -> str:
         "escalation_rate_percent": "calculate_escalation_rate",
         "first_attempt_rate_percent": "calculate_first_attempt_rate",
         "failure_breakdown": "calculate_failure_breakdown",
+        "points_delivered": "calculate_points_delivered",
+    }
+
+    # Metrics whose description is not the first line of a single calculate
+    # function's docstring (shared function, or no calculate function at all).
+    metric_descriptions: dict[str, str] = {
+        "first_attempt_numerator": "Return the count of completed cards whose attempts equals 1.",
+        "first_attempt_denominator": "Return the total count of completed cards.",
+        "escalation_count": "Return the number of escalated events in the sprint.",
     }
 
     lines = [
@@ -55,11 +64,14 @@ def _generate_metrics_content() -> str:
         display_name = _METRIC_COLUMNS.get(metric_key)
         if display_name is None:
             continue
-        func_name = metric_to_func.get(metric_key)
-        if func_name is None:
-            continue
-        func = getattr(metrics_mod, func_name)
-        description = _first_doc_line(func)
+        if metric_key in metric_descriptions:
+            description = metric_descriptions[metric_key]
+        else:
+            func_name = metric_to_func.get(metric_key)
+            if func_name is None:
+                continue
+            func = getattr(metrics_mod, func_name)
+            description = _first_doc_line(func)
         if metric_key == "failure_breakdown":
             prom_name = "sprint_failure_count"
         else:

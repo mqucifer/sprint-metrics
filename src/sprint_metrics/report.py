@@ -635,10 +635,14 @@ _METRIC_COLUMNS: dict[str, str] = {
     "cycle_time_days": "Cycle time",
     "lead_time_days": "Lead time",
     "throughput": "Throughput",
+    "points_delivered": "Points delivered",
     "wip_violations": "WIP violations",
     "blocked_aging_days": "Blocked aging",
     "escalation_rate_percent": "Escalation rate",
+    "escalation_count": "Escalation count",
     "first_attempt_rate_percent": "First attempt",
+    "first_attempt_numerator": "First-attempt numerator",
+    "first_attempt_denominator": "First-attempt denominator",
     "failure_breakdown": "Top causes",
 }
 
