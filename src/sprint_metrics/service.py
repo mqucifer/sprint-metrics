@@ -320,8 +320,6 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(400, {"error": "missing start or end parameter"})
                             status = 400
                             return
-                        # Quick calendar validation (no DB needed) preserves 400 for
-                        # invalid YYYY-MM ranges even when the DB is unreachable.
                         try:
                             _start_parsed = _parse_sprint_label(start)
                             _end_parsed = _parse_sprint_label(end)
@@ -418,7 +416,6 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(400, {"error": f"unknown metric: {metric!r}"})
                             status = 400
                             return
-                        # Quick calendar validation (no DB needed)
                         try:
                             _start_parsed = _parse_sprint_label(start)
                             _end_parsed = _parse_sprint_label(end)
@@ -472,15 +469,26 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
-                        values = [
-                            {
-                                "sprint": label,
-                                "value": metric_value(metric, sprints[label])
-                                if label in has_events
-                                else None,
-                            }
-                            for label in sprints
-                        ]
+                        if metric == "escalation_count":
+                            values = [
+                                {
+                                    "sprint": label,
+                                    "value": count_escalated_events(conn_holder[0], label)
+                                    if label in has_events
+                                    else 0,
+                                }
+                                for label in sprints
+                            ]
+                        else:
+                            values = [
+                                {
+                                    "sprint": label,
+                                    "value": metric_value(metric, sprints[label])
+                                    if label in has_events
+                                    else None,
+                                }
+                                for label in sprints
+                            ]
                         response = {
                             "api_version": API_VERSION,
                             "metric": metric,
@@ -592,7 +600,10 @@ SERVICE_ENDPOINTS = (
         "/trend",
         "Return a time series for a single metric across an inclusive sprint range "
         "as a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs "
-        "(params: metric, start, end); sprints with no stored events return the metric's zero value",
+        "(params: metric, start, end); sprints with no stored events return the metric's zero value. "
+        "Metric names: cycle_time_days, lead_time_days, throughput, wip_violations, "
+        "blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, failure_breakdown, "
+        "points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count",
     ),
     ("GET", "/metrics", "Prometheus text exposition of stored history, sprint-labelled"),
     ("GET", "/schema/event", "JSON Schema for the event intake format"),
