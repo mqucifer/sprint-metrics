@@ -4485,3 +4485,219 @@ def test_range_null_new_fields_for_sprints_without_events():
             assert s["escalation_count"] is None
     finally:
         conn.close()
+
+
+@requires_db
+def test_trend_points_delivered_two_sprints():
+    """AC1+AC5: GET /trend?metric=points_delivered&start=2024-01&end=2024-02 with
+    sprint 2024-01 having one finished card (points 5) and sprint 2024-02 having
+    two finished cards (points 3 and 4) returns 200, Content-Type application/json,
+    and values array has exactly two entries in order: 2024-01 value 5, 2024-02 value 7."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('ac1_pd_a', 'ac1_pd_b', 'ac1_pd_c')"
+    )
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: one finished card with points 5
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_pd_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                points=5,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_pd_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # Sprint 2024-02: two finished cards with points 3 and 4
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_pd_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+                points=3,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_pd_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_pd_c",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+                points=4,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_pd_c",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/trend?metric=points_delivered&start=2024-01&end=2024-02",
+            timeout=5,
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["api_version"] == "1"
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 5}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 7}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_first_attempt_denominator_two_sprints():
+    """AC2: GET /trend?metric=first_attempt_denominator&start=2024-01&end=2024-02 with
+    sprint 2024-01 having three finished cards and sprint 2024-02 having five finished
+    cards returns 200 and values has 2024-01 value 3 and 2024-02 value 5."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'ac2_fa_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: three finished cards
+        for i in range(3):
+            card_id = f"ac2_fa_{chr(ord('a') + i)}"
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp="2024-01-03T10:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                ),
+            )
+        # Sprint 2024-02: five finished cards
+        for i in range(5):
+            card_id = f"ac2_fa_{chr(ord('a') + 3 + i)}"
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp="2024-02-03T10:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp="2024-02-06T15:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                ),
+            )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=first_attempt_denominator"
+            f"&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 3}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 5}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_escalation_count_zero_fill():
+    """AC3+AC6: GET /trend?metric=escalation_count&start=2024-01&end=2024-02 with
+    sprint 2024-01 having no stored events and sprint 2024-02 having one escalated
+    event (but no finished events) returns 200 and values has 2024-01 value 0
+    (the escalation count is 0 when no escalated events are stored) and
+    2024-02 value 1."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac3_esc'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-02: one escalated event (no finished events)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_esc",
+                event_type="escalated",
+                timestamp="2024-02-05T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        # Sprint 2024-01: no events
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_count&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 0}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 1}
+    finally:
+        conn.close()
