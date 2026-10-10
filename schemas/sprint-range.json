@@ -120,13 +120,149 @@
             "type": [
               "object",
               "null"
-            ]
+            ],
+            "properties": {
+              "cycle_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "throughput": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "wip_violations": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "blocked_aging_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "points_delivered": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_numerator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_denominator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
           },
           "delta": {
             "type": [
               "object",
               "null"
-            ]
+            ],
+            "properties": {
+              "cycle_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "throughput": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "wip_violations": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "blocked_aging_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "points_delivered": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_numerator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_denominator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
           }
         }
       }

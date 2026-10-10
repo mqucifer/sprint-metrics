@@ -507,12 +507,10 @@ def test_sprint_range_schema_includes_new_fields_in_prior_and_delta(capsys):
     for key in new_fields:
         assert key in sprint_schema["properties"]
         assert sprint_schema["properties"][key]["type"] == ["integer", "null"]
-    # prior and delta are [object, null], so check the inner object's properties
-    prior_props = sprint_schema["properties"]["prior"]
-    delta_props = sprint_schema["properties"]["delta"]
-    # prior and delta are typed as ["object", "null"] at the top level;
-    # the schema uses additionalProperties or just [object, null].
-    # In SPRINT_RANGE_SCHEMA, prior and delta are {"type": ["object", "null"]}
-    # so we verify they accept objects with the new fields by checking the type.
-    assert prior_props["type"] == ["object", "null"]
-    assert delta_props["type"] == ["object", "null"]
+    prior_props = sprint_schema["properties"]["prior"]["properties"]
+    delta_props = sprint_schema["properties"]["delta"]["properties"]
+    for key in new_fields:
+        assert key in prior_props
+        assert prior_props[key]["type"] == ["integer", "null"]
+        assert key in delta_props
+        assert delta_props[key]["type"] == ["integer", "null"]
