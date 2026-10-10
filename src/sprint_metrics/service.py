@@ -33,6 +33,7 @@ from sprint_metrics.report import API_VERSION, format_json_report
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
+    count_escalated_events,
     init_db,
     insert_event,
     query_all_sprints,
@@ -301,11 +302,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 status = 200
                                 return
                             cards = query_sprint(conn_holder[0], label)
+                            esc_count = count_escalated_events(conn_holder[0], label)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
-                        body = _sprint_json(cards)
+                        body = _sprint_json(cards, escalations=esc_count)
                         self._send_json(200, json.loads(body))
                         status = 200
                         return
@@ -384,7 +386,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
-                        body = format_sprint_range_json(sprints, labels)
+                        sprint_escs = {
+                            lbl: count_escalated_events(conn_holder[0], lbl) for lbl in labels
+                        }
+                        body = format_sprint_range_json(
+                            sprints, labels, sprint_escalations=sprint_escs
+                        )
                         result = json.loads(body)
                         for i, label in enumerate(labels):
                             if label not in has_events:
@@ -543,9 +550,9 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
     return actual_port
 
 
-def _sprint_json(cards) -> str:
+def _sprint_json(cards, escalations: int = 0) -> str:
     """Compute sprint metrics from stored cards and return the JSON report string."""
-    return format_json_report(cards)
+    return format_json_report(cards, escalations=escalations)
 
 
 def _metrics_text(sprints: dict[str, list]) -> str:
@@ -618,10 +625,14 @@ def _null_sprint_response() -> dict:
         "cycle_time_days": None,
         "lead_time_days": None,
         "throughput": None,
+        "points_delivered": None,
         "wip_violations": None,
         "blocked_aging_days": None,
         "escalation_rate_percent": None,
+        "escalation_count": None,
         "first_attempt_rate_percent": None,
+        "first_attempt_numerator": None,
+        "first_attempt_denominator": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
         "flags": None,
@@ -634,10 +645,14 @@ def _null_range_entry() -> dict:
         "cycle_time_days": None,
         "lead_time_days": None,
         "throughput": None,
+        "points_delivered": None,
         "wip_violations": None,
         "blocked_aging_days": None,
         "escalation_rate_percent": None,
+        "escalation_count": None,
         "first_attempt_rate_percent": None,
+        "first_attempt_numerator": None,
+        "first_attempt_denominator": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
         "flags": None,
