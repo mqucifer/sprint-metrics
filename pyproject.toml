@@ -1,6 +1,6 @@
 [project]
 name = "sprint-metrics"
-version = "1.1.0"
+version = "1.2.0"
 description = "Delivery metrics for the crew's own board."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
