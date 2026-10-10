@@ -63,6 +63,10 @@ def test_schema_json_sprint_range(capsys):
         "wip_violations",
         "blocked_aging_days",
         "escalation_rate_percent",
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
         "flags",
         "prior",
         "delta",
@@ -76,6 +80,10 @@ def test_schema_json_sprint_range(capsys):
         "blocked_aging_days",
         "escalation_rate_percent",
         "first_attempt_rate_percent",
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
     ):
         assert sprint_schema["properties"][key]["type"] == ["integer", "null"]
 
@@ -253,6 +261,12 @@ def test_sprint_range_json_output_validates_against_schema(tmp_path, capsys):
     result = json.loads(captured.out)
     jsonschema.validate(result, SPRINT_RANGE_SCHEMA)
     assert set(result.keys()) == {"api_version", "sprints"}
+    for label in ("2024-01", "2024-02"):
+        entry = result["sprints"][label]
+        assert entry["points_delivered"] == 0
+        assert entry["first_attempt_numerator"] == 1
+        assert entry["first_attempt_denominator"] == 1
+        assert entry["escalation_count"] == 0
 
 
 def test_sprint_range_single_sprint_empty_validates_against_schema(tmp_path, capsys):
@@ -471,3 +485,32 @@ def test_schema_json_required_includes_four_new_fields_with_integer_null_type(ca
     ):
         assert key in schema["required"]
         assert schema["properties"][key] == {"type": ["integer", "null"]}
+
+
+def test_sprint_range_schema_includes_new_fields_in_prior_and_delta(capsys):
+    """AC3: --schema --sprint-range 2024-01..2024-02 --json exits 0. The schema's
+    sprints additionalProperties properties include the four new fields each with
+    type [integer, null], and the prior and delta object properties also include
+    each of those four."""
+    exit_code = main(["--schema", "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    sprint_schema = schema["properties"]["sprints"]["additionalProperties"]
+    new_fields = (
+        "points_delivered",
+        "first_attempt_numerator",
+        "first_attempt_denominator",
+        "escalation_count",
+    )
+    for key in new_fields:
+        assert key in sprint_schema["properties"]
+        assert sprint_schema["properties"][key]["type"] == ["integer", "null"]
+    prior_props = sprint_schema["properties"]["prior"]["properties"]
+    delta_props = sprint_schema["properties"]["delta"]["properties"]
+    for key in new_fields:
+        assert key in prior_props
+        assert prior_props[key]["type"] == ["integer", "null"]
+        assert key in delta_props
+        assert delta_props[key]["type"] == ["integer", "null"]

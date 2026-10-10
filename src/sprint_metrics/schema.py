@@ -97,8 +97,20 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     "failure_breakdown": {"type": ["array", "null"]},
                     "top_failure_causes": {"type": ["object", "null"]},
                     "flags": {"type": ["object", "null"]},
-                    "prior": {"type": ["object", "null"]},
-                    "delta": {"type": ["object", "null"]},
+                    "prior": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
+                            "first_attempt_rate_percent": {"type": ["integer", "null"]},
+                        },
+                    },
+                    "delta": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
+                            "first_attempt_rate_percent": {"type": ["integer", "null"]},
+                        },
+                    },
                 },
             },
         },

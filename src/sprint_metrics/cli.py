@@ -130,7 +130,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.json:
             print(
                 format_sprint_range_json(
-                    sprints, labels, wip_limits, args.escalations, sprint_date, thresholds
+                    sprints,
+                    labels,
+                    wip_limits,
+                    args.escalations,
+                    sprint_date,
+                    thresholds,
+                    metrics=metrics_set,
                 )
             )
         elif args.markdown:
