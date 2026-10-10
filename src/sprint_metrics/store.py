@@ -114,6 +114,7 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
     - blocked_since: event_time date of the most recent 'blocked' row with no later 'unblocked'
     - attempts: from the 'finished' row (default 1)
     - failure_class/failure_role: from the 'finished' row
+    - points: from the 'finished' row
     """
     rows = conn.execute(
         """
@@ -130,7 +131,7 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
     for (card_id,) in rows:
         events = conn.execute(
             """
-            SELECT type, event_time, card_created, attempts, failure_class, failure_role
+            SELECT type, event_time, card_created, attempts, failure_class, failure_role, points
             FROM sprint_metrics.board_events
             WHERE card_id = %s
             ORDER BY event_time
@@ -151,6 +152,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     The card's attempts count is derived from the number of 'attempt_failed'
     rows in its history (1 + count) when any exist; otherwise it falls back
     to the attempts column on the 'finished' row (default 1).
+    Points are read from the 'finished' row.
     """
     if not events:
         return None
@@ -161,6 +163,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     attempts = 1
     failure_class: str | None = None
     failure_role: str | None = None
+    points: int | None = None
 
     blocked_events: list[date] = []
     unblocked_events: list[date] = []
@@ -173,6 +176,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         ev_attempts,
         ev_failure_class,
         ev_failure_role,
+        ev_points,
     ) in events:
         event_date = event_time.date() if hasattr(event_time, "date") else event_time
         if created is None and card_created is not None:
@@ -185,6 +189,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
                 attempts = ev_attempts
             failure_class = ev_failure_class
             failure_role = ev_failure_role
+            points = ev_points
         elif event_type == "blocked":
             blocked_events.append(event_date)
         elif event_type == "unblocked":
@@ -213,6 +218,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         attempts=attempts,
         failure_class=failure_class,
         failure_role=failure_role,
+        points=points,
     )
 
 
@@ -334,3 +340,12 @@ def sprint_has_events(conn: Connection, label: str) -> bool:
         (label,),
     ).fetchone()
     return row is not None
+
+
+def count_escalated_events(conn: Connection, label: str) -> int:
+    """Return the count of 'escalated' events stored for the given sprint label."""
+    row = conn.execute(
+        "SELECT COUNT(*) FROM sprint_metrics.board_events WHERE type = 'escalated' AND sprint = %s",
+        (label,),
+    ).fetchone()
+    return row[0] if row else 0

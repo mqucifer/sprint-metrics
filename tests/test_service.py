@@ -349,7 +349,7 @@ def test_sprint_data_survives_reconnect():
 
 @requires_db
 def test_sprint_response_has_exactly_eleven_keys_no_sprint_date():
-    """AC5: GET /sprint response has exactly 11 top-level keys and no sprint_date."""
+    """AC5: GET /sprint response has exactly 15 top-level keys and no sprint_date."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -383,10 +383,14 @@ def test_sprint_response_has_exactly_eleven_keys_no_sprint_date():
             "cycle_time_days",
             "lead_time_days",
             "throughput",
+            "points_delivered",
             "wip_violations",
             "blocked_aging_days",
             "escalation_rate_percent",
+            "escalation_count",
             "first_attempt_rate_percent",
+            "first_attempt_numerator",
+            "first_attempt_denominator",
             "failure_breakdown",
             "top_failure_causes",
             "flags",
@@ -4167,5 +4171,317 @@ def test_range_failure_breakdown_and_top_failure_causes_coexist():
         assert entry["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
         assert entry["top_failure_causes"] == {"VERIFY": 1}
         assert len(entry["failure_breakdown"]) == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_response_includes_points_first_attempt_and_escalation_count():
+    """AC1/AC6: after POSTing started+finished+escalated for a card with points 5,
+    GET /sprint returns the four new fields with correct values alongside existing keys."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_new_fields'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac1_new_fields",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+            points=5,
+        )
+        finished = _make_event(
+            card_id="ac1_new_fields",
+            event_type="finished",
+            timestamp="2024-01-07T15:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        escalated = _make_event(
+            card_id="ac1_new_fields",
+            event_type="escalated",
+            timestamp="2024-01-05T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+        _post_events(f"http://127.0.0.1:{port}/events", escalated)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["points_delivered"] == 5
+        assert body["first_attempt_numerator"] == 1
+        assert body["first_attempt_denominator"] == 1
+        assert body["escalation_count"] == 1
+        assert "throughput" in body
+        assert "first_attempt_rate_percent" in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_no_events_new_fields_are_null():
+    """AC2/AC7: no events stored for sprint 2026-11, GET /sprint returns 200
+    and the four new fields are null, matching the existing null pattern."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-11'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-11")
+        assert status == 200
+        assert body["points_delivered"] is None
+        assert body["first_attempt_numerator"] is None
+        assert body["first_attempt_denominator"] is None
+        assert body["escalation_count"] is None
+        assert body["throughput"] is None
+        assert body["first_attempt_rate_percent"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_escalations_counted_without_completions():
+    """AC3: one started event (no finished) and two escalated events for sprint 2024-01,
+    GET /sprint returns points_delivered=0, first_attempt_numerator=0,
+    first_attempt_denominator=0, escalation_count=2."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac3_esc'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac3_esc",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        esc1 = _make_event(
+            card_id="ac3_esc",
+            event_type="escalated",
+            timestamp="2024-01-04T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        esc2 = _make_event(
+            card_id="ac3_esc",
+            event_type="escalated",
+            timestamp="2024-01-05T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        _post_events(f"http://127.0.0.1:{port}/events", esc1)
+        _post_events(f"http://127.0.0.1:{port}/events", esc2)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["points_delivered"] == 0
+        assert body["first_attempt_numerator"] == 0
+        assert body["first_attempt_denominator"] == 0
+        assert body["escalation_count"] == 2
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_includes_points_first_attempt_and_escalation_count():
+    """AC4: 2024-01 has one finished card (points 5, attempts 1) and one escalated event;
+    2024-02 has two finished cards (points 3 and 2, both attempts 1) and one escalated event.
+    GET /range returns correct values per sprint with existing keys still present."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('ac4_range_a', 'ac4_range_b', 'ac4_range_c')"
+    )
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: one finished card (points 5, attempts 1)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                points=5,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_a",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # Sprint 2024-02: two finished cards (points 3 and 2, both attempts 1)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_b",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+                points=3,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_b",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_c",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+                points=2,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_c",
+                event_type="finished",
+                timestamp="2024-02-06T15:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac4_range_b",
+                event_type="escalated",
+                timestamp="2024-02-05T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        s01 = body["sprints"]["2024-01"]
+        s02 = body["sprints"]["2024-02"]
+        # 2024-01: points 5, first-attempt 1/1, escalation 1
+        assert s01["points_delivered"] == 5
+        assert s01["first_attempt_numerator"] == 1
+        assert s01["first_attempt_denominator"] == 1
+        assert s01["escalation_count"] == 1
+        # 2024-02: points 5 (3+2), first-attempt 2/2, escalation 1
+        assert s02["points_delivered"] == 5
+        assert s02["first_attempt_numerator"] == 2
+        assert s02["first_attempt_denominator"] == 2
+        assert s02["escalation_count"] == 1
+        # Both entries still contain existing keys and prior and delta
+        for s in (s01, s02):
+            for key in ("throughput", "cycle_time_days", "prior", "delta"):
+                assert key in s
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_null_new_fields_for_sprints_without_events():
+    """AC5: sprint 2026-10 has one finished card (points 2, attempts 1);
+    sprints 2026-11 and 2026-12 have no stored events. GET /range returns
+    2026-10 with values and 2026-11/2026-12 with nulls for the four new fields."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac5_range_null'")
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2026-10', '2026-11', '2026-12')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_range_null",
+                event_type="started",
+                timestamp="2026-10-07T13:14:07Z",
+                sprint="2026-10",
+                created="2026-10-07",
+                points=2,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_range_null",
+                event_type="finished",
+                timestamp="2026-10-07T20:52:22Z",
+                sprint="2026-10",
+                created="2026-10-07",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-12")
+        assert status == 200
+        s10 = body["sprints"]["2026-10"]
+        s11 = body["sprints"]["2026-11"]
+        s12 = body["sprints"]["2026-12"]
+        # 2026-10 has values
+        assert s10["points_delivered"] == 2
+        assert s10["first_attempt_numerator"] == 1
+        assert s10["first_attempt_denominator"] == 1
+        assert s10["escalation_count"] == 0
+        # 2026-11 and 2026-12 have nulls
+        for s in (s11, s12):
+            assert s["points_delivered"] is None
+            assert s["first_attempt_numerator"] is None
+            assert s["first_attempt_denominator"] is None
+            assert s["escalation_count"] is None
     finally:
         conn.close()
