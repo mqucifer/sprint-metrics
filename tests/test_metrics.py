@@ -344,15 +344,18 @@ def test_calculate_points_and_first_attempt_empty():
 
 
 def test_all_metrics_grew_by_four():
-    """AC5: ALL_METRICS has 12 entries (8 existing + 4 new), each new is snake_case."""
+    """AC5: ALL_METRICS has 15 entries (8 original + 4 points/first-attempt + 3 superseded)."""
     from sprint_metrics.metrics import ALL_METRICS
 
-    assert len(ALL_METRICS) == 12
+    assert len(ALL_METRICS) == 15
     new_metrics = {
         "points_delivered",
         "first_attempt_numerator",
         "first_attempt_denominator",
         "escalation_count",
+        "superseded_count",
+        "superseded_points",
+        "superseded_breakdown",
     }
     assert new_metrics.issubset(ALL_METRICS)
     existing = {
@@ -402,3 +405,149 @@ def test_calculate_first_attempt_counts_two_completed():
         },
     ]
     assert calculate_first_attempt_counts(cards) == (1, 2)
+
+
+def test_calculate_superseded_count():
+    """AC1: two of three cards are superseded, so the count is 2."""
+    from sprint_metrics.metrics import calculate_superseded_count
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-05",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-06",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-05",
+            "points": 2,
+        },
+    ]
+    assert calculate_superseded_count(cards) == 2
+
+
+def test_calculate_superseded_points():
+    """AC2: two superseded cards with points 5 and 3 give a total of 8."""
+    from sprint_metrics.metrics import calculate_superseded_points
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-05",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-06",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-05",
+            "points": 2,
+        },
+    ]
+    assert calculate_superseded_points(cards) == 8
+
+
+def test_calculate_superseded_breakdown():
+    """AC3: one card superseded because 'sponsor' and one because 'story_problem'."""
+    from sprint_metrics.metrics import calculate_superseded_breakdown
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-05",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-06",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-05",
+            "points": 2,
+        },
+    ]
+    assert calculate_superseded_breakdown(cards) == {"sponsor": 1, "story_problem": 1}
+
+
+def test_calculate_superseded_empty():
+    """AC4: an empty list gives count 0, points 0, and both reasons at 0."""
+    from sprint_metrics.metrics import (
+        calculate_superseded_breakdown,
+        calculate_superseded_count,
+        calculate_superseded_points,
+    )
+
+    assert calculate_superseded_count([]) == 0
+    assert calculate_superseded_points([]) == 0
+    assert calculate_superseded_breakdown([]) == {"sponsor": 0, "story_problem": 0}
+
+
+def test_wip_violations_excludes_superseded():
+    """AC5: one in-flight card and one superseded card both started on the same day,
+    with WIP limit 1 for In Progress, produces 0 violations because the superseded
+    card is excluded from occupancy."""
+    from sprint_metrics.metrics import calculate_wip_violations
+
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-05"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-05",
+            "superseded": True,
+            "superseded_because": "sponsor",
+        },
+    ]
+    assert calculate_wip_violations(cards, {"In Progress": 1}) == 0
+
+
+def test_blocked_aging_excludes_superseded():
+    """AC6: a superseded card carrying a blocked_since date does not contribute
+    to blocked aging."""
+    from datetime import date
+
+    from sprint_metrics.metrics import calculate_blocked_aging
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "blocked_since": "2024-01-05",
+            "superseded": True,
+            "superseded_because": "sponsor",
+        },
+    ]
+    assert calculate_blocked_aging(cards, as_of=date(2024, 1, 10)) == 0
+
+
+def test_all_metrics_includes_superseded():
+    """AC7: the three new metric names are members of ALL_METRICS."""
+    from sprint_metrics.metrics import ALL_METRICS
+
+    assert "superseded_count" in ALL_METRICS
+    assert "superseded_points" in ALL_METRICS
+    assert "superseded_breakdown" in ALL_METRICS

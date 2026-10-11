@@ -2695,3 +2695,42 @@ def test_command_rejects_invalid_superseded_because(run_command):
     assert exit_code == 2
     assert "frobnicated" in errors
     assert output == ""
+
+
+def test_command_superseded_card_excluded_from_wip_and_throughput(run_command):
+    """AC8 (UX): a superseded card with started but no completed is excluded from
+    WIP occupancy and throughput when run with --wip-limits and --json."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+    ]
+    exit_code, output, _ = run_command(cards, wip_limits={"In Progress": 1}, json_output=True)
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["wip_violations"] == 0
+    assert data["throughput"] == 0
+
+
+def test_command_superseded_card_excluded_from_blocked_aging(run_command):
+    """AC9 (UX): a superseded card with blocked_since does not produce blocked aging
+    when run with --json and --sprint-date."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "blocked_since": "2024-01-03",
+            "superseded": True,
+            "superseded_because": "story_problem",
+        },
+    ]
+    exit_code, output, _ = run_command(cards, json_output=True, sprint_date="2024-01-10")
+
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["blocked_aging_days"] == 0

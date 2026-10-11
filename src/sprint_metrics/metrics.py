@@ -88,11 +88,12 @@ def calculate_wip_violations(
     limit allows, at any point in the sprint — work that was started and
     finished before the report ran still crowded the board. States with no
     configured limit, and a sprint with no limits at all, cannot be violated.
+    Superseded cards are excluded from occupancy.
     """
     if not wip_limits:
         return 0
 
-    parsed = _as_cards(cards)
+    parsed = [card for card in _as_cards(cards) if not card.superseded]
     breached = [
         state for state, limit in wip_limits.items() if _peak_occupancy(parsed, state) > limit
     ]
@@ -110,9 +111,10 @@ def calculate_blocked_aging(
     card's completion date (if completed) or to ``as_of`` (if still blocked).
     When ``as_of`` is ``None`` the reference date is today.
     Cards that are not blocked or have no ``blocked_since`` date are ignored.
+    Superseded cards are excluded.
     """
     reference = as_of if as_of is not None else date.today()
-    parsed = _as_cards(cards)
+    parsed = [card for card in _as_cards(cards) if not card.superseded]
     max_aging = 0
     for card in parsed:
         if card.blocked_since is None:
@@ -163,6 +165,9 @@ ALL_METRICS: frozenset[str] = frozenset(
         "first_attempt_numerator",
         "first_attempt_denominator",
         "escalation_count",
+        "superseded_count",
+        "superseded_points",
+        "superseded_breakdown",
     }
 )
 
@@ -230,11 +235,11 @@ def wip_violation_details(
     Returns a list of (state_name, peak_occupancy, configured_limit) tuples, one
     per state whose peak exceeded its limit, in the iteration order of
     ``wip_limits``. Returns an empty list when no state is breached or
-    ``wip_limits`` is None or empty.
+    ``wip_limits`` is None or empty. Superseded cards are excluded.
     """
     if not wip_limits:
         return []
-    parsed = _as_cards(cards)
+    parsed = [card for card in _as_cards(cards) if not card.superseded]
     details: list[tuple[str, int, int]] = []
     for state, limit in wip_limits.items():
         peak = _peak_occupancy(parsed, state)
@@ -253,10 +258,10 @@ def blocked_aging_detail(
     does: completed cards use their completion date, in-flight cards use
     ``as_of`` (or today). Returns a list of (created, blocked_since) tuples for
     every card at the maximum (ties included). Returns an empty list when no
-    card is blocked or the maximum aging is 0.
+    card is blocked or the maximum aging is 0. Superseded cards are excluded.
     """
     reference = as_of if as_of is not None else date.today()
-    parsed = _as_cards(cards)
+    parsed = [card for card in _as_cards(cards) if not card.superseded]
     agings: list[tuple[int, date, date]] = []
     for card in parsed:
         if card.blocked_since is None:
@@ -309,6 +314,12 @@ def metric_value(
         return calculate_first_attempt_counts(cards)[1]
     if metric == "escalation_count":
         return escalations
+    if metric == "superseded_count":
+        return calculate_superseded_count(cards)
+    if metric == "superseded_points":
+        return calculate_superseded_points(cards)
+    if metric == "superseded_breakdown":
+        return sum(calculate_superseded_breakdown(cards).values())
     breakdown = calculate_failure_breakdown(cards)
     return sum(count for _, _, count in breakdown)
 
@@ -335,3 +346,38 @@ def calculate_first_attempt_counts(
     completed = [card for card in _as_cards(cards) if card.is_completed]
     numerator = sum(1 for card in completed if card.attempts == 1)
     return (numerator, len(completed))
+
+
+def calculate_superseded_count(cards: Iterable[Card | Mapping[str, object]]) -> int:
+    """Return the number of cards marked as superseded in the sprint."""
+    return sum(1 for card in _as_cards(cards) if card.superseded)
+
+
+def calculate_superseded_points(cards: Iterable[Card | Mapping[str, object]]) -> int:
+    """Return the sum of points on superseded cards.
+
+    A superseded card with no points value (``points`` is ``None``) contributes 0.
+    An empty list returns 0.
+    """
+    return sum(card.points or 0 for card in _as_cards(cards) if card.superseded)
+
+
+def calculate_superseded_breakdown(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> dict[str, int]:
+    """Return the per-reason breakdown of superseded cards.
+
+    Always returns a dict with both 'sponsor' and 'story_problem' keys, even
+    when one (or both) are zero.
+    """
+    cards_list = _as_cards(cards)
+    return {
+        "sponsor": sum(
+            1 for card in cards_list if card.superseded and card.superseded_because == "sponsor"
+        ),
+        "story_problem": sum(
+            1
+            for card in cards_list
+            if card.superseded and card.superseded_because == "story_problem"
+        ),
+    }
