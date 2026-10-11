@@ -13,9 +13,12 @@
     "first_attempt_numerator",
     "first_attempt_denominator",
     "escalation_count",
+    "superseded_count",
+    "superseded_points",
     "first_attempt_rate_percent",
     "failure_breakdown",
     "top_failure_causes",
+    "superseded_breakdown",
     "flags"
   ],
   "properties": {
@@ -120,6 +123,24 @@
         "null"
       ]
     },
+    "superseded_count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "superseded_points": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "superseded_breakdown": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "flags": {
       "type": [
         "object",
@@ -192,6 +213,18 @@
             "null"
           ]
         },
+        "superseded_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "superseded_points": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "first_attempt_rate_percent": {
           "type": [
             "integer",
@@ -199,6 +232,12 @@
           ]
         },
         "top_failure_causes": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "superseded_breakdown": {
           "type": [
             "object",
             "null"
@@ -269,7 +308,25 @@
             "null"
           ]
         },
+        "superseded_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "superseded_points": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "first_attempt_rate_percent": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "superseded_breakdown": {
           "type": [
             "integer",
             "null"

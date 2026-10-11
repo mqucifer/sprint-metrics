@@ -370,6 +370,9 @@ def test_single_sprint_schema_accepts_valid_non_null_object():
         "first_attempt_rate_percent": 100,
         "failure_breakdown": [{"class": "parse", "role": "Developer", "count": 2}],
         "top_failure_causes": [{"class": "parse", "count": 2}],
+        "superseded_count": 0,
+        "superseded_points": 0,
+        "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
         "flags": {
             "cycle_time_days": False,
             "lead_time_days": False,
@@ -432,6 +435,9 @@ def test_single_sprint_schema_accepts_all_null_metrics():
         "first_attempt_rate_percent": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
+        "superseded_count": None,
+        "superseded_points": None,
+        "superseded_breakdown": None,
         "flags": None,
     }
     jsonschema.validate(all_null, SINGLE_SPRINT_SCHEMA)
@@ -455,9 +461,12 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
                 "first_attempt_numerator": None,
                 "first_attempt_denominator": None,
                 "escalation_count": None,
+                "superseded_count": None,
+                "superseded_points": None,
                 "first_attempt_rate_percent": None,
                 "failure_breakdown": None,
                 "top_failure_causes": None,
+                "superseded_breakdown": None,
                 "flags": None,
                 "prior": None,
                 "delta": None,
@@ -469,14 +478,14 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
 
 def test_schema_json_required_includes_four_new_fields_with_integer_null_type(capsys):
     """AC3/AC7: --schema --json produces a schema whose required array has exactly
-    15 entries (11 existing + 4 new) and whose properties define each new field
-    with type [integer, null]."""
+    18 entries (11 existing + 4 new + 3 superseded) and whose properties define each
+    new field with the correct type."""
     exit_code = main(["--schema", "--json"])
     captured = capsys.readouterr()
 
     assert exit_code == 0
     schema = json.loads(captured.out)
-    assert len(schema["required"]) == 15
+    assert len(schema["required"]) == 18
     for key in (
         "points_delivered",
         "first_attempt_numerator",
@@ -485,6 +494,9 @@ def test_schema_json_required_includes_four_new_fields_with_integer_null_type(ca
     ):
         assert key in schema["required"]
         assert schema["properties"][key] == {"type": ["integer", "null"]}
+    assert schema["properties"]["superseded_count"] == {"type": ["integer", "null"]}
+    assert schema["properties"]["superseded_points"] == {"type": ["integer", "null"]}
+    assert schema["properties"]["superseded_breakdown"] == {"type": ["object", "null"]}
 
 
 def test_sprint_range_schema_includes_new_fields_in_prior_and_delta(capsys):
@@ -514,3 +526,20 @@ def test_sprint_range_schema_includes_new_fields_in_prior_and_delta(capsys):
         assert prior_props[key]["type"] == ["integer", "null"]
         assert key in delta_props
         assert delta_props[key]["type"] == ["integer", "null"]
+
+
+def test_schema_json_includes_superseded_fields(capsys):
+    """AC4: --schema --json required array includes superseded_count, superseded_points,
+    superseded_breakdown; properties define them with types [integer,null],
+    [integer,null], [object,null] respectively."""
+    exit_code = main(["--schema", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    assert "superseded_count" in schema["required"]
+    assert "superseded_points" in schema["required"]
+    assert "superseded_breakdown" in schema["required"]
+    assert schema["properties"]["superseded_count"] == {"type": ["integer", "null"]}
+    assert schema["properties"]["superseded_points"] == {"type": ["integer", "null"]}
+    assert schema["properties"]["superseded_breakdown"] == {"type": ["object", "null"]}

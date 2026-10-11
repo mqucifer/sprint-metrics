@@ -152,7 +152,13 @@ def format_sprint_range_json(
     When ``sprint_escalations`` is provided, each sprint uses its own escalation
     count from that mapping instead of the flat ``escalations`` value.
     """
-    from sprint_metrics.metrics import calculate_first_attempt_counts, calculate_points_delivered
+    from sprint_metrics.metrics import (
+        calculate_first_attempt_counts,
+        calculate_points_delivered,
+        calculate_superseded_breakdown,
+        calculate_superseded_count,
+        calculate_superseded_points,
+    )
 
     def _esc_for(label: str) -> int:
         if sprint_escalations is not None:
@@ -176,6 +182,9 @@ def format_sprint_range_json(
             "first_attempt_rate_percent": calculate_first_attempt_rate(cards),
             "first_attempt_numerator": calculate_first_attempt_counts(cards)[0],
             "first_attempt_denominator": calculate_first_attempt_counts(cards)[1],
+            "superseded_count": calculate_superseded_count(cards),
+            "superseded_points": calculate_superseded_points(cards),
+            "superseded_breakdown": calculate_superseded_breakdown(cards),
         }
         if index == 0:
             prior = None
@@ -185,6 +194,9 @@ def format_sprint_range_json(
             prior_cards = sprints[prior_label]
             prior_esc = _esc_for(prior_label)
             prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
+            prior_superseded_count = calculate_superseded_count(prior_cards)
+            prior_superseded_points = calculate_superseded_points(prior_cards)
+            prior_superseded_breakdown = calculate_superseded_breakdown(prior_cards)
             prior = {
                 "cycle_time_days": prior_cycle,
                 "lead_time_days": prior_lead,
@@ -197,14 +209,20 @@ def format_sprint_range_json(
                 "first_attempt_rate_percent": calculate_first_attempt_rate(prior_cards),
                 "first_attempt_numerator": calculate_first_attempt_counts(prior_cards)[0],
                 "first_attempt_denominator": calculate_first_attempt_counts(prior_cards)[1],
+                "superseded_count": prior_superseded_count,
+                "superseded_points": prior_superseded_points,
+                "superseded_breakdown": prior_superseded_breakdown,
             }
+            sup_count = calculate_superseded_count(cards)
+            sup_points = calculate_superseded_points(cards)
+            sup_breakdown = calculate_superseded_breakdown(cards)
             delta = {
                 "cycle_time_days": sprint_metrics["cycle_time_days"] - prior["cycle_time_days"],
                 "lead_time_days": sprint_metrics["lead_time_days"] - prior["lead_time_days"],
                 "throughput": sprint_metrics["throughput"] - prior["throughput"],
                 "points_delivered": sprint_metrics["points_delivered"] - prior["points_delivered"],
                 "wip_violations": sprint_metrics["wip_violations"] - prior["wip_violations"],
-                "blocked_aging_days": sprint_metrics["blocked_aging_days"]
+                "blocked_aging_days": calculate_blocked_aging(cards, as_of)
                 - prior["blocked_aging_days"],
                 "escalation_rate_percent": (
                     sprint_metrics["escalation_rate_percent"] - prior["escalation_rate_percent"]
@@ -220,6 +238,10 @@ def format_sprint_range_json(
                 "first_attempt_denominator": (
                     sprint_metrics["first_attempt_denominator"] - prior["first_attempt_denominator"]
                 ),
+                "superseded_count": sup_count - prior_superseded_count,
+                "superseded_points": sup_points - prior_superseded_points,
+                "superseded_breakdown": sum(sup_breakdown.values())
+                - sum(prior_superseded_breakdown.values()),
             }
         flags = calculate_flags(cards, wip_limits, esc, as_of, thresholds)
         if metrics is not None:

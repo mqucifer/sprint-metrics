@@ -2734,3 +2734,150 @@ def test_command_superseded_card_excluded_from_blocked_aging(run_command):
     assert exit_code == 0
     data = json.loads(output)
     assert data["blocked_aging_days"] == 0
+
+
+def test_json_includes_superseded_metrics_alongside_existing(tmp_path, capsys):
+    """AC1: --json includes superseded_count, superseded_points, superseded_breakdown
+    alongside existing metric keys."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05", "points": 5},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 3,
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["superseded_count"] == 1
+    assert data["superseded_points"] == 3
+    assert data["superseded_breakdown"] == {"sponsor": 1, "story_problem": 0}
+    # Existing keys still present
+    assert data["throughput"] == 1
+    assert data["cycle_time_days"] == 3
+    assert data["api_version"] == "1"
+
+
+def test_json_superseded_metrics_zero_for_empty_sprint(tmp_path, capsys):
+    """AC2: --json on an empty cards array reports superseded_count=0, superseded_points=0,
+    superseded_breakdown={"sponsor":0,"story_problem":0}."""
+    path = tmp_path / "cards.json"
+    path.write_text("[]")
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["superseded_count"] == 0
+    assert data["superseded_points"] == 0
+    assert data["superseded_breakdown"] == {"sponsor": 0, "story_problem": 0}
+
+
+def test_json_metrics_superseded_only_shows_superseded_keys(tmp_path, capsys):
+    """AC3: --json --metrics superseded_count,superseded_points,superseded_breakdown
+    shows exactly those keys plus api_version and flags, NOT cycle_time_days or throughput."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 3,
+        },
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main(
+        [
+            str(path),
+            "--json",
+            "--metrics",
+            "superseded_count,superseded_points,superseded_breakdown",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert "superseded_count" in data
+    assert "superseded_points" in data
+    assert "superseded_breakdown" in data
+    assert "api_version" in data
+    assert "flags" in data
+    assert "cycle_time_days" not in data
+    assert "throughput" not in data
+
+
+def test_json_metrics_superseded_and_bogus_exits_2(tmp_path, capsys):
+    """AC5: --json --metrics superseded_count,bogus_metric exits 2, stderr names
+    the unknown metric, stdout is empty."""
+    path = tmp_path / "cards.json"
+    path.write_text("[]")
+    exit_code = main([str(path), "--json", "--metrics", "superseded_count,bogus_metric"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "bogus_metric" in captured.err
+    assert captured.out == ""
+
+
+def test_markdown_summary_includes_superseded_line(tmp_path, capsys):
+    """AC7: --markdown shows '- **Superseded**: N' positioned between the Blocked line
+    and the Current Sprint heading in the Crew Performance Summary section."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    lines = captured.out.splitlines()
+    blocked_idx = lines.index("- **Blocked**: 0")
+    superseded_idx = lines.index("- **Superseded**: 1")
+    assert superseded_idx == blocked_idx + 1
+    remaining = lines[superseded_idx + 1 :]
+    next_nonblank = next(line for line in remaining if line.strip())
+    assert next_nonblank == "## Current Sprint"
+
+
+def test_json_superseded_card_excluded_from_throughput_cycle_points(tmp_path, capsys):
+    """AC8: A card with superseded=true contributes 0 to throughput, cycle_time_days,
+    and points_delivered, while contributing its points to superseded_points and
+    its reason to superseded_breakdown."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["throughput"] == 0
+    assert data["cycle_time_days"] == 0
+    assert data["points_delivered"] == 0
+    assert data["superseded_count"] == 1
+    assert data["superseded_points"] == 3
+    assert data["superseded_breakdown"] == {"sponsor": 0, "story_problem": 1}

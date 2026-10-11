@@ -16,6 +16,9 @@ from sprint_metrics.metrics import (
     calculate_first_attempt_counts,
     calculate_first_attempt_rate,
     calculate_points_delivered,
+    calculate_superseded_breakdown,
+    calculate_superseded_count,
+    calculate_superseded_points,
     calculate_throughput,
     calculate_top_failure_causes,
     calculate_wip_violations,
@@ -158,12 +161,14 @@ def _summary_counts(cards: Sequence[Card]) -> tuple[int, int, int]:
 def _summary_section(cards: Sequence[Card]) -> list[str]:
     """The standup-ready summary of how much work stands in each state."""
     completed, in_progress, blocked = _summary_counts(cards)
+    superseded = sum(1 for card in cards if card.superseded)
     return [
         "## Crew Performance Summary",
         "",
         f"- **Completed**: {completed}",
         f"- **In progress**: {in_progress}",
         f"- **Blocked**: {blocked}",
+        f"- **Superseded**: {superseded}",
     ]
 
 
@@ -529,6 +534,9 @@ def format_json_report(
     first_attempt_num, first_attempt_den = calculate_first_attempt_counts(parsed)
     failure_breakdown = calculate_failure_breakdown(parsed)
     top_causes = calculate_top_failure_causes(parsed)
+    superseded_count = calculate_superseded_count(parsed)
+    superseded_points = calculate_superseded_points(parsed)
+    superseded_breakdown = calculate_superseded_breakdown(parsed)
     flags = calculate_flags(parsed, wip_limits, escalations, as_of, thresholds)
 
     all_metric_values: dict[str, object] = {
@@ -546,6 +554,9 @@ def format_json_report(
         "failure_breakdown": [
             {"class": cls, "role": role, "count": count} for cls, role, count in failure_breakdown
         ],
+        "superseded_count": superseded_count,
+        "superseded_points": superseded_points,
+        "superseded_breakdown": superseded_breakdown,
     }
     if metrics is not None:
         metric_values = {k: v for k, v in all_metric_values.items() if k in metrics}
@@ -572,6 +583,9 @@ def format_json_report(
         prior_escalation = calculate_escalation_rate(prior_parsed, escalations)
         prior_first_attempt = calculate_first_attempt_rate(prior_parsed)
         prior_top_causes = calculate_top_failure_causes(prior_parsed)
+        prior_superseded_count = calculate_superseded_count(prior_parsed)
+        prior_superseded_points = calculate_superseded_points(prior_parsed)
+        prior_superseded_breakdown = calculate_superseded_breakdown(prior_parsed)
         report["prior"] = {
             "cycle_time_days": prior_cycle,
             "lead_time_days": prior_lead,
@@ -581,6 +595,9 @@ def format_json_report(
             "escalation_rate_percent": prior_escalation,
             "first_attempt_rate_percent": prior_first_attempt,
             "top_failure_causes": prior_top_causes,
+            "superseded_count": prior_superseded_count,
+            "superseded_points": prior_superseded_points,
+            "superseded_breakdown": prior_superseded_breakdown,
         }
         report["delta"] = {
             "cycle_time_days": cycle_time - prior_cycle,
@@ -590,6 +607,10 @@ def format_json_report(
             "blocked_aging_days": blocked_aging - prior_blocked,
             "escalation_rate_percent": escalation_rate - prior_escalation,
             "first_attempt_rate_percent": first_attempt_rate - prior_first_attempt,
+            "superseded_count": superseded_count - prior_superseded_count,
+            "superseded_points": superseded_points - prior_superseded_points,
+            "superseded_breakdown": sum(superseded_breakdown.values())
+            - sum(prior_superseded_breakdown.values()),
         }
 
     return json.dumps(report)
@@ -647,6 +668,9 @@ _METRIC_COLUMNS: dict[str, str] = {
     "first_attempt_numerator": "First-attempt numerator",
     "first_attempt_denominator": "First-attempt denominator",
     "failure_breakdown": "Top causes",
+    "superseded_count": "Superseded count",
+    "superseded_points": "Superseded points",
+    "superseded_breakdown": "Superseded breakdown",
 }
 
 
@@ -902,6 +926,9 @@ _DEFINITIONS: dict[str, str] = {
     "first_attempt_numerator": "Count of completed cards whose attempts equals 1",
     "first_attempt_denominator": "Total count of completed cards",
     "failure_breakdown": "Most frequent failure classes among completed cards with attempts greater than 1",
+    "superseded_count": "Number of superseded stories in the sprint",
+    "superseded_points": "Sum of points on superseded stories",
+    "superseded_breakdown": "Per-reason count of superseded stories (sponsor, story_problem)",
 }
 
 

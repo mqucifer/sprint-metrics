@@ -13,6 +13,8 @@ METRIC_KEYS = [
     "first_attempt_numerator",
     "first_attempt_denominator",
     "escalation_count",
+    "superseded_count",
+    "superseded_points",
 ]
 
 SINGLE_SPRINT_SCHEMA: dict[str, object] = {
@@ -24,6 +26,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         "first_attempt_rate_percent",
         "failure_breakdown",
         "top_failure_causes",
+        "superseded_breakdown",
         "flags",
     ],
     "properties": {
@@ -52,6 +55,9 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
             },
         },
         "top_failure_causes": {"type": ["array", "object", "null"]},
+        "superseded_count": {"type": ["integer", "null"]},
+        "superseded_points": {"type": ["integer", "null"]},
+        "superseded_breakdown": {"type": ["object", "null"]},
         "flags": {"type": ["object", "null"]},
         "sprint_date": {"type": "string"},
         "prior": {
@@ -60,6 +66,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
                 **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
                 "first_attempt_rate_percent": {"type": ["integer", "null"]},
                 "top_failure_causes": {"type": ["object", "null"]},
+                "superseded_breakdown": {"type": ["object", "null"]},
             },
         },
         "delta": {
@@ -67,6 +74,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
             "properties": {
                 **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
                 "first_attempt_rate_percent": {"type": ["integer", "null"]},
+                "superseded_breakdown": {"type": ["integer", "null"]},
             },
         },
     },
@@ -87,6 +95,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     "first_attempt_rate_percent",
                     "failure_breakdown",
                     "top_failure_causes",
+                    "superseded_breakdown",
                     "flags",
                     "prior",
                     "delta",
@@ -96,12 +105,14 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     "first_attempt_rate_percent": {"type": ["integer", "null"]},
                     "failure_breakdown": {"type": ["array", "null"]},
                     "top_failure_causes": {"type": ["object", "null"]},
+                    "superseded_breakdown": {"type": ["object", "null"]},
                     "flags": {"type": ["object", "null"]},
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {
                             **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
                             "first_attempt_rate_percent": {"type": ["integer", "null"]},
+                            "superseded_breakdown": {"type": ["object", "null"]},
                         },
                     },
                     "delta": {
@@ -109,6 +120,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         "properties": {
                             **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
                             "first_attempt_rate_percent": {"type": ["integer", "null"]},
+                            "superseded_breakdown": {"type": ["integer", "null"]},
                         },
                     },
                 },
