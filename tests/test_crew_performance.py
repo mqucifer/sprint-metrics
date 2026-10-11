@@ -15,7 +15,6 @@ from sprint_metrics import (
 )
 
 HEADER = "| Sprint | Cycle time | Lead time | Throughput | Superseded | WIP violations | Blocked aging | Escalation rate | First attempt | Top causes |"
-SEPARATOR = "|--------|------------|-----------|------------|----------------|---------------|"
 SEPARATOR = "|--------|------------|-----------|------------|------------|----------------|---------------|-----------------|---------------|------------|"
 
 # A card completed on the 7th, started 4 days earlier and created 6 days earlier.
