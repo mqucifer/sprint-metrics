@@ -24,6 +24,8 @@ class Card:
     failure_class: str | None = None
     failure_role: str | None = None
     points: int | None = None
+    superseded: bool = False
+    superseded_because: str | None = None
 
     @property
     def is_completed(self) -> bool:
@@ -70,6 +72,17 @@ def parse_card(raw: Mapping[str, object]) -> Card:
     points = raw.get("points")
     if points is not None:
         points = int(points)
+    superseded = raw.get("superseded") is True
+    superseded_because: str | None = None
+    if superseded:
+        reason = raw.get("superseded_because")
+        if reason is None:
+            raise ValueError("superseded_because is required when superseded is true")
+        if reason not in ("sponsor", "story_problem"):
+            raise ValueError(
+                f"superseded_because must be 'sponsor' or 'story_problem', got {reason!r}"
+            )
+        superseded_because = reason
     return Card(
         created=created,
         started=_parse_date(raw.get("started"), "started"),
@@ -79,6 +92,8 @@ def parse_card(raw: Mapping[str, object]) -> Card:
         failure_class=raw.get("failure_class"),
         failure_role=raw.get("failure_role"),
         points=points,
+        superseded=superseded,
+        superseded_because=superseded_because,
     )
 
 

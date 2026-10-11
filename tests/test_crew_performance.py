@@ -2643,3 +2643,55 @@ def test_json_metrics_points_delivered_and_throughput_filtered(tmp_path, capsys)
     assert "first_attempt_numerator" not in data
     assert "first_attempt_denominator" not in data
     assert "escalation_count" not in data
+
+
+def test_markdown_card_detail_shows_superseded_state(run_command):
+    """AC6 (UX): a superseded card shows 'Superseded' in the State column of the
+    Card Detail table, and a completed card shows 'Done'."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-05",
+        },
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
+
+    assert exit_code == 0
+    lines = output.splitlines()
+    detail_idx = lines.index("## Card Detail")
+    data_lines = [
+        line
+        for line in lines[detail_idx + 4 :]
+        if line.startswith("|") and not line.startswith("|-")
+    ]
+    assert len(data_lines) == 2
+    # The 5th column is State; split by '|' gives index 5 (0-based after the leading empty)
+    superseded_row = [line for line in data_lines if "| Superseded |" in line]
+    done_row = [line for line in data_lines if "| Done |" in line]
+    assert len(superseded_row) == 1
+    assert len(done_row) == 1
+
+
+def test_command_rejects_invalid_superseded_because(run_command):
+    """AC7 (UX): a card with an invalid superseded_because causes exit code 2,
+    stderr contains the bad value, and stdout is empty."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "superseded": True,
+            "superseded_because": "frobnicated",
+        },
+    ]
+    exit_code, output, errors = run_command(cards)
+
+    assert exit_code == 2
+    assert "frobnicated" in errors
+    assert output == ""

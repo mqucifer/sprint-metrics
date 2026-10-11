@@ -161,3 +161,51 @@ def test_parse_card_reads_points():
     assert card.points == 5
     card_no_points = parse_card({"created": "2024-01-01", "attempts": 1})
     assert card_no_points.points is None
+
+
+def test_parse_card_superseded_sponsor():
+    """AC1: a card with superseded true and superseded_because 'sponsor' parses with both fields set."""
+    raw = {
+        "created": "2024-01-01",
+        "superseded": True,
+        "superseded_because": "sponsor",
+        "points": 5,
+    }
+    card = parse_card(raw)
+    assert card.superseded is True
+    assert card.superseded_because == "sponsor"
+    assert card.points == 5
+
+
+def test_parse_card_superseded_story_problem():
+    """AC2: a card with superseded true and superseded_because 'story_problem' parses correctly."""
+    raw = {
+        "created": "2024-01-01",
+        "superseded": True,
+        "superseded_because": "story_problem",
+    }
+    card = parse_card(raw)
+    assert card.superseded is True
+    assert card.superseded_because == "story_problem"
+
+
+def test_parse_card_no_superseded_defaults():
+    """AC3: a card without the superseded field gets superseded False and superseded_because None."""
+    raw = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
+    card = parse_card(raw)
+    assert card.superseded is False
+    assert card.superseded_because is None
+
+
+def test_parse_card_superseded_missing_because():
+    """AC4: a card with superseded true but no superseded_because raises ValueError naming the field."""
+    raw = {"created": "2024-01-01", "superseded": True}
+    with pytest.raises(ValueError, match="superseded_because"):
+        parse_card(raw)
+
+
+def test_parse_card_superseded_invalid_because():
+    """AC5: a card with superseded true and an invalid superseded_because raises ValueError naming the value."""
+    raw = {"created": "2024-01-01", "superseded": True, "superseded_because": "frobnicated"}
+    with pytest.raises(ValueError, match="frobnicated"):
+        parse_card(raw)

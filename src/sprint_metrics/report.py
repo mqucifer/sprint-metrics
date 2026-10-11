@@ -918,6 +918,8 @@ def _definitions_section(metrics: frozenset[str] | None = None) -> list[str]:
 
 def _card_state(card: Card) -> str:
     """The display state for a card in the Card Detail table."""
+    if card.superseded:
+        return "Superseded"
     if card.is_completed:
         return "Done"
     if card.blocked_since is not None:
