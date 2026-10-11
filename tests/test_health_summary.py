@@ -318,3 +318,124 @@ def test_attention_line_shows_duration_without_sprint_date(tmp_path, capsys):
     assert exit_code == 0
     attention_line = next(line for line in output.splitlines() if line.startswith("Attention:"))
     assert " days)" in attention_line
+
+
+def test_superseded_card_excluded_from_in_progress_count(tmp_path, capsys):
+    """AC1: a superseded card with a started date is not counted as in-progress in
+    the Crew Performance Summary."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2024-01-01", "started": "2024-01-04"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-05",
+            "superseded": True,
+            "superseded_because": "sponsor",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "- **Completed**: 1" in output
+    assert "- **In progress**: 1" in output
+    assert "- **Blocked**: 0" in output
+
+
+def test_superseded_blocked_card_excluded_from_count_and_duration(tmp_path, capsys):
+    """AC2: a superseded card with blocked_since is not counted as blocked and
+    does not inflate the Attention line's duration."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "blocked_since": "2024-01-05",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "blocked_since": "2024-01-04",
+            "superseded": True,
+            "superseded_because": "story_problem",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-06"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "- **Blocked**: 1" in output
+    lines = output.splitlines()
+    attention_line = next(line for line in lines if line.startswith("Attention:"))
+    assert attention_line == "Attention: 1 blocked (1 days), 0 in progress"
+
+
+def test_only_superseded_card_shows_zeros_and_no_attention(tmp_path, capsys):
+    """AC3: a sprint with only a superseded card shows Completed: 0, In progress:
+    0, Blocked: 0, and no Attention line."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "superseded": True,
+            "superseded_because": "sponsor",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "- **Completed**: 0" in output
+    assert "- **In progress**: 0" in output
+    assert "- **Blocked**: 0" in output
+    assert "Attention:" not in output
+
+
+def test_superseded_card_not_counted_among_five_cards(tmp_path, capsys):
+    """AC7: with two completed, two in-progress, and one superseded card, the
+    summary shows Completed: 2, In progress: 2, Blocked: 0."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-03"},
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-04"},
+        {"created": "2024-01-01", "started": "2024-01-04"},
+        {"created": "2024-01-01", "started": "2024-01-05"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-04",
+            "superseded": True,
+            "superseded_because": "sponsor",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "- **Completed**: 2" in output
+    assert "- **In progress**: 2" in output
+    assert "- **Blocked**: 0" in output
+
+
+def test_superseded_blocked_since_does_not_contribute_to_attention(tmp_path, capsys):
+    """AC8: a superseded card with blocked_since does not add a blocked count or
+    a duration to the Attention line."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-04"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-04",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "blocked_since": "2024-01-05",
+        },
+    ]
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps(cards))
+    exit_code = main([str(cards_path), "--markdown", "--sprint-date", "2024-01-07"])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    lines = output.splitlines()
+    attention_line = next(line for line in lines if line.startswith("Attention:"))
+    assert attention_line == "Attention: 0 blocked, 1 in progress"

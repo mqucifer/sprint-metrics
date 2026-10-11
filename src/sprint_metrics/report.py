@@ -139,10 +139,13 @@ def _summary_counts(cards: Sequence[Card]) -> tuple[int, int, int]:
 
     The three states are exclusive, so every card is counted once: completing a
     card settles it whatever else happened to it on the way, and a card held up
-    is reported as blocked rather than as still in progress.
+    is reported as blocked rather than as still in progress. Superseded cards
+    are excluded from all three counts.
     """
     completed = in_progress = blocked = 0
     for card in cards:
+        if card.superseded:
+            continue
         if card.is_completed:
             completed += 1
         elif card.blocked_since is not None:
@@ -866,8 +869,9 @@ def _attention_line(cards: Sequence[Card], as_of: date | None) -> str | None:
     """The 'Attention:' line naming blocked and in-progress card counts.
 
     Returns None when no card is blocked or in progress. The duration shown is
-    the longest block duration among blocked cards. When ``as_of`` is None the
-    reference date is today, matching the Blocked aging metric.
+    the longest block duration among blocked cards (superseded cards excluded).
+    When ``as_of`` is None the reference date is today, matching the Blocked
+    aging metric.
     """
     _, in_progress, blocked = _summary_counts(cards)
     if blocked == 0 and in_progress == 0:
@@ -878,7 +882,7 @@ def _attention_line(cards: Sequence[Card], as_of: date | None) -> str | None:
         durations = [
             (reference - card.blocked_since).days
             for card in cards
-            if card.blocked_since is not None and not card.is_completed
+            if card.blocked_since is not None and not card.is_completed and not card.superseded
         ]
         if durations:
             duration = f" ({max(durations)} days)"
