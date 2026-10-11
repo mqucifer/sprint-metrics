@@ -44,7 +44,7 @@ Long-lived HTTP service that accepts board events and answers sprint, range, and
 | Method | Path | Description |
 |---|---|---|
 | POST | /sprints | Register a sprint definition (name, start_date, end_date, timezone) |
-| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed) |
+| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded) |
 | GET | /sprint | Query a single sprint's metrics |
 | GET | /range | Query a range of sprints |
 | GET | /trend | Return a time series for a single metric across an inclusive sprint range as a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs (params: metric, start, end); sprints with no stored events return the metric's zero value. Metric names: cycle_time_days, lead_time_days, throughput, wip_violations, blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, failure_breakdown, points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count |

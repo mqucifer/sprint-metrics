@@ -49,7 +49,8 @@ def test_single_sprint_schema_required_and_cycle_time(tmp_path):
 
 
 def test_event_intake_schema_type_enum_and_required(tmp_path):
-    """AC3: event-intake.json type enum has 6 values in order and required has 6 entries."""
+    """AC3: event-intake.json type enum has 7 values in order, and the schema declares
+    because (string enum), epic (string), and replaced_by (array of integers, nullable)."""
     _generate_schema_files(tmp_path)
     data = json.loads((tmp_path / "event-intake.json").read_text())
 
@@ -60,9 +61,17 @@ def test_event_intake_schema_type_enum_and_required(tmp_path):
         "finished",
         "escalated",
         "attempt_failed",
+        "superseded",
     ]
     for key in ("api_version", "card_id", "type", "timestamp", "sprint", "card"):
         assert key in data["required"]
+
+    assert data["properties"]["because"] == {"type": "string", "enum": ["sponsor", "story_problem"]}
+    assert data["properties"]["epic"] == {"type": "string"}
+    assert data["properties"]["replaced_by"] == {
+        "type": ["array", "null"],
+        "items": {"type": "integer"},
+    }
 
 
 def test_no_schema_file_contains_ref(tmp_path):

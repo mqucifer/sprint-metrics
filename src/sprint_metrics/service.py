@@ -46,7 +46,7 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 
 VALID_EVENT_TYPES = frozenset(
-    {"started", "blocked", "unblocked", "finished", "escalated", "attempt_failed"}
+    {"started", "blocked", "unblocked", "finished", "escalated", "attempt_failed", "superseded"}
 )
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
 
@@ -591,7 +591,7 @@ SERVICE_ENDPOINTS = (
     (
         "POST",
         "/events",
-        "Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed)",
+        "Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded)",
     ),
     ("GET", "/sprint", "Query a single sprint's metrics"),
     ("GET", "/range", "Query a range of sprints"),

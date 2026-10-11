@@ -1141,7 +1141,7 @@ def test_schema_event_get_returns_200_json_schema():
 @requires_db
 def test_schema_event_card_and_type_constraints():
     """AC2: schema's properties include a card object whose required includes 'created',
-    and the schema constrains type to the six accepted values."""
+    and the schema constrains type to the seven accepted values."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1161,6 +1161,7 @@ def test_schema_event_card_and_type_constraints():
             "finished",
             "escalated",
             "attempt_failed",
+            "superseded",
         }
     finally:
         conn.close()
@@ -1216,8 +1217,8 @@ def test_schema_event_top_level_structure():
 
 @requires_db
 def test_schema_event_type_enum_exact():
-    """AC3+UX4: properties.type.enum is an array of exactly six strings in order:
-    started, blocked, unblocked, finished, escalated, attempt_failed."""
+    """AC3+UX4: properties.type.enum is an array of exactly seven strings in order:
+    started, blocked, unblocked, finished, escalated, attempt_failed, superseded."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1234,6 +1235,7 @@ def test_schema_event_type_enum_exact():
             "finished",
             "escalated",
             "attempt_failed",
+            "superseded",
         ]
     finally:
         conn.close()
@@ -4699,5 +4701,78 @@ def test_trend_escalation_count_zero_fill():
         assert len(body["values"]) == 2
         assert body["values"][0] == {"sprint": "2024-01", "value": 0}
         assert body["values"][1] == {"sprint": "2024-02", "value": 1}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_superseded_stores_full_metadata():
+    """AC1: POST /events with type='superseded' stores because, epic, and replaced_by."""
+    import json as json_mod
+
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c9'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c9",
+            "type": "superseded",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01", "points": 5},
+            "because": "sponsor",
+            "epic": "Fix auth flow",
+            "replaced_by": [480, 481],
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT because, epic, replaced_by FROM sprint_metrics.board_events "
+            "WHERE card_id = 'c9' AND type = 'superseded'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "sponsor"
+        assert rows[0][1] == "Fix auth flow"
+        replaced = rows[0][2]
+        if isinstance(replaced, str):
+            replaced = json_mod.loads(replaced)
+        assert replaced == [480, 481]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_superseded_invalid_because_returns_400():
+    """AC3: POST /events with type='superseded' and because='invalid_reason' returns 400
+    with an error naming the invalid value."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c9",
+            "type": "superseded",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "because": "invalid_reason",
+            "epic": "Fix auth flow",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert "invalid_reason" in body["error"]
     finally:
         conn.close()

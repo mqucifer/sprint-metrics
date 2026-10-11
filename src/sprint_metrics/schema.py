@@ -134,6 +134,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "finished",
                 "escalated",
                 "attempt_failed",
+                "superseded",
             ],
         },
         "timestamp": {"type": "string", "format": "date-time"},
@@ -152,6 +153,9 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "attempt_number": {"type": "integer"},
         "failure_class": {"type": "string"},
         "failure_role": {"type": "string"},
+        "because": {"type": "string", "enum": ["sponsor", "story_problem"]},
+        "epic": {"type": "string"},
+        "replaced_by": {"type": ["array", "null"], "items": {"type": "integer"}},
     },
 }
 

@@ -6,6 +6,7 @@ The connection string is read from SPRINT_METRICS_DB.
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -27,16 +28,29 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     failure_role TEXT,
     attempt_number INT,
     points INT,
+    because TEXT,
+    epic TEXT,
+    replaced_by JSONB,
     PRIMARY KEY (card_id, type, event_time),
     CONSTRAINT board_events_type_check CHECK (
-        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed')
+        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+    ),
+    CONSTRAINT board_events_because_check CHECK (
+        because IS NULL OR because IN ('sponsor', 'story_problem')
     )
 );
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS attempt_number INT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS points INT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS because TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS epic TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS replaced_by JSONB;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
-    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed')
+    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+);
+ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_because_check;
+ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_because_check CHECK (
+    because IS NULL OR because IN ('sponsor', 'story_problem')
 );
 CREATE TABLE IF NOT EXISTS sprint_metrics.sprints (
     name TEXT PRIMARY KEY,
@@ -61,11 +75,13 @@ def insert_event(conn: Connection, event: dict) -> None:
     points (stored on every event row that carries it; NULL when absent).
     Optional top-level fields: attempt_number, failure_class, failure_role
     (stored only on 'attempt_failed' rows).
+    Optional top-level fields: because, epic, replaced_by (stored only on 'superseded' rows).
     """
     card = event.get("card", {})
     event_type = event["type"]
     is_finished = event_type == "finished"
     is_attempt_failed = event_type == "attempt_failed"
+    is_superseded = event_type == "superseded"
 
     if is_finished:
         ev_failure_class = card.get("failure_class")
@@ -80,12 +96,19 @@ def insert_event(conn: Connection, event: dict) -> None:
         ev_failure_role = None
         ev_attempt_number = None
 
+    ev_because = event.get("because") if is_superseded else None
+    ev_epic = event.get("epic") if is_superseded else None
+    ev_replaced_by = (
+        json.dumps(event["replaced_by"]) if is_superseded and "replaced_by" in event else None
+    )
+
     conn.execute(
         """
         INSERT INTO sprint_metrics.board_events
             (card_id, type, event_time, sprint, card_created,
-             attempts, failure_class, failure_role, attempt_number, points)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             attempts, failure_class, failure_role, attempt_number, points,
+             because, epic, replaced_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO NOTHING
         """,
         (
@@ -99,6 +122,9 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_failure_role,
             ev_attempt_number,
             card.get("points"),
+            ev_because,
+            ev_epic,
+            ev_replaced_by,
         ),
     )
     conn.commit()
