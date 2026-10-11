@@ -1373,3 +1373,190 @@ def test_sprint_range_json_metrics_filter_new_fields(tmp_path, capsys):
         assert "first_attempt_numerator" not in entry
         assert "first_attempt_denominator" not in entry
         assert "escalation_count" not in entry
+
+
+def test_sprint_range_json_superseded_count_points_breakdown_per_sprint(tmp_path, capsys):
+    """AC1: a sprints file with one superseded card in 2024-01 and one completed card
+    in 2024-02 produces superseded_count, superseded_points, and
+    superseded_breakdown per sprint in the JSON output."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-02",
+                "superseded": True,
+                "superseded_because": "sponsor",
+                "points": 5,
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-01",
+                "started": "2024-02-02",
+                "completed": "2024-02-05",
+                "points": 3,
+            }
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["superseded_count"] == 1
+    assert data["sprints"]["2024-01"]["superseded_points"] == 5
+    assert data["sprints"]["2024-01"]["superseded_breakdown"] == {"sponsor": 1, "story_problem": 0}
+    assert data["sprints"]["2024-02"]["superseded_count"] == 0
+
+
+def test_sprint_range_json_superseded_prior_and_delta(tmp_path, capsys):
+    """AC2: prior is null for the first sprint; the second sprint's prior and delta
+    carry the superseded metrics from the first sprint."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-02",
+                "superseded": True,
+                "superseded_because": "sponsor",
+                "points": 5,
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-01",
+                "started": "2024-02-02",
+                "completed": "2024-02-05",
+                "points": 3,
+            }
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["prior"] is None
+    assert data["sprints"]["2024-01"]["delta"] is None
+    assert data["sprints"]["2024-02"]["prior"]["superseded_count"] == 1
+    assert data["sprints"]["2024-02"]["delta"]["superseded_count"] == -1
+
+
+def test_sprint_range_json_superseded_empty_sprints_zero(tmp_path, capsys):
+    """AC3: both sprints empty, superseded metrics are integer zero."""
+    sprints = {"2024-01": [], "2024-02": []}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    for label in ("2024-01", "2024-02"):
+        assert data["sprints"][label]["superseded_count"] == 0
+        assert data["sprints"][label]["superseded_points"] == 0
+        assert data["sprints"][label]["superseded_breakdown"] == {"sponsor": 0, "story_problem": 0}
+
+
+def test_sprint_range_schema_includes_superseded_metrics(capsys):
+    """AC4: --schema --sprint-range --json emits a schema whose per-sprint, prior, and
+    delta properties include superseded_count, superseded_points, and
+    superseded_breakdown."""
+    exit_code = main(["--schema", "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    sprint_schema = schema["properties"]["sprints"]["additionalProperties"]
+    # Per-sprint properties
+    assert "superseded_count" in sprint_schema["properties"]
+    assert "integer" in sprint_schema["properties"]["superseded_count"]["type"]
+    assert "superseded_points" in sprint_schema["properties"]
+    assert "integer" in sprint_schema["properties"]["superseded_points"]["type"]
+    assert "superseded_breakdown" in sprint_schema["properties"]
+    assert "object" in sprint_schema["properties"]["superseded_breakdown"]["type"]
+    # Prior properties
+    prior_props = sprint_schema["properties"]["prior"]["properties"]
+    assert "superseded_count" in prior_props
+    assert "superseded_points" in prior_props
+    assert "superseded_breakdown" in prior_props
+    # Delta properties
+    delta_props = sprint_schema["properties"]["delta"]["properties"]
+    assert "superseded_count" in delta_props
+    assert "superseded_points" in delta_props
+    assert "superseded_breakdown" in delta_props
+
+
+def test_sprint_range_json_superseded_breakdown_and_delta_points(tmp_path, capsys):
+    """AC5: superseded_breakdown per sprint, prior breakdown, and delta superseded_points
+    reflect two superseded cards with different reasons and points."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "superseded": True,
+                "superseded_because": "sponsor",
+                "points": 5,
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-01",
+                "superseded": True,
+                "superseded_because": "story_problem",
+                "points": 3,
+            }
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["superseded_breakdown"] == {"sponsor": 1, "story_problem": 0}
+    assert data["sprints"]["2024-02"]["superseded_breakdown"] == {"sponsor": 0, "story_problem": 1}
+    assert data["sprints"]["2024-02"]["prior"]["superseded_breakdown"] == {
+        "sponsor": 1,
+        "story_problem": 0,
+    }
+    assert data["sprints"]["2024-02"]["delta"]["superseded_points"] == -2
+
+
+def test_sprint_range_json_superseded_excluded_from_throughput(tmp_path, capsys):
+    """AC6: a superseded card does not count toward throughput; delta reflects
+    the change in both superseded_count and throughput."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "superseded": True,
+                "superseded_because": "sponsor",
+                "points": 5,
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-01",
+                "started": "2024-02-02",
+                "completed": "2024-02-05",
+                "points": 3,
+            }
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["throughput"] == 0
+    assert data["sprints"]["2024-02"]["throughput"] == 1
+    assert data["sprints"]["2024-02"]["delta"]["superseded_count"] == -1
+    assert data["sprints"]["2024-02"]["delta"]["throughput"] == 1
