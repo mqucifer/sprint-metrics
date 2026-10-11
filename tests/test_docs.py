@@ -181,7 +181,7 @@ def test_worked_example_output_matches_doc(tmp_path, capsys):
 
     assert exit_code == 0
     current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
-    assert current_row == "| Current | 5 days | 7 days | 1 | 0 | 4 days | 0% | 100% | \u2014 |"
+    assert current_row == "| Current | 5 days | 7 days | 1 | 0 | 0 | 4 days | 0% | 100% | \u2014 |"
 
 
 def test_input_format_example_produces_valid_table(tmp_path, capsys):
@@ -528,7 +528,7 @@ def test_formats_worked_example_table_output(tmp_path, capsys):
     current_rows = [line for line in lines if line.startswith("| Current |")]
     assert len(current_rows) == 1, f"expected exactly one Current row, got {len(current_rows)}"
     cells = [c.strip() for c in current_rows[0].split("|") if c.strip()]
-    assert cells == ["Current", "4 days", "6 days", "1", "0", "0 days", "0%", "100%", "\u2014"]
+    assert cells == ["Current", "4 days", "6 days", "1", "0", "0", "0 days", "0%", "100%", "\u2014"]
 
 
 def test_formats_worked_example_json_output(tmp_path, capsys):

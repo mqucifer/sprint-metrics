@@ -17,7 +17,7 @@ def test_main_from_cli_module_reports_completed_card(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
 
 
 def test_main_from_cli_module_rejects_invalid_json(tmp_path, capsys):

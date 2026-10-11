@@ -102,7 +102,7 @@ def test_table_flags_cycle_time_when_threshold_breached(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 7 days ⚠️ | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Current | 7 days ⚠️ | 7 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
     assert captured.out.count("⚠️") == 1
 
 
@@ -116,7 +116,7 @@ def test_table_has_no_flags_without_thresholds_flag(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 7 days | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Current | 7 days | 7 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
     assert "⚠️" not in captured.out
 
 
@@ -133,7 +133,7 @@ def test_table_does_not_flag_cycle_time_when_meeting_threshold_exactly(tmp_path,
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 5 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Current | 5 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
     assert "⚠️" not in captured.out
 
 
@@ -154,9 +154,9 @@ def test_table_flags_only_current_row_with_prior(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 7 days ⚠️ | 7 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert "| Prior | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert "| Delta | +3 days | +1 days | 0 | 0 | 0 days | 0% |" in captured.out
+    assert "| Current | 7 days ⚠️ | 7 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
+    assert "| Prior | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
+    assert "| Delta | +3 days | +1 days | 0 | 0 | 0 | 0 days | 0% |" in captured.out
     assert captured.out.count("⚠️") == 1
 
 

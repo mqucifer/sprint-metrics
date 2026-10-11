@@ -386,9 +386,9 @@ sprint-metrics cards.json
 ```
 
 ```
-| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First attempt | Top causes |
-|--------|------------|-----------|------------|----------------|---------------|-----------------|---------------|------------|
-| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | — |
+| Sprint | Cycle time | Lead time | Throughput | Superseded | WIP violations | Blocked aging | Escalation rate | First attempt | Top causes |
+|--------|------------|-----------|------------|------------|----------------|---------------|-----------------|---------------|------------|
+| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | — |
 ```
 
 ### JSON
@@ -428,6 +428,7 @@ Status: All clear
 - **Cycle time**: 4 days
 - **Lead time**: 6 days
 - **Throughput**: 1 cards
+- **Superseded stories**: 0 (0 pts)
 - **WIP violations**: 0
 - **Blocked aging**: 0 days
 - **Escalation rate**: 0%

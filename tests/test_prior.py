@@ -20,8 +20,8 @@ def test_prior_flag_shows_prior_row_in_default_table(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
-    assert "| Prior | 6 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
+    assert "| Prior | 6 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
     assert captured.out.index("| Current |") < captured.out.index("| Prior |")
 
 
@@ -67,7 +67,7 @@ def test_prior_flag_shows_delta_row_with_signed_changes(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Delta | -2 days | 0 days | 0 | 0 | 0 days | 0% |" in captured.out
+    assert "| Delta | -2 days | 0 days | 0 | 0 | 0 | 0 days | 0% |" in captured.out
     assert captured.out.index("| Current |") < captured.out.index("| Prior |")
     assert captured.out.index("| Prior |") < captured.out.index("| Delta |")
 
@@ -85,7 +85,7 @@ def test_prior_flag_shows_delta_row_throughput_increase(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Delta | -2 days | 0 days | +2 | 0 | 0 days | 0% |" in captured.out
+    assert "| Delta | -2 days | 0 days | +2 | 0 | 0 | 0 days | 0% |" in captured.out
 
 
 def test_prior_flag_shows_delta_row_with_empty_prior(tmp_path, capsys):
@@ -102,4 +102,4 @@ def test_prior_flag_shows_delta_row_with_empty_prior(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Delta | +4 days | +6 days | +1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Delta | +4 days | +6 days | +1 | 0 | 0 | 0 days | 0% |" in captured.out

@@ -54,6 +54,8 @@ def format_performance_table(
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     points_delivered = calculate_points_delivered(cards)
+    superseded_count = calculate_superseded_count(cards)
+    superseded_points = calculate_superseded_points(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
@@ -71,11 +73,17 @@ def format_performance_table(
     header_row = "| " + " | ".join(headers) + " |"
     separator_row = "|" + "|".join("-" * (len(h) + 2) for h in headers) + "|"
 
+    def _superseded_cell(count: int, pts: int) -> str:
+        if count > 0:
+            return f"{count} ({pts} pts)"
+        return "0"
+
     current_cells: dict[str, str] = {
         "cycle_time_days": f"{cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')}",
         "lead_time_days": f"{lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')}",
         "throughput": f"{throughput}{_flag(throughput, thresholds, 'throughput')}",
         "points_delivered": f"{points_delivered}",
+        "superseded_count": _superseded_cell(superseded_count, superseded_points),
         "wip_violations": f"{wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')}",
         "blocked_aging_days": f"{blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')}",
         "escalation_rate_percent": f"{escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')}",
@@ -93,6 +101,8 @@ def format_performance_table(
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
         prior_throughput = calculate_throughput(prior_cards)
         prior_points = calculate_points_delivered(prior_cards)
+        prior_superseded_count = calculate_superseded_count(prior_cards)
+        prior_superseded_points = calculate_superseded_points(prior_cards)
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
@@ -104,6 +114,7 @@ def format_performance_table(
             "lead_time_days": f"{prior_lead} days",
             "throughput": f"{prior_throughput}",
             "points_delivered": f"{prior_points}",
+            "superseded_count": _superseded_cell(prior_superseded_count, prior_superseded_points),
             "wip_violations": f"{prior_wip}",
             "blocked_aging_days": f"{prior_blocked} days",
             "escalation_rate_percent": f"{prior_escalation}%",
@@ -120,6 +131,7 @@ def format_performance_table(
             "lead_time_days": f"{_signed(lead_time - prior_lead)} days",
             "throughput": f"{_signed(throughput - prior_throughput)}",
             "points_delivered": f"{_signed(points_delivered - prior_points)}",
+            "superseded_count": f"{_signed(superseded_count - prior_superseded_count)}",
             "wip_violations": f"{_signed(wip_violations - prior_wip)}",
             "blocked_aging_days": f"{_signed(blocked_aging - prior_blocked)} days",
             "escalation_rate_percent": f"{_signed(escalation_rate - prior_escalation)}%",
@@ -203,6 +215,8 @@ def _sprint_section(
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     points_delivered = calculate_points_delivered(cards)
+    superseded_count = calculate_superseded_count(cards)
+    superseded_points = calculate_superseded_points(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
@@ -219,6 +233,8 @@ def _sprint_section(
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
         prior_throughput = calculate_throughput(prior_cards)
         prior_points = calculate_points_delivered(prior_cards)
+        prior_superseded_count = calculate_superseded_count(prior_cards)
+        prior_superseded_points = calculate_superseded_points(prior_cards)
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
@@ -247,6 +263,21 @@ def _sprint_section(
                     f"(was {prior_throughput}, {_signed(delta)})"
                     f"{_threshold_context(throughput, thresholds, 'throughput')}"
                 )
+            elif metric == "superseded_count":
+                delta = superseded_count - prior_superseded_count
+                lines.append(
+                    f"- **Superseded stories**: {superseded_count} ({superseded_points} pts) "
+                    f"{_trend_arrow(delta)} "
+                    f"(was {prior_superseded_count} ({prior_superseded_points} pts), {_signed(delta)})"
+                )
+                if superseded_count > 0:
+                    breakdown = calculate_superseded_breakdown(cards)
+                    segments = []
+                    if breakdown["sponsor"] > 0:
+                        segments.append(f"{breakdown['sponsor']} by sponsor request")
+                    if breakdown["story_problem"] > 0:
+                        segments.append(f"{breakdown['story_problem']} after story problem")
+                    lines.append("  - " + ", ".join(segments))
             elif metric == "points_delivered":
                 delta = points_delivered - prior_points
                 lines.append(
@@ -339,6 +370,16 @@ def _sprint_section(
             lines.append(
                 f"- **Throughput**: {throughput} cards{_threshold_context(throughput, thresholds, 'throughput')}"
             )
+        elif metric == "superseded_count":
+            lines.append(f"- **Superseded stories**: {superseded_count} ({superseded_points} pts)")
+            if superseded_count > 0:
+                breakdown = calculate_superseded_breakdown(cards)
+                segments = []
+                if breakdown["sponsor"] > 0:
+                    segments.append(f"{breakdown['sponsor']} by sponsor request")
+                if breakdown["story_problem"] > 0:
+                    segments.append(f"{breakdown['story_problem']} after story problem")
+                lines.append("  - " + ", ".join(segments))
         elif metric == "points_delivered":
             lines.append(f"- **Points delivered**: {points_delivered}")
         elif metric == "wip_violations":
@@ -632,12 +673,15 @@ def _prior_sprint_section(
         return ["No performance data available"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     first_attempt_rate = calculate_first_attempt_rate(cards)
+    superseded_count = calculate_superseded_count(cards)
+    superseded_points = calculate_superseded_points(cards)
     return [
         f"## Prior Sprint {label}",
         "",
         f"- **Cycle time**: {cycle_time} days",
         f"- **Lead time**: {lead_time} days",
         f"- **Throughput**: {calculate_throughput(cards)} cards",
+        f"- **Superseded stories**: {superseded_count} ({superseded_points} pts)",
         f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
         f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
         f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
@@ -668,7 +712,7 @@ _METRIC_COLUMNS: dict[str, str] = {
     "first_attempt_numerator": "First-attempt numerator",
     "first_attempt_denominator": "First-attempt denominator",
     "failure_breakdown": "Top causes",
-    "superseded_count": "Superseded count",
+    "superseded_count": "Superseded",
     "superseded_points": "Superseded points",
     "superseded_breakdown": "Superseded breakdown",
 }
@@ -678,6 +722,7 @@ _CANONICAL_ORDER: tuple[str, ...] = (
     "cycle_time_days",
     "lead_time_days",
     "throughput",
+    "superseded_count",
     "wip_violations",
     "blocked_aging_days",
     "escalation_rate_percent",
@@ -720,6 +765,7 @@ _HEALTH_DISPLAY: dict[str, str] = {
     "first_attempt_rate_percent": "First attempt rate",
     "first_attempt_numerator": "First-attempt numerator",
     "first_attempt_denominator": "First-attempt denominator",
+    "superseded_count": "Superseded",
 }
 
 _LOWER_IS_BETTER: frozenset[str] = frozenset(
@@ -730,6 +776,7 @@ _LOWER_IS_BETTER: frozenset[str] = frozenset(
         "blocked_aging_days",
         "escalation_rate_percent",
         "escalation_count",
+        "superseded_count",
     )
 )
 
@@ -821,6 +868,7 @@ def _changed_line(
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     points_delivered = calculate_points_delivered(cards)
+    superseded_count = calculate_superseded_count(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
@@ -830,6 +878,7 @@ def _changed_line(
     prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
     prior_throughput = calculate_throughput(prior_cards)
     prior_points = calculate_points_delivered(prior_cards)
+    prior_superseded_count = calculate_superseded_count(prior_cards)
     prior_wip = calculate_wip_violations(prior_cards, wip_limits)
     prior_blocked = calculate_blocked_aging(prior_cards, as_of)
     prior_escalation = calculate_escalation_rate(prior_cards, escalations)
@@ -841,6 +890,7 @@ def _changed_line(
         "lead_time_days": lead_time - prior_lead,
         "throughput": throughput - prior_throughput,
         "points_delivered": points_delivered - prior_points,
+        "superseded_count": superseded_count - prior_superseded_count,
         "wip_violations": wip_violations - prior_wip,
         "blocked_aging_days": blocked_aging - prior_blocked,
         "escalation_rate_percent": escalation_rate - prior_escalation,

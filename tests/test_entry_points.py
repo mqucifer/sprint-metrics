@@ -19,7 +19,7 @@ def test_console_script_produces_expected_output(tmp_path, capsys):
     )
 
     assert result.returncode == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in result.stdout
+    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in result.stdout
 
 
 def test_python_minus_m_produces_expected_output(tmp_path, capsys):
@@ -40,7 +40,7 @@ def test_python_minus_m_produces_expected_output(tmp_path, capsys):
     )
 
     assert result.returncode == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in result.stdout
+    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in result.stdout
 
 
 def test_import_main_from_package_produces_expected_output(tmp_path, capsys):
@@ -58,4 +58,4 @@ def test_import_main_from_package_produces_expected_output(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 days | 0% |" in captured.out
+    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
