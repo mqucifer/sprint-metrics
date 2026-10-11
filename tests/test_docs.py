@@ -927,3 +927,47 @@ def test_service_md_trend_row_describes_response_shape():
     assert "ordered sequence of sprint-label-to-value pairs" in row, (
         "trend row does not describe the values as an ordered sequence of sprint-label-to-value pairs"
     )
+
+
+def test_service_md_documents_superseded_event():
+    """AC1: the hand-written content before BEGIN:service in docs/service.md names
+    'superseded' as an accepted event type, describes because accepting 'sponsor'
+    and 'story_problem', describes replaced_by as an optional array of story
+    identifiers absent when the crew does not know the replacements, and states
+    that no prior event on the card is required."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "superseded" in before, (
+        "hand-written content does not name 'superseded' as an accepted event type"
+    )
+    assert "sponsor" in before, "hand-written content does not name 'sponsor' as a because value"
+    assert "story_problem" in before, (
+        "hand-written content does not name 'story_problem' as a because value"
+    )
+    assert "replaced_by" in before, "hand-written content does not name 'replaced_by'"
+    assert "optional" in before.lower(), (
+        "hand-written content does not state replaced_by is optional"
+    )
+    assert "no prior event" in before.lower(), (
+        "hand-written content does not state no prior event is required"
+    )
+
+
+def test_service_md_handwritten_section_survives_docs_gen(tmp_path):
+    """AC2: running generate_file on docs/service.md leaves the hand-written
+    content before BEGIN:service byte-identical, confirming it resides outside
+    the generated markers."""
+    from sprint_metrics._docs_gen import generate_file
+
+    src = Path("docs/service.md")
+    original = src.read_text()
+    dest = tmp_path / "service.md"
+    dest.write_text(original)
+    generate_file(dest)
+    regenerated = dest.read_text()
+    orig_handwritten = original[: original.index("BEGIN:service")]
+    new_handwritten = regenerated[: regenerated.index("BEGIN:service")]
+    assert orig_handwritten == new_handwritten, (
+        "hand-written content before BEGIN:service was modified by docs_gen"
+    )

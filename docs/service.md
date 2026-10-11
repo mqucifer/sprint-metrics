@@ -20,7 +20,14 @@ The service accepts sprint definitions via POST /sprints. Each sprint is registe
 
 ## Event intake
 
-The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, and attempt_failed. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
+The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, and superseded. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
+
+A `superseded` event marks a card that was replaced by other stories. It carries two fields beyond the common event fields:
+
+- `because` (required): the reason the card was superseded. Accepts the values `"sponsor"` (at the Sponsor's request) or `"story_problem"` (after a story problem).
+- `replaced_by` (optional): an array of story identifiers that replaced the card. Absent when the crew does not know the replacements.
+
+No prior event on the card is required for a `superseded` event to be accepted.
 
 The intake format carries an `api_version` field. The current version is "1". The JSON Schema for the event body is available at GET /schema/event.
 
