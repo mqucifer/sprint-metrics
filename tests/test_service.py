@@ -4776,3 +4776,101 @@ def test_post_superseded_invalid_because_returns_400():
         assert "invalid_reason" in body["error"]
     finally:
         conn.close()
+
+
+@requires_db
+def test_post_superseded_without_replaced_by_stores_null():
+    """AC1: POST /events with type='superseded' and no replaced_by field returns 200,
+    no error key, and the stored row has replaced_by column NULL."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c10",
+            "type": "superseded",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "because": "story_problem",
+            "epic": "Fix auth flow",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT replaced_by FROM sprint_metrics.board_events "
+            "WHERE card_id = 'c10' AND type = 'superseded'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_superseded_replaced_by_not_array_returns_400():
+    """AC3: POST /events with type='superseded' and replaced_by='not_an_array' (a string)
+    returns 400 with a non-empty error string."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c12",
+            "type": "superseded",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "because": "sponsor",
+            "epic": "Fix auth flow",
+            "replaced_by": "not_an_array",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert isinstance(body["error"], str) and len(body["error"]) > 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_superseded_no_prior_events_returns_200():
+    """AC2: POST /events with type='superseded' for a card with no prior events
+    returns 200 and body has no 'error' key."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c11'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c11",
+            "type": "superseded",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "because": "sponsor",
+            "epic": "Fix auth flow",
+            "replaced_by": [500],
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+    finally:
+        conn.close()

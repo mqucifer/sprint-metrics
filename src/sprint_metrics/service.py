@@ -240,6 +240,13 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         status = 400
                         return
 
+                    if event_type == "superseded":
+                        error = _validate_superseded_event(event)
+                        if error:
+                            self._send_json(400, {"error": error})
+                            status = 400
+                            return
+
                     if not self._ensure_db():
                         self._send_json(
                             503,
@@ -670,3 +677,12 @@ def _null_range_entry() -> dict:
         "prior": None,
         "delta": None,
     }
+
+
+def _validate_superseded_event(event: dict) -> str | None:
+    """Validate superseded-event-specific fields. Returns an error string or None."""
+    if "because" in event and event["because"] not in ("sponsor", "story_problem"):
+        return f"invalid because: {event['because']!r} (must be 'sponsor' or 'story_problem')"
+    if "replaced_by" in event and not isinstance(event["replaced_by"], list):
+        return "replaced_by must be an array of integers"
+    return None
