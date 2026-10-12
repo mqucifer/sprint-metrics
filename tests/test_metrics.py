@@ -1,5 +1,7 @@
 """Tests for the metric calculations in sprint_metrics.metrics."""
 
+from datetime import UTC
+
 import pytest
 
 from sprint_metrics.card import Card
@@ -344,10 +346,10 @@ def test_calculate_points_and_first_attempt_empty():
 
 
 def test_all_metrics_grew_by_four():
-    """AC5: ALL_METRICS has 15 entries (8 original + 4 points/first-attempt + 3 superseded)."""
+    """ALL_METRICS holds 17 entries, including the two sub-day minute metrics."""
     from sprint_metrics.metrics import ALL_METRICS
 
-    assert len(ALL_METRICS) == 15
+    assert len(ALL_METRICS) == 17
     new_metrics = {
         "points_delivered",
         "first_attempt_numerator",
@@ -357,7 +359,9 @@ def test_all_metrics_grew_by_four():
         "superseded_points",
         "superseded_breakdown",
     }
+    minute_metrics = {"cycle_time_minutes", "lead_time_minutes"}
     assert new_metrics.issubset(ALL_METRICS)
+    assert minute_metrics.issubset(ALL_METRICS)
     existing = {
         "cycle_time_days",
         "lead_time_days",
@@ -369,7 +373,8 @@ def test_all_metrics_grew_by_four():
         "failure_breakdown",
     }
     assert new_metrics.isdisjoint(existing)
-    for name in new_metrics:
+    assert minute_metrics.isdisjoint(existing)
+    for name in new_metrics | minute_metrics:
         assert name == name.lower() and "_" in name
 
 
@@ -557,3 +562,107 @@ def test_calculate_escalation_rate_capped_at_100():
     """With 2 escalations and 1 completed card, the rate is capped at 100, not 200."""
     cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
     assert calculate_escalation_rate(cards, escalations=2) == 100
+
+
+def test_cycle_and_lead_time_minutes_single_card():
+    """AC1: one completed card with sub-day timestamps yields 686 min cycle and 3686 min lead."""
+    from datetime import date, datetime
+
+    from sprint_metrics.metrics import calculate_cycle_time_minutes, calculate_lead_time_minutes
+
+    card = Card(
+        created=date(2024, 1, 1),
+        completed=date(2024, 1, 3),
+        created_at=datetime(2024, 1, 1, 8, 0, tzinfo=UTC),
+        started_at=datetime(2024, 1, 3, 10, 0, tzinfo=UTC),
+        completed_at=datetime(2024, 1, 3, 21, 26, tzinfo=UTC),
+    )
+    assert calculate_cycle_time_minutes([card]) == 686
+    assert calculate_lead_time_minutes([card]) == 3686
+
+
+def test_cycle_and_lead_time_minutes_empty():
+    """AC2: an empty list of cards yields None for both minute metrics."""
+    from sprint_metrics.metrics import calculate_cycle_time_minutes, calculate_lead_time_minutes
+
+    assert calculate_cycle_time_minutes([]) is None
+    assert calculate_lead_time_minutes([]) is None
+
+
+def test_cycle_time_minutes_excludes_date_level_cards():
+    """AC3: a card with only date-level fields is excluded; the mean uses the datetime card alone."""
+    from datetime import date, datetime
+
+    from sprint_metrics.metrics import calculate_cycle_time_minutes
+
+    card_a = Card(
+        created=date(2024, 1, 1),
+        started=date(2024, 1, 3),
+        completed=date(2024, 1, 3),
+        started_at=datetime(2024, 1, 3, 10, 0, tzinfo=UTC),
+        completed_at=datetime(2024, 1, 3, 21, 26, tzinfo=UTC),
+    )
+    card_b = Card(created=date(2024, 1, 1), started=date(2024, 1, 2), completed=date(2024, 1, 4))
+    assert calculate_cycle_time_minutes([card_a, card_b]) == 686
+
+
+def test_cycle_time_minutes_none_when_started_at_missing():
+    """AC4: a completed card whose started_at is None contributes nothing, so the result is None."""
+    from datetime import date, datetime
+
+    from sprint_metrics.metrics import calculate_cycle_time_minutes
+
+    card = Card(
+        created=date(2024, 1, 1),
+        completed=date(2024, 1, 3),
+        completed_at=datetime(2024, 1, 3, 21, 26, tzinfo=UTC),
+    )
+    assert calculate_cycle_time_minutes([card]) is None
+
+
+def test_all_metrics_includes_minute_metrics():
+    """AC5: ALL_METRICS contains cycle_time_minutes and lead_time_minutes."""
+    from sprint_metrics.metrics import ALL_METRICS
+
+    assert "cycle_time_minutes" in ALL_METRICS
+    assert "lead_time_minutes" in ALL_METRICS
+
+
+def test_cycle_and_lead_time_minutes_mean_two_completed():
+    """AC6: the mean of two completed cards' sub-day spans is 420 min cycle and 974 min lead."""
+    from datetime import date, datetime
+
+    from sprint_metrics.metrics import calculate_cycle_time_minutes, calculate_lead_time_minutes
+
+    card_a = Card(
+        created=date(2026, 10, 11),
+        completed=date(2026, 10, 11),
+        created_at=datetime(2026, 10, 11, 4, 20, 12, tzinfo=UTC),
+        started_at=datetime(2026, 10, 11, 7, 31, 56, tzinfo=UTC),
+        completed_at=datetime(2026, 10, 11, 18, 57, 48, tzinfo=UTC),
+    )
+    card_b = Card(
+        created=date(2026, 10, 11),
+        completed=date(2026, 10, 11),
+        created_at=datetime(2026, 10, 11, 4, 20, 17, tzinfo=UTC),
+        started_at=datetime(2026, 10, 11, 19, 35, 24, tzinfo=UTC),
+        completed_at=datetime(2026, 10, 11, 22, 9, 38, tzinfo=UTC),
+    )
+    assert calculate_cycle_time_minutes([card_a, card_b]) == 420
+    assert calculate_lead_time_minutes([card_a, card_b]) == 974
+
+
+def test_cycle_time_minutes_excludes_in_flight_card():
+    """AC7: an in-flight card with sub-day timestamps does not contribute, so the result is None."""
+    from datetime import date, datetime
+
+    from sprint_metrics.metrics import calculate_cycle_time_minutes
+
+    card = Card(
+        created=date(2024, 1, 1),
+        created_at=datetime(2024, 1, 1, 8, 0, tzinfo=UTC),
+        started_at=datetime(2024, 1, 3, 10, 0, tzinfo=UTC),
+        completed_at=datetime(2024, 1, 3, 21, 26, tzinfo=UTC),
+    )
+    assert card.is_completed is False
+    assert calculate_cycle_time_minutes([card]) is None
