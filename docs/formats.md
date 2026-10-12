@@ -438,6 +438,7 @@ Status: All clear
 - Cycle time: Mean days from when a card started work to when it completed
 - Lead time: Mean days from creation to completion
 - Throughput: Number of cards completed this sprint
+- Superseded: Number of superseded stories in the sprint
 - WIP violations: Number of states whose peak occupancy exceeded the configured WIP limit
 - Blocked aging: Maximum number of days any card has been blocked
 - Escalation rate: Escalations as a percentage of completed cards
