@@ -348,8 +348,8 @@ def test_sprint_data_survives_reconnect():
 
 
 @requires_db
-def test_sprint_response_has_exactly_eleven_keys_no_sprint_date():
-    """AC5: GET /sprint response has exactly 18 top-level keys and no sprint_date."""
+def test_sprint_response_key_set_no_sprint_date():
+    """GET /sprint response has the full set of top-level keys and no sprint_date."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -5186,5 +5186,27 @@ def test_sprint_only_started_superseded_zeros_not_null():
         assert isinstance(body["superseded_count"], int)
         assert isinstance(body["superseded_points"], int)
         assert isinstance(body["superseded_breakdown"], dict)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_no_events_superseded_fields_null():
+    """AC2: A sprint with no events returns null for superseded_count,
+    superseded_points, and superseded_breakdown."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-11'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-11")
+        assert status == 200
+        assert body["superseded_count"] is None
+        assert body["superseded_points"] is None
+        assert body["superseded_breakdown"] is None
     finally:
         conn.close()
