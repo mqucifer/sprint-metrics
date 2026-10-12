@@ -653,6 +653,9 @@ def _null_sprint_response() -> dict:
         "first_attempt_denominator": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
+        "superseded_count": None,
+        "superseded_points": None,
+        "superseded_breakdown": None,
         "flags": None,
     }
 
@@ -673,6 +676,9 @@ def _null_range_entry() -> dict:
         "first_attempt_denominator": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
+        "superseded_count": None,
+        "superseded_points": None,
+        "superseded_breakdown": None,
         "flags": None,
         "prior": None,
         "delta": None,
