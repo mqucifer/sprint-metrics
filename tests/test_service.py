@@ -4877,6 +4877,119 @@ def test_post_superseded_no_prior_events_returns_200():
 
 
 @requires_db
+def test_get_sprint_label_without_encoding_returns_metrics():
+    """A sprint label with no percent-encoded characters still works after the decode fix."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 's1_nospace'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="s1_nospace",
+            event_type="started",
+            timestamp="2024-03-04T10:00:00Z",
+            sprint="S1",
+            created="2024-03-01",
+        )
+        finished = _make_event(
+            card_id="s1_nospace",
+            event_type="finished",
+            timestamp="2024-03-08T10:00:00Z",
+            sprint="S1",
+            created="2024-03-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/sprint?label=S1", timeout=5) as resp:
+            assert resp.status == 200
+            body = json.loads(resp.read().decode())
+
+        assert body["throughput"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_get_sprint_encoded_label_no_events_returns_null():
+    """A percent-encoded label with no matching events returns 200 and all-null metrics."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=Sprint%2099", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["throughput"] is None
+    finally:
+        conn.close()
+
+
+def test_get_sprint_decodes_label(monkeypatch):
+    """GET /sprint?label=Sprint%2018 passes the decoded label 'Sprint 18' to the store.
+
+    Against the old extraction (self.path[len('/sprint?label='):]), the label
+    arrives as 'Sprint%2018' and the SQL WHERE clause matches no rows.
+    """
+    from datetime import date
+    from unittest.mock import MagicMock
+
+    from sprint_metrics import service
+    from sprint_metrics.card import Card
+
+    labels_seen: list[str] = []
+
+    def fake_sprint_has_events(conn, label):
+        labels_seen.append(label)
+        return True
+
+    def fake_query_sprint(conn, label):
+        labels_seen.append(label)
+        return [
+            Card(
+                created=date(2024, 1, 10),
+                started=date(2024, 1, 12),
+                completed=date(2024, 1, 16),
+            )
+        ]
+
+    def fake_count_escalated_events(conn, label):
+        labels_seen.append(label)
+        return 0
+
+    monkeypatch.setattr(service, "sprint_has_events", fake_sprint_has_events)
+    monkeypatch.setattr(service, "query_sprint", fake_query_sprint)
+    monkeypatch.setattr(service, "count_escalated_events", fake_count_escalated_events)
+
+    mock_conn = MagicMock()
+    port = _start_service(mock_conn, 0)
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=Sprint%2018", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+    finally:
+        pass
+
+    assert body["throughput"] == 1
+    assert body["cycle_time_days"] == 4
+    assert labels_seen == ["Sprint 18", "Sprint 18", "Sprint 18"]
+
+
+@requires_db
 def test_range_single_named_sprint_registered_returns_200():
     """AC1: GET /range?start=Sprint%206&end=Sprint%206 with Sprint 6 registered
     returns 200 and the sprints object has exactly one key, 'Sprint 6'."""
