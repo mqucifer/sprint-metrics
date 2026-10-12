@@ -10,9 +10,11 @@ from sprint_metrics.card import Card, _as_cards
 from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
+    calculate_cycle_time_minutes,
     calculate_escalation_rate,
     calculate_failure_breakdown,
     calculate_first_attempt_rate,
+    calculate_lead_time_minutes,
     calculate_throughput,
     calculate_top_failure_causes,
     calculate_wip_violations,
@@ -170,6 +172,8 @@ def format_sprint_range_json(
         cards = sprints[label]
         esc = _esc_for(label)
         cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
+        cycle_time_min = calculate_cycle_time_minutes(cards)
+        lead_time_min = calculate_lead_time_minutes(cards)
         sprint_metrics = {
             "cycle_time_days": cycle_time,
             "lead_time_days": lead_time,
@@ -185,6 +189,8 @@ def format_sprint_range_json(
             "superseded_count": calculate_superseded_count(cards),
             "superseded_points": calculate_superseded_points(cards),
             "superseded_breakdown": calculate_superseded_breakdown(cards),
+            "cycle_time_minutes": cycle_time_min,
+            "lead_time_minutes": lead_time_min,
         }
         if index == 0:
             prior = None
@@ -194,6 +200,8 @@ def format_sprint_range_json(
             prior_cards = sprints[prior_label]
             prior_esc = _esc_for(prior_label)
             prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
+            prior_cycle_min = calculate_cycle_time_minutes(prior_cards)
+            prior_lead_min = calculate_lead_time_minutes(prior_cards)
             prior_superseded_count = calculate_superseded_count(prior_cards)
             prior_superseded_points = calculate_superseded_points(prior_cards)
             prior_superseded_breakdown = calculate_superseded_breakdown(prior_cards)
@@ -212,6 +220,8 @@ def format_sprint_range_json(
                 "superseded_count": prior_superseded_count,
                 "superseded_points": prior_superseded_points,
                 "superseded_breakdown": prior_superseded_breakdown,
+                "cycle_time_minutes": prior_cycle_min,
+                "lead_time_minutes": prior_lead_min,
             }
             sup_count = calculate_superseded_count(cards)
             sup_points = calculate_superseded_points(cards)
@@ -242,6 +252,16 @@ def format_sprint_range_json(
                 "superseded_points": sup_points - prior_superseded_points,
                 "superseded_breakdown": sum(sup_breakdown.values())
                 - sum(prior_superseded_breakdown.values()),
+                "cycle_time_minutes": (
+                    cycle_time_min - prior_cycle_min
+                    if cycle_time_min is not None and prior_cycle_min is not None
+                    else None
+                ),
+                "lead_time_minutes": (
+                    lead_time_min - prior_lead_min
+                    if lead_time_min is not None and prior_lead_min is not None
+                    else None
+                ),
             }
         flags = calculate_flags(cards, wip_limits, esc, as_of, thresholds)
         if metrics is not None:

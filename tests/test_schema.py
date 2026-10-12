@@ -474,6 +474,8 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
                 "flags": None,
                 "prior": None,
                 "delta": None,
+                "cycle_time_minutes": None,
+                "lead_time_minutes": None,
             }
         },
     }

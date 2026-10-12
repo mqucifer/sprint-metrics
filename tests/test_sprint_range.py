@@ -1562,3 +1562,144 @@ def test_sprint_range_json_superseded_excluded_from_throughput(tmp_path, capsys)
     assert data["sprints"]["2024-02"]["throughput"] == 1
     assert data["sprints"]["2024-02"]["delta"]["superseded_count"] == -1
     assert data["sprints"]["2024-02"]["delta"]["throughput"] == 1
+
+
+def test_sprint_range_json_cycle_and_lead_time_minutes(tmp_path, capsys):
+    """AC1: sprints with sub-day timestamps produce cycle_time_minutes and
+    lead_time_minutes in the sprint-range JSON response, with prior and delta."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-03",
+                "started": "2024-01-03",
+                "completed": "2024-01-03",
+                "started_at": "2024-01-03T10:00:00Z",
+                "completed_at": "2024-01-03T21:26:00Z",
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-03",
+                "started": "2024-02-03",
+                "completed": "2024-02-03",
+                "started_at": "2024-02-03T09:00:00Z",
+                "completed_at": "2024-02-03T11:00:00Z",
+            }
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["cycle_time_minutes"] == 686
+    assert data["sprints"]["2024-01"]["lead_time_minutes"] is None
+    assert data["sprints"]["2024-02"]["cycle_time_minutes"] == 120
+    assert data["sprints"]["2024-02"]["delta"]["cycle_time_minutes"] == -566
+
+
+def test_sprint_range_json_cycle_time_minutes_null_for_date_level_cards(tmp_path, capsys):
+    """AC2: cards with only date-level fields (no _at keys) produce null
+    cycle_time_minutes in the sprint-range JSON response."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+        "2024-02": [{"created": "2024-02-01", "started": "2024-02-02", "completed": "2024-02-08"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["cycle_time_minutes"] is None
+    assert data["sprints"]["2024-02"]["cycle_time_minutes"] is None
+    assert data["sprints"]["2024-02"]["delta"]["cycle_time_minutes"] is None
+
+
+def test_sprint_range_json_cycle_time_minutes_empty_sprint(tmp_path, capsys):
+    """AC3: an empty sprint list produces null cycle_time_minutes, null
+    lead_time_minutes, null prior, and null delta."""
+    sprints = {"2024-01": []}
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["cycle_time_minutes"] is None
+    assert data["sprints"]["2024-01"]["lead_time_minutes"] is None
+    assert data["sprints"]["2024-01"]["prior"] is None
+    assert data["sprints"]["2024-01"]["delta"] is None
+
+
+def test_sprint_range_schema_required_includes_cycle_and_lead_time_minutes(capsys):
+    """AC4: --schema --sprint-range 2024-01..2024-02 --json emits a schema whose
+    per-sprint required array includes cycle_time_minutes and lead_time_minutes."""
+    exit_code = main(["--schema", "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    sprint_schema = schema["properties"]["sprints"]["additionalProperties"]
+    assert "cycle_time_minutes" in sprint_schema["required"]
+    assert "lead_time_minutes" in sprint_schema["required"]
+
+
+def test_sprint_range_json_cycle_time_minutes_cross_sprint_comparison(tmp_path, capsys):
+    """AC5: the reader can compare sub-day cycle time across two sprints in one
+    response: both sprints carry cycle_time_minutes and the delta shows the change."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-03",
+                "started": "2024-01-03",
+                "completed": "2024-01-03",
+                "started_at": "2024-01-03T10:00:00Z",
+                "completed_at": "2024-01-03T21:26:00Z",
+            }
+        ],
+        "2024-02": [
+            {
+                "created": "2024-02-03",
+                "started": "2024-02-03",
+                "completed": "2024-02-03",
+                "started_at": "2024-02-03T09:00:00Z",
+                "completed_at": "2024-02-03T11:00:00Z",
+            }
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["cycle_time_minutes"] == 686
+    assert data["sprints"]["2024-02"]["cycle_time_minutes"] == 120
+    assert data["sprints"]["2024-02"]["delta"]["cycle_time_minutes"] == -566
+
+
+def test_sprint_range_json_cycle_time_days_still_integer_when_minutes_null(tmp_path, capsys):
+    """AC6: when cards have only date-level fields, cycle_time_days is an integer
+    (the day-level field still has a value) even though cycle_time_minutes is null."""
+    sprints = {
+        "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
+        "2024-02": [{"created": "2024-02-01", "started": "2024-02-02", "completed": "2024-02-08"}],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    data = json.loads(captured.out)
+    assert data["sprints"]["2024-01"]["cycle_time_minutes"] is None
+    assert data["sprints"]["2024-02"]["cycle_time_minutes"] is None
+    assert data["sprints"]["2024-02"]["delta"]["cycle_time_minutes"] is None
+    assert isinstance(data["sprints"]["2024-01"]["cycle_time_days"], int)
+    assert data["sprints"]["2024-01"]["cycle_time_days"] == 4
