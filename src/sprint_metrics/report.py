@@ -199,10 +199,10 @@ def _sprint_section(
     first-attempt rate line (always 0%) so the standup report shows both.
 
     When ``prior_cards`` is provided, each metric line includes a directional
-    arrow (↓, ↑, or →) between the current value and the parenthetical,
+    arrow (\u2193, \u2191, or \u2192) between the current value and the parenthetical,
     the prior sprint's value, and the signed change from prior to current.
 
-    When ``thresholds`` is provided, a ⚠️ marker followed by a parenthetical
+    When ``thresholds`` is provided, a \u26a0\ufe0f marker followed by a parenthetical
     naming the configured threshold is appended to any metric line whose value
     exceeds its threshold (strict greater-than; meeting the threshold exactly
     is not a breach).
@@ -215,8 +215,6 @@ def _sprint_section(
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     throughput = calculate_throughput(cards)
     points_delivered = calculate_points_delivered(cards)
-    superseded_count = calculate_superseded_count(cards)
-    superseded_points = calculate_superseded_points(cards)
     wip_violations = calculate_wip_violations(cards, wip_limits)
     blocked_aging = calculate_blocked_aging(cards, as_of)
     escalation_rate = calculate_escalation_rate(cards, escalations)
@@ -233,8 +231,6 @@ def _sprint_section(
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
         prior_throughput = calculate_throughput(prior_cards)
         prior_points = calculate_points_delivered(prior_cards)
-        prior_superseded_count = calculate_superseded_count(prior_cards)
-        prior_superseded_points = calculate_superseded_points(prior_cards)
         prior_wip = calculate_wip_violations(prior_cards, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_cards, as_of)
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
@@ -263,21 +259,6 @@ def _sprint_section(
                     f"(was {prior_throughput}, {_signed(delta)})"
                     f"{_threshold_context(throughput, thresholds, 'throughput')}"
                 )
-            elif metric == "superseded_count":
-                delta = superseded_count - prior_superseded_count
-                lines.append(
-                    f"- **Superseded stories**: {superseded_count} ({superseded_points} pts) "
-                    f"{_trend_arrow(delta)} "
-                    f"(was {prior_superseded_count} ({prior_superseded_points} pts), {_signed(delta)})"
-                )
-                if superseded_count > 0:
-                    breakdown = calculate_superseded_breakdown(cards)
-                    segments = []
-                    if breakdown["sponsor"] > 0:
-                        segments.append(f"{breakdown['sponsor']} by sponsor request")
-                    if breakdown["story_problem"] > 0:
-                        segments.append(f"{breakdown['story_problem']} after story problem")
-                    lines.append("  - " + ", ".join(segments))
             elif metric == "points_delivered":
                 delta = points_delivered - prior_points
                 lines.append(
@@ -370,16 +351,6 @@ def _sprint_section(
             lines.append(
                 f"- **Throughput**: {throughput} cards{_threshold_context(throughput, thresholds, 'throughput')}"
             )
-        elif metric == "superseded_count":
-            lines.append(f"- **Superseded stories**: {superseded_count} ({superseded_points} pts)")
-            if superseded_count > 0:
-                breakdown = calculate_superseded_breakdown(cards)
-                segments = []
-                if breakdown["sponsor"] > 0:
-                    segments.append(f"{breakdown['sponsor']} by sponsor request")
-                if breakdown["story_problem"] > 0:
-                    segments.append(f"{breakdown['story_problem']} after story problem")
-                lines.append("  - " + ", ".join(segments))
         elif metric == "points_delivered":
             lines.append(f"- **Points delivered**: {points_delivered}")
         elif metric == "wip_violations":
@@ -673,15 +644,12 @@ def _prior_sprint_section(
         return ["No performance data available"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     first_attempt_rate = calculate_first_attempt_rate(cards)
-    superseded_count = calculate_superseded_count(cards)
-    superseded_points = calculate_superseded_points(cards)
     return [
         f"## Prior Sprint {label}",
         "",
         f"- **Cycle time**: {cycle_time} days",
         f"- **Lead time**: {lead_time} days",
         f"- **Throughput**: {calculate_throughput(cards)} cards",
-        f"- **Superseded stories**: {superseded_count} ({superseded_points} pts)",
         f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}",
         f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days",
         f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",

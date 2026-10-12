@@ -136,8 +136,6 @@ def test_card_detail_omitted_when_no_cards():
 def test_table_superseded_shows_count_and_points():
     """AC1: sprint with 2 superseded cards (5 pts and 3 pts) and 1 completed card
     shows '2 (8 pts)' in the Superseded cell of the Current row."""
-    from sprint_metrics.report import format_performance_table
-
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-02", "superseded": True, "superseded_because": "sponsor", "points": 5},
@@ -147,15 +145,12 @@ def test_table_superseded_shows_count_and_points():
     lines = result.splitlines()
     current_row = next(line for line in lines if line.startswith("| Current"))
     cells = [c.strip() for c in current_row.split("|") if c.strip()]
-    # cells: Sprint, Cycle time, Lead time, Throughput, Superseded, ...
     assert cells[4] == "2 (8 pts)"
 
 
 def test_table_superseded_zero_shows_bare_zero():
     """AC2: sprint with 1 completed card and no superseded cards shows '0'
     in the Superseded cell of the Current row."""
-    from sprint_metrics.report import format_performance_table
-
     cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
     result = format_performance_table(cards)
     assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in result
@@ -163,8 +158,6 @@ def test_table_superseded_zero_shows_bare_zero():
 
 def test_table_empty_sprint_superseded_zero():
     """AC3: empty sprint (no cards) produces a table where the Superseded cell reads '0'."""
-    from sprint_metrics.report import format_performance_table
-
     result = format_performance_table([])
     lines = result.splitlines()
     current_row = next(line for line in lines if line.startswith("| Current"))
@@ -175,8 +168,6 @@ def test_table_empty_sprint_superseded_zero():
 def test_table_prior_superseded_delta():
     """AC4: with --prior, 1 superseded card (5 pts) in current and 0 in prior
     shows Prior '0', Current '1 (5 pts)', Delta '+1' for Superseded."""
-    from sprint_metrics.report import format_performance_table
-
     current_cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-02", "superseded": True, "superseded_because": "sponsor", "points": 5},
@@ -202,8 +193,6 @@ def test_table_prior_superseded_delta():
 def test_table_header_superseded_position_and_separator():
     """AC5: the header row has 'Superseded' as the 5th pipe-delimited cell and
     the separator row's 5th cell contains exactly 12 dash characters."""
-    from sprint_metrics.report import format_performance_table
-
     cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
     result = format_performance_table(cards)
     lines = result.splitlines()
@@ -220,8 +209,6 @@ def test_table_header_superseded_position_and_separator():
 def test_table_superseded_no_points_shows_zero_pts():
     """AC6: 1 superseded card with no points field and 2 completed cards
     shows '1 (0 pts)' in the Superseded cell."""
-    from sprint_metrics.report import format_performance_table
-
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-02", "started": "2024-01-04", "completed": "2024-01-08"},
@@ -237,8 +224,6 @@ def test_table_superseded_no_points_shows_zero_pts():
 def test_table_metrics_filtered_superseded_only():
     """AC7: --metrics 'throughput,superseded_count' shows exactly 3 columns:
     Sprint, Throughput, Superseded. No other columns appear."""
-    from sprint_metrics.report import format_performance_table
-
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-02", "superseded": True, "superseded_because": "sponsor", "points": 5},

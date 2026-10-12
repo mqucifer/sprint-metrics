@@ -322,7 +322,6 @@ def test_command_reports_markdown_when_markdown_option_is_used(run_command):
     assert "- **Cycle time**: 4 days" in output
     assert "- **Lead time**: 6 days" in output
     assert "- **Throughput**: 1 cards" in output
-    assert "- **Superseded stories**: 0 (0 pts)" in output
     assert "- **WIP violations**: 0" in output
     assert "- **Blocked aging**: 0 days" in output
     assert "- **Escalation rate**: 0%" in output
@@ -687,7 +686,6 @@ def test_command_reports_blocked_aging_as_of_sprint_date_in_markdown(run_command
     assert "- **Cycle time**: 4 days" in output
     assert "- **Lead time**: 6 days" in output
     assert "- **Throughput**: 1 cards" in output
-    assert "- **Superseded stories**: 0 (0 pts)" in output
     assert "- **WIP violations**: 0" in output
     assert "- **Blocked aging**: 29 days" in output
     assert "- **Escalation rate**: 0%" in output

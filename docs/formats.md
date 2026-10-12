@@ -428,7 +428,6 @@ Status: All clear
 - **Cycle time**: 4 days
 - **Lead time**: 6 days
 - **Throughput**: 1 cards
-- **Superseded stories**: 0 (0 pts)
 - **WIP violations**: 0
 - **Blocked aging**: 0 days
 - **Escalation rate**: 0%
