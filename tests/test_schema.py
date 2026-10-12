@@ -373,6 +373,8 @@ def test_single_sprint_schema_accepts_valid_non_null_object():
         "superseded_count": 0,
         "superseded_points": 0,
         "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
+        "cycle_time_minutes": 686,
+        "lead_time_minutes": 3686,
         "flags": {
             "cycle_time_days": False,
             "lead_time_days": False,
@@ -438,6 +440,8 @@ def test_single_sprint_schema_accepts_all_null_metrics():
         "superseded_count": None,
         "superseded_points": None,
         "superseded_breakdown": None,
+        "cycle_time_minutes": None,
+        "lead_time_minutes": None,
         "flags": None,
     }
     jsonschema.validate(all_null, SINGLE_SPRINT_SCHEMA)
@@ -478,14 +482,14 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
 
 def test_schema_json_required_includes_four_new_fields_with_integer_null_type(capsys):
     """AC3/AC7: --schema --json produces a schema whose required array has exactly
-    18 entries (11 existing + 4 new + 3 superseded) and whose properties define each
-    new field with the correct type."""
+    20 entries (12 METRIC_KEYS + 5 non-metric + 2 minute) and whose properties
+    define each new field with the correct type."""
     exit_code = main(["--schema", "--json"])
     captured = capsys.readouterr()
 
     assert exit_code == 0
     schema = json.loads(captured.out)
-    assert len(schema["required"]) == 18
+    assert len(schema["required"]) == 20
     for key in (
         "points_delivered",
         "first_attempt_numerator",
@@ -497,6 +501,8 @@ def test_schema_json_required_includes_four_new_fields_with_integer_null_type(ca
     assert schema["properties"]["superseded_count"] == {"type": ["integer", "null"]}
     assert schema["properties"]["superseded_points"] == {"type": ["integer", "null"]}
     assert schema["properties"]["superseded_breakdown"] == {"type": ["object", "null"]}
+    assert schema["properties"]["cycle_time_minutes"] == {"type": ["integer", "null"]}
+    assert schema["properties"]["lead_time_minutes"] == {"type": ["integer", "null"]}
 
 
 def test_sprint_range_schema_includes_new_fields_in_prior_and_delta(capsys):
@@ -543,3 +549,91 @@ def test_schema_json_includes_superseded_fields(capsys):
     assert schema["properties"]["superseded_count"] == {"type": ["integer", "null"]}
     assert schema["properties"]["superseded_points"] == {"type": ["integer", "null"]}
     assert schema["properties"]["superseded_breakdown"] == {"type": ["object", "null"]}
+
+
+def test_json_output_includes_cycle_and_lead_time_minutes(tmp_path, capsys):
+    """AC1/AC6: --json output includes cycle_time_minutes and lead_time_minutes as integers
+    alongside the existing day-level fields."""
+    cards = json.dumps(
+        [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+                "created_at": "2024-01-01T08:00:00Z",
+                "started_at": "2024-01-03T10:00:00Z",
+                "completed_at": "2024-01-03T21:26:00Z",
+            }
+        ]
+    )
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(cards)
+
+    exit_code = main([str(cards_file), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    assert result["cycle_time_minutes"] == 686
+    assert result["lead_time_minutes"] == 3686
+    assert result["cycle_time_days"] == 4
+    assert result["lead_time_days"] == 6
+
+
+def test_json_output_null_minutes_for_empty_cards(tmp_path, capsys):
+    """AC2: empty cards file → cycle_time_minutes and lead_time_minutes are null."""
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text("[]")
+
+    exit_code = main([str(cards_file), "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    assert result["cycle_time_minutes"] is None
+    assert result["lead_time_minutes"] is None
+    assert result["cycle_time_days"] == 0
+    assert result["lead_time_days"] == 0
+
+
+def test_json_output_metrics_filter_includes_cycle_time_minutes(tmp_path, capsys):
+    """AC3: --metrics cycle_time_minutes,throughput on a date-level card →
+    cycle_time_minutes is null, throughput is 1, flags has exactly those keys."""
+    cards = json.dumps(
+        [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+            }
+        ]
+    )
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(cards)
+
+    exit_code = main([str(cards_file), "--json", "--metrics", "cycle_time_minutes,throughput"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    result = json.loads(captured.out)
+    assert result["cycle_time_minutes"] is None
+    assert result["throughput"] == 1
+    assert result["api_version"] == "1"
+    assert set(result["flags"].keys()) == {"cycle_time_minutes", "throughput"}
+
+
+def test_schema_json_required_20_entries_with_minute_fields_last(capsys):
+    """AC4/AC7: --schema --json required array has exactly 20 entries; positions 18 and 19
+    (0-indexed) are cycle_time_minutes and lead_time_minutes; properties define both
+    as {"type": ["integer", "null"]}."""
+    exit_code = main(["--schema", "--json"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    schema = json.loads(captured.out)
+    required = schema["required"]
+    assert len(required) == 20
+    assert required[18] == "cycle_time_minutes"
+    assert required[19] == "lead_time_minutes"
+    assert schema["properties"]["cycle_time_minutes"] == {"type": ["integer", "null"]}
+    assert schema["properties"]["lead_time_minutes"] == {"type": ["integer", "null"]}

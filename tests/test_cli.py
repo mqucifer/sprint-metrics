@@ -129,3 +129,17 @@ def test_main_json_rejects_invalid_created_at(tmp_path, capsys):
     assert exit_code == 2
     assert "created_at" in captured.err
     assert captured.out == ""
+
+
+def test_json_metrics_unknown_metric_rejected(tmp_path, capsys):
+    """AC5: --metrics with a bogus name exits 2, stderr names it, stdout is empty."""
+    cards = json.dumps([{"created": "2024-01-01", "completed": "2024-01-07"}])
+    cards_file = tmp_path / "cards.json"
+    cards_file.write_text(cards)
+
+    exit_code = main([str(cards_file), "--json", "--metrics", "cycle_time_minutes,bogus_metric"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "bogus_metric" in captured.err
+    assert captured.out == ""

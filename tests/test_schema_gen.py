@@ -23,8 +23,8 @@ def test_generate_schemas_produces_four_files_with_schema_key(tmp_path):
 
 
 def test_single_sprint_schema_required_and_cycle_time(tmp_path):
-    """AC2: single-sprint.json required has 18 entries (11 existing + 4 new + 3 superseded)
-    and cycle_time_days accepts [integer, null]."""
+    """AC2: single-sprint.json required has 20 entries and cycle_time_days
+    accepts [integer, null]."""
     _generate_schema_files(tmp_path)
     data = json.loads((tmp_path / "single-sprint.json").read_text())
 
@@ -47,6 +47,8 @@ def test_single_sprint_schema_required_and_cycle_time(tmp_path):
         "top_failure_causes",
         "superseded_breakdown",
         "flags",
+        "cycle_time_minutes",
+        "lead_time_minutes",
     ]
     assert data["required"] == expected_required
     assert data["properties"]["cycle_time_days"] == {"type": ["integer", "null"]}

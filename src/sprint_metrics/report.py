@@ -11,10 +11,12 @@ from sprint_metrics.metrics import (
     blocked_aging_detail,
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
+    calculate_cycle_time_minutes,
     calculate_escalation_rate,
     calculate_failure_breakdown,
     calculate_first_attempt_counts,
     calculate_first_attempt_rate,
+    calculate_lead_time_minutes,
     calculate_points_delivered,
     calculate_superseded_breakdown,
     calculate_superseded_count,
@@ -525,6 +527,8 @@ def format_json_report(
     """
     parsed = _as_cards(cards)
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(parsed)
+    cycle_time_minutes = calculate_cycle_time_minutes(parsed)
+    lead_time_minutes = calculate_lead_time_minutes(parsed)
     throughput = calculate_throughput(parsed)
     points_delivered = calculate_points_delivered(parsed)
     wip_violations = calculate_wip_violations(parsed, wip_limits)
@@ -542,6 +546,8 @@ def format_json_report(
     all_metric_values: dict[str, object] = {
         "cycle_time_days": cycle_time,
         "lead_time_days": lead_time,
+        "cycle_time_minutes": cycle_time_minutes,
+        "lead_time_minutes": lead_time_minutes,
         "throughput": throughput,
         "points_delivered": points_delivered,
         "wip_violations": wip_violations,
@@ -577,6 +583,8 @@ def format_json_report(
     if prior_cards is not None:
         prior_parsed = _as_cards(prior_cards)
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_parsed)
+        prior_cycle_minutes = calculate_cycle_time_minutes(prior_parsed)
+        prior_lead_minutes = calculate_lead_time_minutes(prior_parsed)
         prior_throughput = calculate_throughput(prior_parsed)
         prior_wip = calculate_wip_violations(prior_parsed, wip_limits)
         prior_blocked = calculate_blocked_aging(prior_parsed, as_of)
@@ -589,6 +597,8 @@ def format_json_report(
         report["prior"] = {
             "cycle_time_days": prior_cycle,
             "lead_time_days": prior_lead,
+            "cycle_time_minutes": prior_cycle_minutes,
+            "lead_time_minutes": prior_lead_minutes,
             "throughput": prior_throughput,
             "wip_violations": prior_wip,
             "blocked_aging_days": prior_blocked,
@@ -602,6 +612,16 @@ def format_json_report(
         report["delta"] = {
             "cycle_time_days": cycle_time - prior_cycle,
             "lead_time_days": lead_time - prior_lead,
+            "cycle_time_minutes": (
+                None
+                if cycle_time_minutes is None or prior_cycle_minutes is None
+                else cycle_time_minutes - prior_cycle_minutes
+            ),
+            "lead_time_minutes": (
+                None
+                if lead_time_minutes is None or prior_lead_minutes is None
+                else lead_time_minutes - prior_lead_minutes
+            ),
             "throughput": throughput - prior_throughput,
             "wip_violations": wip_violations - prior_wip,
             "blocked_aging_days": blocked_aging - prior_blocked,
@@ -658,6 +678,8 @@ API_VERSION = "1"
 _METRIC_COLUMNS: dict[str, str] = {
     "cycle_time_days": "Cycle time",
     "lead_time_days": "Lead time",
+    "cycle_time_minutes": "Cycle time (min)",
+    "lead_time_minutes": "Lead time (min)",
     "throughput": "Throughput",
     "points_delivered": "Points delivered",
     "wip_violations": "WIP violations",

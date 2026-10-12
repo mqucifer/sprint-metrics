@@ -46,7 +46,9 @@ BEGIN:formats
     "failure_breakdown",
     "top_failure_causes",
     "superseded_breakdown",
-    "flags"
+    "flags",
+    "cycle_time_minutes",
+    "lead_time_minutes"
   ],
   "properties": {
     "api_version": {
@@ -177,6 +179,18 @@ BEGIN:formats
     "sprint_date": {
       "type": "string"
     },
+    "cycle_time_minutes": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "lead_time_minutes": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "prior": {
       "type": "object",
       "properties": {
@@ -269,6 +283,18 @@ BEGIN:formats
             "object",
             "null"
           ]
+        },
+        "cycle_time_minutes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "lead_time_minutes": {
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       }
     },
@@ -354,6 +380,18 @@ BEGIN:formats
           ]
         },
         "superseded_breakdown": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "cycle_time_minutes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "lead_time_minutes": {
           "type": [
             "integer",
             "null"

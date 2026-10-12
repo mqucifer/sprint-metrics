@@ -12,6 +12,9 @@ BEGIN:input-format
 | `created` | Yes | ISO-8601 date | When the card was created |
 | `started` | No | ISO-8601 date | When work started on the card |
 | `completed` | No | ISO-8601 date | When the card was completed |
+| `created_at` | No | ISO-8601 datetime | When the card was created (sub-day precision) |
+| `started_at` | No | ISO-8601 datetime | When work started on the card (sub-day precision) |
+| `completed_at` | No | ISO-8601 datetime | When the card was completed (sub-day precision) |
 | `blocked_since` | No | ISO-8601 date | When the card was blocked |
 | `attempts` | No | integer | Number of attempts (default: 1) |
 | `failure_class` | No | string | Classification of the failure |

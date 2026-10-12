@@ -397,6 +397,8 @@ def test_sprint_range_json_flags_cycle_time_breached(tmp_path, capsys):
         assert set(flags.keys()) == {
             "cycle_time_days",
             "lead_time_days",
+            "cycle_time_minutes",
+            "lead_time_minutes",
             "throughput",
             "wip_violations",
             "blocked_aging_days",

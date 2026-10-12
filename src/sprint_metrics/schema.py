@@ -28,6 +28,8 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         "top_failure_causes",
         "superseded_breakdown",
         "flags",
+        "cycle_time_minutes",
+        "lead_time_minutes",
     ],
     "properties": {
         "api_version": {"type": "string"},
@@ -60,6 +62,8 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         "superseded_breakdown": {"type": ["object", "null"]},
         "flags": {"type": ["object", "null"]},
         "sprint_date": {"type": "string"},
+        "cycle_time_minutes": {"type": ["integer", "null"]},
+        "lead_time_minutes": {"type": ["integer", "null"]},
         "prior": {
             "type": "object",
             "properties": {
@@ -67,6 +71,8 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
                 "first_attempt_rate_percent": {"type": ["integer", "null"]},
                 "top_failure_causes": {"type": ["object", "null"]},
                 "superseded_breakdown": {"type": ["object", "null"]},
+                "cycle_time_minutes": {"type": ["integer", "null"]},
+                "lead_time_minutes": {"type": ["integer", "null"]},
             },
         },
         "delta": {
@@ -75,6 +81,8 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
                 **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
                 "first_attempt_rate_percent": {"type": ["integer", "null"]},
                 "superseded_breakdown": {"type": ["integer", "null"]},
+                "cycle_time_minutes": {"type": ["integer", "null"]},
+                "lead_time_minutes": {"type": ["integer", "null"]},
             },
         },
     },

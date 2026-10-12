@@ -39,6 +39,8 @@ def _generate_metrics_content() -> str:
     metric_to_func = {
         "cycle_time_days": "calculate_cycle_time_and_lead_time",
         "lead_time_days": "calculate_cycle_time_and_lead_time",
+        "cycle_time_minutes": "calculate_cycle_time_minutes",
+        "lead_time_minutes": "calculate_lead_time_minutes",
         "throughput": "calculate_throughput",
         "wip_violations": "calculate_wip_violations",
         "blocked_aging_days": "calculate_blocked_aging",
@@ -108,6 +110,9 @@ def _generate_input_format_content() -> str:
         "| `created` | Yes | ISO-8601 date | When the card was created |",
         "| `started` | No | ISO-8601 date | When work started on the card |",
         "| `completed` | No | ISO-8601 date | When the card was completed |",
+        "| `created_at` | No | ISO-8601 datetime | When the card was created (sub-day precision) |",
+        "| `started_at` | No | ISO-8601 datetime | When work started on the card (sub-day precision) |",
+        "| `completed_at` | No | ISO-8601 datetime | When the card was completed (sub-day precision) |",
         "| `blocked_since` | No | ISO-8601 date | When the card was blocked |",
         "| `attempts` | No | integer | Number of attempts (default: 1) |",
         "| `failure_class` | No | string | Classification of the failure |",
