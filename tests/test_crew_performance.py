@@ -312,12 +312,19 @@ def test_escalation_rate_rounds_to_nearest_percent():
 
 
 def test_command_reports_markdown_when_markdown_option_is_used(run_command):
-    """AC1: when the markdown output option is used, the command writes a markdown
-    report to standard output and does not write the table or JSON output."""
-    exit_code, output, _ = run_command([COMPLETED_CARD], markdown=True)
+    """AC1: --markdown produces a report with the crew performance summary,
+    the current sprint section with cycle time, lead time, throughput, WIP
+    violations, blocked aging, escalation rate, and first-attempt rate, and a
+    definitions section."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+    ]
+    exit_code, output, _ = run_command(cards, markdown=True)
 
     assert exit_code == 0
     assert "# Crew Performance Report" in output
+    assert "## Crew Performance Summary" in output
+    assert "- **Completed**: 1" in output
     assert "## Current Sprint" in output
     assert "- **Cycle time**: 4 days" in output
     assert "- **Lead time**: 6 days" in output
@@ -325,8 +332,9 @@ def test_command_reports_markdown_when_markdown_option_is_used(run_command):
     assert "- **WIP violations**: 0" in output
     assert "- **Blocked aging**: 0 days" in output
     assert "- **Escalation rate**: 0%" in output
-    assert HEADER not in output
-    assert SEPARATOR not in output
+    assert "- **First-attempt rate**: 100%" in output
+    assert "## Definitions" in output
+    assert "- Superseded: Number of superseded stories in the sprint" in output
 
 
 def test_command_does_not_produce_markdown_output_by_default(run_command):
