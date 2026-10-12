@@ -51,11 +51,24 @@ def _generate_metrics_content() -> str:
     }
 
     # Metrics whose description is not the first line of a single calculate
-    # function's docstring (shared function, or no calculate function at all).
+    # function's docstring (shared function, or no calculate function at all),
+    # or whose table row carries a note the docstring does not.
     metric_descriptions: dict[str, str] = {
         "first_attempt_numerator": "Return the count of completed cards whose attempts equals 1.",
         "first_attempt_denominator": "Return the total count of completed cards.",
         "escalation_count": "Return the number of escalated events in the sprint.",
+        "superseded_count": (
+            "Return the count of superseded stories in the sprint. "
+            "Excluded from throughput and in-flight calculations."
+        ),
+        "superseded_points": (
+            "Return the sum of points on superseded stories. "
+            "Excluded from throughput and in-flight calculations."
+        ),
+        "superseded_breakdown": (
+            "Return the per-reason count of superseded stories. "
+            "Excluded from throughput and in-flight calculations."
+        ),
     }
 
     lines = [
