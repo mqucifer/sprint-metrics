@@ -101,8 +101,6 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
 
     class ServiceHandler(http.server.BaseHTTPRequestHandler):
         def _ensure_db(self) -> bool:
-            import psycopg
-
             try:
                 conn_holder[0].execute("SELECT 1")
                 return True
@@ -110,6 +108,8 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                 pass
             if not db_url:
                 return False
+            import psycopg
+
             try:
                 conn_holder[0] = psycopg.connect(db_url, connect_timeout=5)
                 return True
@@ -286,8 +286,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                 attributes={"http.method": "GET", "http.route": route},
             ) as span:
                 try:
-                    if self.path.startswith("/sprint?label="):
-                        label = self.path[len("/sprint?label=") :]
+                    if self.path.startswith("/sprint?"):
+                        parsed = urlparse(self.path)
+                        params = parse_qs(parsed.query)
+                        label = params.get("label", [""])[0]
                         if not label:
                             self._send_json(400, {"error": "missing label parameter"})
                             status = 400
