@@ -4874,3 +4874,126 @@ def test_post_superseded_no_prior_events_returns_200():
         assert "error" not in body
     finally:
         conn.close()
+
+
+@requires_db
+def test_range_single_named_sprint_registered_returns_200():
+    """AC1: GET /range?start=Sprint%206&end=Sprint%206 with Sprint 6 registered
+    returns 200 and the sprints object has exactly one key, 'Sprint 6'."""
+    from datetime import date
+
+    import psycopg
+
+    from sprint_metrics.store import upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = 'Sprint 6'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = 'Sprint 6'")
+    conn.commit()
+
+    upsert_sprint(conn, "Sprint 6", date(2024, 3, 4), date(2024, 3, 15), "UTC")
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_named_single",
+                event_type="started",
+                timestamp="2024-03-05T10:00:00Z",
+                sprint="Sprint 6",
+                created="2024-03-04",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_named_single",
+                event_type="finished",
+                timestamp="2024-03-08T15:00:00Z",
+                sprint="Sprint 6",
+                created="2024-03-04",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%206&end=Sprint%206")
+        assert status == 200
+        sprints = body["sprints"]
+        assert list(sprints.keys()) == ["Sprint 6"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_single_named_sprint_unregistered_returns_400():
+    """AC2: GET /range?start=Sprint%206&end=Sprint%206 with Sprint 6 NOT registered
+    returns 400."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = 'Sprint 6'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = 'Sprint 6'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%206&end=Sprint%206")
+        assert status == 400
+        assert "error" in body
+    finally:
+        conn.close()
+
+
+class _FakeSprintCursor:
+    """Minimal cursor that returns pre-loaded rows from fetchall."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeSprintConn:
+    """In-memory stand-in for a psycopg connection, sufficient for
+    store.resolve_sprint_range. No database or SPRINT_METRICS_DB required."""
+
+    def __init__(self, sprints):
+        self._sprints = sprints
+
+    def execute(self, sql, params=()):
+        if "start_date BETWEEN" in sql:
+            lo, hi = params
+            names = sorted(
+                (name for name, sd in self._sprints.items() if lo <= sd <= hi),
+                key=lambda name: (self._sprints[name], name),
+            )
+            rows = [(name,) for name in names]
+        else:
+            wanted = set(params)
+            rows = [(name, sd) for name, sd in self._sprints.items() if name in wanted]
+        return _FakeSprintCursor(rows)
+
+
+def test_resolve_sprint_range_single_named_sprint_returns_that_sprint():
+    """AC1: a range of one registered sprint (start == end) resolves to that
+    sprint, not None. Fails against the old len(rows) < 2 guard that made a
+    single-sprint range look unregistered."""
+    from datetime import date
+
+    from sprint_metrics.store import resolve_sprint_range
+
+    conn = _FakeSprintConn({"Sprint 6": date(2024, 3, 4)})
+    assert resolve_sprint_range(conn, "Sprint 6", "Sprint 6") == ["Sprint 6"]
+
+
+def test_resolve_sprint_range_single_unregistered_sprint_returns_none():
+    """AC2: a range of one non-registered name still resolves to None (the 400
+    path), so the calendar-month fallback is reached rather than a silent
+    single-sprint answer."""
+    from sprint_metrics.store import resolve_sprint_range
+
+    conn = _FakeSprintConn({})
+    assert resolve_sprint_range(conn, "Sprint 6", "Sprint 6") is None
