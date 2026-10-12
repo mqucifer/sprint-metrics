@@ -7,10 +7,10 @@ The connection string is read from SPRINT_METRICS_DB.
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sprint_metrics.card import Card
+from sprint_metrics.card import Card, _parse_datetime
 
 if TYPE_CHECKING:
     from psycopg import Connection
@@ -44,6 +44,7 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS points INT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS because TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS epic TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS replaced_by JSONB;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS card_created_at TIMESTAMPTZ;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
     type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
@@ -72,7 +73,8 @@ def insert_event(conn: Connection, event: dict) -> None:
 
     The event dict must have keys: card_id, type, timestamp, sprint, card (with 'created').
     Optional card fields: attempts, failure_class, failure_role (stored only on 'finished' rows),
-    points (stored on every event row that carries it; NULL when absent).
+    points (stored on every event row that carries it; NULL when absent),
+    created_at (stored on every event row that carries it; NULL when absent).
     Optional top-level fields: attempt_number, failure_class, failure_role
     (stored only on 'attempt_failed' rows).
     Optional top-level fields: because, epic, replaced_by (stored only on 'superseded' rows).
@@ -102,13 +104,15 @@ def insert_event(conn: Connection, event: dict) -> None:
         json.dumps(event["replaced_by"]) if is_superseded and "replaced_by" in event else None
     )
 
+    card_created_at = _parse_datetime(card.get("created_at"), "created_at")
+
     conn.execute(
         """
         INSERT INTO sprint_metrics.board_events
             (card_id, type, event_time, sprint, card_created,
              attempts, failure_class, failure_role, attempt_number, points,
-             because, epic, replaced_by)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             because, epic, replaced_by, card_created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO NOTHING
         """,
         (
@@ -125,6 +129,7 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_because,
             ev_epic,
             ev_replaced_by,
+            card_created_at,
         ),
     )
     conn.commit()
@@ -135,8 +140,11 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
 
     For each card_id, reconstructs:
     - created: from card_created (any row)
+    - created_at: from card_created_at (first non-NULL row)
     - started: event_time date of the 'started' row
+    - started_at: event_time of the 'started' row (full TIMESTAMPTZ)
     - completed: event_time date of the 'finished' row
+    - completed_at: event_time of the 'finished' row (full TIMESTAMPTZ)
     - blocked_since: event_time date of the most recent 'blocked' row with no later 'unblocked'
     - attempts: from the 'finished' row (default 1)
     - failure_class/failure_role: from the 'finished' row
@@ -157,7 +165,8 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
     for (card_id,) in rows:
         events = conn.execute(
             """
-            SELECT type, event_time, card_created, attempts, failure_class, failure_role, points
+            SELECT type, event_time, card_created, card_created_at, attempts,
+                   failure_class, failure_role, points
             FROM sprint_metrics.board_events
             WHERE card_id = %s
             ORDER BY event_time
@@ -179,13 +188,19 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     rows in its history (1 + count) when any exist; otherwise it falls back
     to the attempts column on the 'finished' row (default 1).
     Points are read from the 'finished' row.
+    The card_created_at column (TIMESTAMPTZ) is read from the first non-NULL row
+    and assigned to the Card's created_at field. The full event_time (TIMESTAMPTZ)
+    is assigned to started_at and completed_at.
     """
     if not events:
         return None
 
     created: date | None = None
+    created_at: datetime | None = None
     started: date | None = None
+    started_at: datetime | None = None
     completed: date | None = None
+    completed_at: datetime | None = None
     attempts = 1
     failure_class: str | None = None
     failure_role: str | None = None
@@ -199,6 +214,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         event_type,
         event_time,
         card_created,
+        card_created_at,
         ev_attempts,
         ev_failure_class,
         ev_failure_role,
@@ -207,10 +223,14 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         event_date = event_time.date() if hasattr(event_time, "date") else event_time
         if created is None and card_created is not None:
             created = card_created
+        if created_at is None and card_created_at is not None:
+            created_at = card_created_at
         if event_type == "started" and started is None:
             started = event_date
+            started_at = event_time
         elif event_type == "finished":
             completed = event_date
+            completed_at = event_time
             if ev_attempts is not None:
                 attempts = ev_attempts
             failure_class = ev_failure_class
@@ -245,6 +265,9 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         failure_class=failure_class,
         failure_role=failure_role,
         points=points,
+        created_at=created_at,
+        started_at=started_at,
+        completed_at=completed_at,
     )
 
 

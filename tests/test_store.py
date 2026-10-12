@@ -68,3 +68,17 @@ def test_upsert_sprint_updates_existing_row(conn):
     ).fetchall()
     assert len(rows) == 1
     assert rows[0] == ("Sprint 18", date(2024, 1, 20), date(2024, 2, 20), "America/New_York")
+
+
+def test_board_events_has_card_created_at_column(conn):
+    """AC4: init_db creates card_created_at column as timestamp with time zone."""
+    rows = conn.execute(
+        """
+        SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_schema = 'sprint_metrics' AND table_name = 'board_events'
+        AND column_name = 'card_created_at'
+        """
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "card_created_at"
+    assert rows[0][1] == "timestamp with time zone"

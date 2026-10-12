@@ -6,6 +6,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from datetime import UTC
 
 import pytest
 
@@ -5680,5 +5681,105 @@ def test_trend_superseded_points_empty_db_returns_nulls():
         assert len(body["values"]) == 2
         assert body["values"][0] == {"sprint": "2024-01", "value": None}
         assert body["values"][1] == {"sprint": "2024-02", "value": None}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_event_with_created_at_stores_timestamp():
+    """AC1+AC5: POST /events with card.created_at stores the timestamp in card_created_at."""
+    from datetime import datetime
+
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_subday'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c_subday",
+            "type": "started",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-10", "created_at": "2024-01-10T08:30:00Z", "points": 5},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT card_created_at FROM sprint_metrics.board_events "
+            "WHERE card_id = 'c_subday' AND type = 'started'"
+        ).fetchall()
+        assert len(rows) == 1
+        expected = datetime(2024, 1, 10, 8, 30, 0, tzinfo=UTC)
+        assert rows[0][0] == expected
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_event_without_created_at_stores_null():
+    """AC2+AC6: POST /events without card.created_at stores NULL in card_created_at."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_no_created_at'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c_no_created_at",
+            "type": "started",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-10"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT card_created_at FROM sprint_metrics.board_events "
+            "WHERE card_id = 'c_no_created_at' AND type = 'started'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_event_with_invalid_created_at_returns_400():
+    """AC3: POST /events with unparseable card.created_at returns 400 with error."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_bad_ts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c_bad_ts",
+            "type": "started",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-10", "created_at": "not-a-timestamp"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert isinstance(body["error"], str)
+        assert len(body["error"]) > 0
     finally:
         conn.close()

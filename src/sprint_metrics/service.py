@@ -12,7 +12,7 @@ import os
 import sys
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import parse_qs, urlparse
 
 from opentelemetry._logs import SeverityNumber
@@ -239,6 +239,27 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         self._send_json(400, {"error": "card.created is required"})
                         status = 400
                         return
+
+                    card_created_at = card.get("created_at")
+                    if card_created_at is not None and card_created_at != "":
+                        if not isinstance(card_created_at, str):
+                            self._send_json(
+                                400,
+                                {"error": "card.created_at must be an ISO-8601 datetime string"},
+                            )
+                            status = 400
+                            return
+                        try:
+                            datetime.fromisoformat(card_created_at)
+                        except ValueError:
+                            self._send_json(
+                                400,
+                                {
+                                    "error": f"card.created_at is not a valid ISO-8601 datetime: {card_created_at!r}"
+                                },
+                            )
+                            status = 400
+                            return
 
                     if event_type == "superseded":
                         error = _validate_superseded_event(event)

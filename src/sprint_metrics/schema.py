@@ -172,6 +172,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
             "required": ["created"],
             "properties": {
                 "created": {"type": "string", "format": "date"},
+                "created_at": {"type": "string", "format": "date-time"},
                 "attempts": {"type": "integer"},
                 "failure_class": {"type": "string"},
                 "failure_role": {"type": "string"},
