@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,9 @@ class Card:
     points: int | None = None
     superseded: bool = False
     superseded_because: str | None = None
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     @property
     def is_completed(self) -> bool:
@@ -62,8 +65,9 @@ def _parse_date(value: object, field: str) -> date | None:
 def parse_card(raw: Mapping[str, object]) -> Card:
     """Build a ``Card`` from its serialised form."""
     created = _parse_date(raw.get("created"), "created")
-    if created is None:
-        raise ValueError("every card needs a 'created' date")
+    created_at = _parse_datetime(raw.get("created_at"), "created_at")
+    if created is None and created_at is None:
+        raise ValueError("every card needs a 'created' date or a 'created_at' timestamp")
     attempts = raw.get("attempts")
     if attempts is None:
         attempts = 1
@@ -94,6 +98,9 @@ def parse_card(raw: Mapping[str, object]) -> Card:
         points=points,
         superseded=superseded,
         superseded_because=superseded_because,
+        created_at=created_at,
+        started_at=_parse_datetime(raw.get("started_at"), "started_at"),
+        completed_at=_parse_datetime(raw.get("completed_at"), "completed_at"),
     )
 
 
@@ -108,3 +115,18 @@ def _load_cards(source: str) -> list[Card]:
     if not isinstance(raw, list):
         raise TypeError("expected a JSON list of cards")
     return _as_cards(raw)
+
+
+def _parse_datetime(value: object, field: str) -> datetime | None:
+    """Read an optional ISO-8601 datetime. Missing, null and empty all mean "not yet"."""
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be an ISO-8601 datetime string, got {value!r}")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} is not an ISO-8601 datetime: {value!r}") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

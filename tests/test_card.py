@@ -1,6 +1,6 @@
 """Tests for the Card dataclass and card parsing in sprint_metrics.card."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -209,3 +209,57 @@ def test_parse_card_superseded_invalid_because():
     raw = {"created": "2024-01-01", "superseded": True, "superseded_because": "frobnicated"}
     with pytest.raises(ValueError, match="frobnicated"):
         parse_card(raw)
+
+
+def test_parse_card_datetime_only_fields():
+    """AC1: a card with only _at datetime keys parses to aware UTC datetimes,
+    leaving the date-only fields None."""
+    card = parse_card(
+        {
+            "created_at": "2024-01-03T09:15:00Z",
+            "started_at": "2024-01-03T10:00:00Z",
+            "completed_at": "2024-01-03T21:26:00Z",
+        }
+    )
+    assert card.created_at == datetime(2024, 1, 3, 9, 15, tzinfo=UTC)
+    assert card.started_at == datetime(2024, 1, 3, 10, 0, tzinfo=UTC)
+    assert card.completed_at == datetime(2024, 1, 3, 21, 26, tzinfo=UTC)
+    assert card.created is None
+    assert card.started is None
+    assert card.completed is None
+
+
+def test_parse_card_date_only_leaves_datetime_fields_none():
+    """AC2: a card with only date keys leaves created_at/started_at/completed_at None."""
+    card = parse_card({"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"})
+    assert card.created == date(2024, 1, 1)
+    assert card.started == date(2024, 1, 3)
+    assert card.completed == date(2024, 1, 7)
+    assert card.created_at is None
+    assert card.started_at is None
+    assert card.completed_at is None
+
+
+def test_parse_card_invalid_created_at_raises():
+    """AC3: an unparseable created_at raises ValueError naming 'created_at'."""
+    with pytest.raises(ValueError, match="created_at"):
+        parse_card({"created_at": "not-a-datetime"})
+
+
+def test_parse_card_mixed_date_and_datetime_fields():
+    """AC4: date fields and present _at fields parse together; absent completed_at stays None."""
+    card = parse_card(
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "created_at": "2024-01-01T08:00:00Z",
+            "started_at": "2024-01-03T09:00:00Z",
+        }
+    )
+    assert card.created == date(2024, 1, 1)
+    assert card.started == date(2024, 1, 3)
+    assert card.completed == date(2024, 1, 7)
+    assert card.created_at == datetime(2024, 1, 1, 8, 0, tzinfo=UTC)
+    assert card.started_at == datetime(2024, 1, 3, 9, 0, tzinfo=UTC)
+    assert card.completed_at is None

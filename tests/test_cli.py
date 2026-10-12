@@ -89,3 +89,43 @@ def test_command_reports_json_error_for_invalid_thresholds_json(tmp_path, capsys
     assert exit_code == 2
     assert "sprint-metrics" in captured.err
     assert captured.out == ""
+
+
+def test_main_json_accepts_card_with_date_and_datetime_fields(tmp_path, capsys):
+    """AC5: a card with both date and _at fields runs with --json: exit 0,
+    empty stderr, and cycle_time_days is 0."""
+    cards = [
+        {
+            "created": "2026-10-11",
+            "started": "2026-10-11",
+            "completed": "2026-10-11",
+            "created_at": "2026-10-11T04:20:12Z",
+            "started_at": "2026-10-11T07:31:56Z",
+            "completed_at": "2026-10-11T18:57:48Z",
+        }
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert json.loads(captured.out)["cycle_time_days"] == 0
+
+
+def test_main_json_rejects_invalid_created_at(tmp_path, capsys):
+    """AC6: a card with unparseable created_at runs with --json: exit 2,
+    stderr contains 'created_at', stdout is empty."""
+    cards = [
+        {
+            "created": "2026-10-11",
+            "created_at": "not-a-valid-timestamp",
+        }
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--json"])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "created_at" in captured.err
+    assert captured.out == ""
