@@ -16,7 +16,7 @@ class Card:
     reached that point on the board.
     """
 
-    created: date
+    created: date | None
     started: date | None = None
     completed: date | None = None
     blocked_since: date | None = None
