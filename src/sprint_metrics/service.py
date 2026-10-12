@@ -12,7 +12,7 @@ import os
 import sys
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import parse_qs, urlparse
 
 from opentelemetry._logs import SeverityNumber
@@ -239,6 +239,27 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         self._send_json(400, {"error": "card.created is required"})
                         status = 400
                         return
+
+                    card_created_at = card.get("created_at")
+                    if card_created_at is not None and card_created_at != "":
+                        if not isinstance(card_created_at, str):
+                            self._send_json(
+                                400,
+                                {"error": "card.created_at must be an ISO-8601 datetime string"},
+                            )
+                            status = 400
+                            return
+                        try:
+                            datetime.fromisoformat(card_created_at)
+                        except ValueError:
+                            self._send_json(
+                                400,
+                                {
+                                    "error": f"card.created_at is not a valid ISO-8601 datetime: {card_created_at!r}"
+                                },
+                            )
+                            status = 400
+                            return
 
                     if event_type == "superseded":
                         error = _validate_superseded_event(event)
@@ -612,7 +633,8 @@ SERVICE_ENDPOINTS = (
         "(params: metric, start, end); sprints with no stored events return the metric's zero value. "
         "Metric names: cycle_time_days, lead_time_days, throughput, wip_violations, "
         "blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, failure_breakdown, "
-        "points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count",
+        "points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count, "
+        "superseded_count, superseded_points, superseded_breakdown",
     ),
     ("GET", "/metrics", "Prometheus text exposition of stored history, sprint-labelled"),
     ("GET", "/schema/event", "JSON Schema for the event intake format"),
@@ -655,6 +677,9 @@ def _null_sprint_response() -> dict:
         "first_attempt_denominator": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
+        "superseded_count": None,
+        "superseded_points": None,
+        "superseded_breakdown": None,
         "flags": None,
     }
 
@@ -675,6 +700,9 @@ def _null_range_entry() -> dict:
         "first_attempt_denominator": None,
         "failure_breakdown": None,
         "top_failure_causes": None,
+        "superseded_count": None,
+        "superseded_points": None,
+        "superseded_breakdown": None,
         "flags": None,
         "prior": None,
         "delta": None,

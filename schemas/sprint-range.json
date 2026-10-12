@@ -32,7 +32,9 @@
           "superseded_breakdown",
           "flags",
           "prior",
-          "delta"
+          "delta",
+          "cycle_time_minutes",
+          "lead_time_minutes"
         ],
         "properties": {
           "cycle_time_days": {
@@ -137,6 +139,18 @@
               "null"
             ]
           },
+          "cycle_time_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lead_time_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "prior": {
             "type": [
               "object",
@@ -224,6 +238,18 @@
               "superseded_breakdown": {
                 "type": [
                   "object",
+                  "null"
+                ]
+              },
+              "cycle_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_minutes": {
+                "type": [
+                  "integer",
                   "null"
                 ]
               }
@@ -314,6 +340,18 @@
                 ]
               },
               "superseded_breakdown": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "cycle_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_minutes": {
                 "type": [
                   "integer",
                   "null"

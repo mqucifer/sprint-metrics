@@ -6,6 +6,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from datetime import UTC
 
 import pytest
 
@@ -348,8 +349,8 @@ def test_sprint_data_survives_reconnect():
 
 
 @requires_db
-def test_sprint_response_has_exactly_eleven_keys_no_sprint_date():
-    """AC5: GET /sprint response has exactly 15 top-level keys and no sprint_date."""
+def test_sprint_response_key_set_no_sprint_date():
+    """GET /sprint response has the full set of top-level keys and no sprint_date."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -393,6 +394,9 @@ def test_sprint_response_has_exactly_eleven_keys_no_sprint_date():
             "first_attempt_denominator",
             "failure_breakdown",
             "top_failure_causes",
+            "superseded_count",
+            "superseded_points",
+            "superseded_breakdown",
             "flags",
         }
         assert set(body.keys()) == expected_keys
@@ -5110,3 +5114,672 @@ def test_resolve_sprint_range_single_unregistered_sprint_returns_none():
 
     conn = _FakeSprintConn({})
     assert resolve_sprint_range(conn, "Sprint 6", "Sprint 6") is None
+
+
+@requires_db
+def test_sprint_superseded_metrics_with_mixed_events():
+    """AC1: GET /sprint returns superseded_count, superseded_points,
+    superseded_breakdown from stored superseded events; superseded card
+    excluded from throughput."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('sup_c1', 'sup_c2')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started_c1 = _make_event(
+            card_id="sup_c1",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-02",
+        )
+        superseded_c1 = {
+            "api_version": "1",
+            "card_id": "sup_c1",
+            "type": "superseded",
+            "timestamp": "2024-01-04T10:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-02", "points": 5},
+            "because": "sponsor",
+        }
+        finished_c2 = _make_event(
+            card_id="sup_c2",
+            event_type="finished",
+            timestamp="2024-01-05T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+            started="2024-01-02",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", superseded_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", finished_c2)
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=2024-01", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["superseded_count"] == 1
+        assert body["superseded_points"] == 5
+        assert body["superseded_breakdown"] == {"sponsor": 1, "story_problem": 0}
+        assert body["throughput"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_superseded_metrics_per_sprint():
+    """AC3: GET /range returns per-sprint superseded_count and superseded_points."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('rng_c1', 'rng_c2')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started_c1 = _make_event(
+            card_id="rng_c1",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        superseded_c1 = {
+            "api_version": "1",
+            "card_id": "rng_c1",
+            "type": "superseded",
+            "timestamp": "2024-01-04T10:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "points": 5},
+            "because": "sponsor",
+        }
+        started_c2 = _make_event(
+            card_id="rng_c2",
+            event_type="started",
+            timestamp="2024-02-03T10:00:00Z",
+            sprint="2024-02",
+            created="2024-02-01",
+        )
+        finished_c2 = _make_event(
+            card_id="rng_c2",
+            event_type="finished",
+            timestamp="2024-02-07T10:00:00Z",
+            sprint="2024-02",
+            created="2024-02-01",
+            started="2024-02-02",
+            points=3,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", superseded_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", started_c2)
+        _post_events(f"http://127.0.0.1:{port}/events", finished_c2)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        sprints = body["sprints"]
+        assert sprints["2024-01"]["superseded_count"] == 1
+        assert sprints["2024-01"]["superseded_points"] == 5
+        assert sprints["2024-02"]["superseded_count"] == 0
+        assert sprints["2024-02"]["superseded_points"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_superseded_prior_and_delta():
+    """AC4: GET /range prior and delta include superseded_count and superseded_points."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('rngd_c1', 'rngd_c2')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started_c1 = _make_event(
+            card_id="rngd_c1",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        superseded_c1 = {
+            "api_version": "1",
+            "card_id": "rngd_c1",
+            "type": "superseded",
+            "timestamp": "2024-01-04T10:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "points": 5},
+            "because": "sponsor",
+        }
+        started_c2 = _make_event(
+            card_id="rngd_c2",
+            event_type="started",
+            timestamp="2024-02-03T10:00:00Z",
+            sprint="2024-02",
+            created="2024-02-01",
+        )
+        finished_c2 = _make_event(
+            card_id="rngd_c2",
+            event_type="finished",
+            timestamp="2024-02-07T10:00:00Z",
+            sprint="2024-02",
+            created="2024-02-01",
+            started="2024-02-02",
+            points=3,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", superseded_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", started_c2)
+        _post_events(f"http://127.0.0.1:{port}/events", finished_c2)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        sprints = body["sprints"]
+        assert sprints["2024-02"]["prior"]["superseded_count"] == 1
+        assert sprints["2024-02"]["prior"]["superseded_points"] == 5
+        assert sprints["2024-02"]["delta"]["superseded_count"] == -1
+        assert sprints["2024-02"]["delta"]["superseded_points"] == -5
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_superseded_excluded_from_throughput():
+    """AC5: A superseded card is not counted as delivered; throughput is 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'supt_c1'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started_c1 = _make_event(
+            card_id="supt_c1",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-02",
+        )
+        superseded_c1 = {
+            "api_version": "1",
+            "card_id": "supt_c1",
+            "type": "superseded",
+            "timestamp": "2024-01-04T10:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-02", "points": 5},
+            "because": "sponsor",
+        }
+        _post_events(f"http://127.0.0.1:{port}/events", started_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", superseded_c1)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["throughput"] == 0
+        assert body["superseded_count"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_multiple_superseded_breakdown():
+    """AC7: Two superseded cards (sponsor, story_problem) plus one finished card
+    produce superseded_count=2, superseded_points=8, correct breakdown, throughput=1."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('sup2_c1', 'sup2_c2', 'sup2_c3')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        superseded_c1 = {
+            "api_version": "1",
+            "card_id": "sup2_c1",
+            "type": "superseded",
+            "timestamp": "2024-01-03T10:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "points": 5},
+            "because": "sponsor",
+        }
+        superseded_c2 = {
+            "api_version": "1",
+            "card_id": "sup2_c2",
+            "type": "superseded",
+            "timestamp": "2024-01-03T11:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "points": 3},
+            "because": "story_problem",
+        }
+        finished_c3 = _make_event(
+            card_id="sup2_c3",
+            event_type="finished",
+            timestamp="2024-01-05T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+            started="2024-01-02",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", superseded_c1)
+        _post_events(f"http://127.0.0.1:{port}/events", superseded_c2)
+        _post_events(f"http://127.0.0.1:{port}/events", finished_c3)
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=2024-01", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert resp.headers.get("Content-Type", "") == "application/json"
+            body = json.loads(resp.read().decode())
+
+        assert body["superseded_count"] == 2
+        assert body["superseded_points"] == 8
+        assert body["superseded_breakdown"] == {"sponsor": 1, "story_problem": 1}
+        assert body["throughput"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_only_started_superseded_zeros_not_null():
+    """AC8: A sprint with only a started event (no superseded, no finished)
+    returns integer zeros for superseded fields, not null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'zero_c1'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started_c1 = _make_event(
+            card_id="zero_c1",
+            event_type="started",
+            timestamp="2024-01-03T10:00:00Z",
+            sprint="2024-01",
+            created="2024-01-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started_c1)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["superseded_count"] == 0
+        assert body["superseded_points"] == 0
+        assert body["superseded_breakdown"] == {"sponsor": 0, "story_problem": 0}
+        assert body["throughput"] == 0
+        assert isinstance(body["superseded_count"], int)
+        assert isinstance(body["superseded_points"], int)
+        assert isinstance(body["superseded_breakdown"], dict)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_no_events_superseded_fields_null():
+    """AC2: A sprint with no events returns null for superseded_count,
+    superseded_points, and superseded_breakdown."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-11'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-11")
+        assert status == 200
+        assert body["superseded_count"] is None
+        assert body["superseded_points"] is None
+        assert body["superseded_breakdown"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_superseded_count_three_sprints():
+    """AC1: GET /trend?metric=superseded_count&start=2024-01&end=2024-03 with
+    a superseded event for card c1 in sprint 2024-01 (because "sponsor", points 5)
+    and a superseded event for card c2 in sprint 2024-02 (because "story_problem",
+    points 3) returns 200, Content-Type application/json, and values array has
+    exactly three entries in order: 2024-01 value 1, 2024-02 value 1, 2024-03 value null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac1_sup_c1', 'ac1_sup_c2')"
+    )
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02', '2024-03')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: superseded event for card c1 (because "sponsor", points 5)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "ac1_sup_c1",
+                "type": "superseded",
+                "sprint": "2024-01",
+                "timestamp": "2024-01-15T10:00:00Z",
+                "card": {"created": "2024-01-01", "points": 5},
+                "because": "sponsor",
+            },
+        )
+        # Sprint 2024-02: superseded event for card c2 (because "story_problem", points 3)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "ac1_sup_c2",
+                "type": "superseded",
+                "sprint": "2024-02",
+                "timestamp": "2024-02-15T10:00:00Z",
+                "card": {"created": "2024-02-01", "points": 3},
+                "because": "story_problem",
+            },
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/trend?metric=superseded_count&start=2024-01&end=2024-03",
+            timeout=5,
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["api_version"] == "1"
+        assert len(body["values"]) == 3
+        assert body["values"][0] == {"sprint": "2024-01", "value": 1}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 1}
+        assert body["values"][2] == {"sprint": "2024-03", "value": None}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_superseded_points_two_sprints():
+    """AC2: GET /trend?metric=superseded_points&start=2024-01&end=2024-02 with
+    a superseded event for card c1 in sprint 2024-01 (points 5) and card c2 in
+    sprint 2024-02 (points 3) returns 200 with values array having two entries:
+    2024-01 value 5 and 2024-02 value 3."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac2_sup_c1', 'ac2_sup_c2')"
+    )
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "ac2_sup_c1",
+                "type": "superseded",
+                "sprint": "2024-01",
+                "timestamp": "2024-01-15T10:00:00Z",
+                "card": {"created": "2024-01-01", "points": 5},
+                "because": "sponsor",
+            },
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "ac2_sup_c2",
+                "type": "superseded",
+                "sprint": "2024-02",
+                "timestamp": "2024-02-15T10:00:00Z",
+                "card": {"created": "2024-02-01", "points": 3},
+                "because": "story_problem",
+            },
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/trend?metric=superseded_points&start=2024-01&end=2024-02",
+            timeout=5,
+        ) as resp:
+            assert resp.status == 200
+            body = json.loads(resp.read().decode())
+
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 5}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 3}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_superseded_count_empty_db_returns_nulls():
+    """AC4: GET /trend?metric=superseded_count&start=2024-01&end=2024-02 on an
+    empty DB returns 200 with values array having two entries both with value null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=superseded_count&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": None}
+        assert body["values"][1] == {"sprint": "2024-02", "value": None}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_superseded_count_four_sprints_with_gap():
+    """AC6 (UX): GET /trend?metric=superseded_count&start=2024-01&end=2024-04 with
+    events in 2024-01 and 2024-03 but not 2024-02 or 2024-04 returns 200,
+    Content-Type application/json, and values array has exactly four entries in
+    order: 2024-01 value 1, 2024-02 value null, 2024-03 value 1, 2024-04 value null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac6_sup_c1', 'ac6_sup_c2')"
+    )
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN "
+        "('2024-01', '2024-02', '2024-03', '2024-04')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: superseded event for card c1
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "ac6_sup_c1",
+                "type": "superseded",
+                "sprint": "2024-01",
+                "timestamp": "2024-01-15T10:00:00Z",
+                "card": {"created": "2024-01-01", "points": 5},
+                "because": "sponsor",
+            },
+        )
+        # Sprint 2024-03: superseded event for card c2
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "ac6_sup_c2",
+                "type": "superseded",
+                "sprint": "2024-03",
+                "timestamp": "2024-03-15T10:00:00Z",
+                "card": {"created": "2024-03-01", "points": 3},
+                "because": "story_problem",
+            },
+        )
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/trend?metric=superseded_count&start=2024-01&end=2024-04",
+            timeout=5,
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert len(body["values"]) == 4
+        assert body["values"][0] == {"sprint": "2024-01", "value": 1}
+        assert body["values"][1] == {"sprint": "2024-02", "value": None}
+        assert body["values"][2] == {"sprint": "2024-03", "value": 1}
+        assert body["values"][3] == {"sprint": "2024-04", "value": None}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_superseded_points_empty_db_returns_nulls():
+    """AC7 (UX): GET /trend?metric=superseded_points&start=2024-01&end=2024-02 on
+    an empty DB returns 200 with values array having exactly two entries both
+    with value null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=superseded_points&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": None}
+        assert body["values"][1] == {"sprint": "2024-02", "value": None}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_event_with_created_at_stores_timestamp():
+    """AC1+AC5: POST /events with card.created_at stores the timestamp in card_created_at."""
+    from datetime import datetime
+
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_subday'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c_subday",
+            "type": "started",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-10", "created_at": "2024-01-10T08:30:00Z", "points": 5},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT card_created_at FROM sprint_metrics.board_events "
+            "WHERE card_id = 'c_subday' AND type = 'started'"
+        ).fetchall()
+        assert len(rows) == 1
+        expected = datetime(2024, 1, 10, 8, 30, 0, tzinfo=UTC)
+        assert rows[0][0] == expected
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_event_without_created_at_stores_null():
+    """AC2+AC6: POST /events without card.created_at stores NULL in card_created_at."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_no_created_at'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c_no_created_at",
+            "type": "started",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-10"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT card_created_at FROM sprint_metrics.board_events "
+            "WHERE card_id = 'c_no_created_at' AND type = 'started'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_event_with_invalid_created_at_returns_400():
+    """AC3: POST /events with unparseable card.created_at returns 400 with error."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_bad_ts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "c_bad_ts",
+            "type": "started",
+            "sprint": "Sprint 19",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-10", "created_at": "not-a-timestamp"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert isinstance(body["error"], str)
+        assert len(body["error"]) > 0
+    finally:
+        conn.close()

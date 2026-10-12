@@ -10,6 +10,8 @@ BEGIN:thresholds
 |---|---|---|
 | `cycle_time_days` | 5 | exceeds |
 | `lead_time_days` | 7 | exceeds |
+| `cycle_time_minutes` | 7200 | exceeds |
+| `lead_time_minutes` | 10080 | exceeds |
 | `throughput` | 1 | falls below |
 | `wip_violations` | 0 | exceeds |
 | `blocked_aging_days` | 5 | exceeds |

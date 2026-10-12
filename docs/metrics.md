@@ -9,6 +9,7 @@ BEGIN:metrics
 |---|---|---|---|
 | Blocked aging | `blocked_aging_days` | Return the maximum number of days any card has been blocked in the sprint. | `sprint_blocked_aging_days` |
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_cycle_time_days` |
+| Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_cycle_time_minutes` |
 | Escalation count | `escalation_count` | Return the number of escalated events in the sprint. | `sprint_escalation_count` |
 | Escalation rate | `escalation_rate_percent` | Return the escalation rate as a percentage (0-100). | `sprint_escalation_rate_percent` |
 | Top causes | `failure_breakdown` | Return the failure causes grouped by (class, role), sorted by count descending. | `sprint_failure_count` |
@@ -16,7 +17,11 @@ BEGIN:metrics
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. | `sprint_first_attempt_numerator` |
 | First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt. | `sprint_first_attempt_rate_percent` |
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_lead_time_days` |
+| Lead time (min) | `lead_time_minutes` | Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_lead_time_minutes` |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards. | `sprint_points_delivered` |
+| Superseded breakdown | `superseded_breakdown` | Return the per-reason count of superseded stories. Excluded from throughput and in-flight calculations. | `sprint_superseded_breakdown` |
+| Superseded count | `superseded_count` | Return the count of superseded stories in the sprint. Excluded from throughput and in-flight calculations. | `sprint_superseded_count` |
+| Superseded points | `superseded_points` | Return the sum of points on superseded stories. Excluded from throughput and in-flight calculations. | `sprint_superseded_points` |
 | Throughput | `throughput` | Return the number of completed cards in the sprint. | `sprint_throughput` |
 | WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. | `sprint_wip_violations` |
 END:metrics
@@ -41,6 +46,22 @@ completed card has attempts greater than 1.
 Top failure causes is the top 3 failure classes by count, with ties broken
 alphabetically. The result is an empty object when no completed card has a
 non-null failure class.
+
+### Superseded metrics
+
+`superseded_count` is the number of cards in the sprint that carry a
+superseded event. A superseded story is neither delivered — it is excluded
+from throughput, cycle time, and lead time — nor in-flight — it is excluded
+from WIP occupancy and blocked aging. It is a distinct state from both.
+
+`superseded_points` is the sum of the `points` value on the cards that were
+superseded in the sprint. It is 0 when no superseded card carries a points
+value.
+
+`superseded_breakdown` is an object with two keys, `"sponsor"` and
+`"story_problem"`, giving the count of superseded stories for each reason.
+Both keys are always present, even when one of the reasons has no superseded
+stories.
 
 ## Boundary conditions
 
@@ -86,3 +107,11 @@ cannot be in violation.
 
 Escalation rate is 0 when no cards are completed, regardless of the
 escalation count.
+
+### Superseded
+
+A sprint with no superseded events reports 0 for `superseded_count`, 0 for
+`superseded_points`, and `{"sponsor": 0, "story_problem": 0}` for
+`superseded_breakdown`. A superseded story is excluded from both throughput
+and in-flight calculations; it does not contribute to any in-flight or
+delivered metric.

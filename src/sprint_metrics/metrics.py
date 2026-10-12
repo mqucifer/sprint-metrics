@@ -168,6 +168,8 @@ ALL_METRICS: frozenset[str] = frozenset(
         "superseded_count",
         "superseded_points",
         "superseded_breakdown",
+        "cycle_time_minutes",
+        "lead_time_minutes",
     }
 )
 
@@ -381,3 +383,37 @@ def calculate_superseded_breakdown(
             if card.superseded and card.superseded_because == "story_problem"
         ),
     }
+
+
+def calculate_cycle_time_minutes(cards: Iterable[Card | Mapping[str, object]]) -> int | None:
+    """Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps.
+
+    Cycle time is the span from ``started_at`` to ``completed_at``. Only completed
+    cards that carry both timestamps contribute; a card still in flight, or one
+    with only date-level fields, is excluded. ``None`` when no card qualifies.
+    """
+    values = [
+        round((card.completed_at - card.started_at).total_seconds() / 60)
+        for card in _as_cards(cards)
+        if card.is_completed and card.started_at is not None and card.completed_at is not None
+    ]
+    if not values:
+        return None
+    return round(sum(values) / len(values))
+
+
+def calculate_lead_time_minutes(cards: Iterable[Card | Mapping[str, object]]) -> int | None:
+    """Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps.
+
+    Lead time is the span from ``created_at`` to ``completed_at``. Only completed
+    cards that carry both timestamps contribute; a card still in flight, or one
+    with only date-level fields, is excluded. ``None`` when no card qualifies.
+    """
+    values = [
+        round((card.completed_at - card.created_at).total_seconds() / 60)
+        for card in _as_cards(cards)
+        if card.is_completed and card.created_at is not None and card.completed_at is not None
+    ]
+    if not values:
+        return None
+    return round(sum(values) / len(values))

@@ -39,6 +39,8 @@ def _generate_metrics_content() -> str:
     metric_to_func = {
         "cycle_time_days": "calculate_cycle_time_and_lead_time",
         "lead_time_days": "calculate_cycle_time_and_lead_time",
+        "cycle_time_minutes": "calculate_cycle_time_minutes",
+        "lead_time_minutes": "calculate_lead_time_minutes",
         "throughput": "calculate_throughput",
         "wip_violations": "calculate_wip_violations",
         "blocked_aging_days": "calculate_blocked_aging",
@@ -49,11 +51,24 @@ def _generate_metrics_content() -> str:
     }
 
     # Metrics whose description is not the first line of a single calculate
-    # function's docstring (shared function, or no calculate function at all).
+    # function's docstring (shared function, or no calculate function at all),
+    # or whose table row carries a note the docstring does not.
     metric_descriptions: dict[str, str] = {
         "first_attempt_numerator": "Return the count of completed cards whose attempts equals 1.",
         "first_attempt_denominator": "Return the total count of completed cards.",
         "escalation_count": "Return the number of escalated events in the sprint.",
+        "superseded_count": (
+            "Return the count of superseded stories in the sprint. "
+            "Excluded from throughput and in-flight calculations."
+        ),
+        "superseded_points": (
+            "Return the sum of points on superseded stories. "
+            "Excluded from throughput and in-flight calculations."
+        ),
+        "superseded_breakdown": (
+            "Return the per-reason count of superseded stories. "
+            "Excluded from throughput and in-flight calculations."
+        ),
     }
 
     lines = [
@@ -108,6 +123,9 @@ def _generate_input_format_content() -> str:
         "| `created` | Yes | ISO-8601 date | When the card was created |",
         "| `started` | No | ISO-8601 date | When work started on the card |",
         "| `completed` | No | ISO-8601 date | When the card was completed |",
+        "| `created_at` | No | ISO-8601 datetime | When the card was created (sub-day precision) |",
+        "| `started_at` | No | ISO-8601 datetime | When work started on the card (sub-day precision) |",
+        "| `completed_at` | No | ISO-8601 datetime | When the card was completed (sub-day precision) |",
         "| `blocked_since` | No | ISO-8601 date | When the card was blocked |",
         "| `attempts` | No | integer | Number of attempts (default: 1) |",
         "| `failure_class` | No | string | Classification of the failure |",

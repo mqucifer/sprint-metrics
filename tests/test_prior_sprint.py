@@ -171,6 +171,8 @@ def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
     assert data["prior"] == {
         "cycle_time_days": 4,
         "lead_time_days": 6,
+        "cycle_time_minutes": None,
+        "lead_time_minutes": None,
         "throughput": 1,
         "wip_violations": 0,
         "blocked_aging_days": 0,
@@ -184,6 +186,8 @@ def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
     assert data["delta"] == {
         "cycle_time_days": 2,
         "lead_time_days": 1,
+        "cycle_time_minutes": None,
+        "lead_time_minutes": None,
         "throughput": 0,
         "wip_violations": 0,
         "blocked_aging_days": 0,
