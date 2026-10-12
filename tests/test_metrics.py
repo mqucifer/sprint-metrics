@@ -551,3 +551,9 @@ def test_all_metrics_includes_superseded():
     assert "superseded_count" in ALL_METRICS
     assert "superseded_points" in ALL_METRICS
     assert "superseded_breakdown" in ALL_METRICS
+
+
+def test_calculate_escalation_rate_capped_at_100():
+    """With 2 escalations and 1 completed card, the rate is capped at 100, not 200."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
+    assert calculate_escalation_rate(cards, escalations=2) == 100

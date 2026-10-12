@@ -337,7 +337,8 @@ def resolve_sprint_range(conn: Connection, start: str, end: str) -> list[str] | 
         (start, end),
     ).fetchall()
 
-    if len(rows) < 2:
+    names_in_db = {name for (name, _) in rows}
+    if start not in names_in_db or end not in names_in_db:
         return None
 
     by_name = {name: sd for name, sd in rows}
