@@ -612,7 +612,8 @@ SERVICE_ENDPOINTS = (
         "(params: metric, start, end); sprints with no stored events return the metric's zero value. "
         "Metric names: cycle_time_days, lead_time_days, throughput, wip_violations, "
         "blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, failure_breakdown, "
-        "points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count",
+        "points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count, "
+        "superseded_count, superseded_points, superseded_breakdown",
     ),
     ("GET", "/metrics", "Prometheus text exposition of stored history, sprint-labelled"),
     ("GET", "/schema/event", "JSON Schema for the event intake format"),
