@@ -4880,6 +4880,242 @@ def test_post_superseded_no_prior_events_returns_200():
 
 
 @requires_db
+def test_get_sprint_label_without_encoding_returns_metrics():
+    """A sprint label with no percent-encoded characters still works after the decode fix."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 's1_nospace'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="s1_nospace",
+            event_type="started",
+            timestamp="2024-03-04T10:00:00Z",
+            sprint="S1",
+            created="2024-03-01",
+        )
+        finished = _make_event(
+            card_id="s1_nospace",
+            event_type="finished",
+            timestamp="2024-03-08T10:00:00Z",
+            sprint="S1",
+            created="2024-03-01",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/sprint?label=S1", timeout=5) as resp:
+            assert resp.status == 200
+            body = json.loads(resp.read().decode())
+
+        assert body["throughput"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_get_sprint_encoded_label_no_events_returns_null():
+    """A percent-encoded label with no matching events returns 200 and all-null metrics."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=Sprint%2099", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+
+        assert body["throughput"] is None
+    finally:
+        conn.close()
+
+
+def test_get_sprint_decodes_label(monkeypatch):
+    """GET /sprint?label=Sprint%2018 passes the decoded label 'Sprint 18' to the store.
+
+    Against the old extraction (self.path[len('/sprint?label='):]), the label
+    arrives as 'Sprint%2018' and the SQL WHERE clause matches no rows.
+    """
+    from datetime import date
+    from unittest.mock import MagicMock
+
+    from sprint_metrics import service
+    from sprint_metrics.card import Card
+
+    labels_seen: list[str] = []
+
+    def fake_sprint_has_events(conn, label):
+        labels_seen.append(label)
+        return True
+
+    def fake_query_sprint(conn, label):
+        labels_seen.append(label)
+        return [
+            Card(
+                created=date(2024, 1, 10),
+                started=date(2024, 1, 12),
+                completed=date(2024, 1, 16),
+            )
+        ]
+
+    def fake_count_escalated_events(conn, label):
+        labels_seen.append(label)
+        return 0
+
+    monkeypatch.setattr(service, "sprint_has_events", fake_sprint_has_events)
+    monkeypatch.setattr(service, "query_sprint", fake_query_sprint)
+    monkeypatch.setattr(service, "count_escalated_events", fake_count_escalated_events)
+
+    mock_conn = MagicMock()
+    port = _start_service(mock_conn, 0)
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/sprint?label=Sprint%2018", timeout=5
+        ) as resp:
+            assert resp.status == 200
+            assert "application/json" in resp.headers.get("Content-Type", "")
+            body = json.loads(resp.read().decode())
+    finally:
+        pass
+
+    assert body["throughput"] == 1
+    assert body["cycle_time_days"] == 4
+    assert labels_seen == ["Sprint 18", "Sprint 18", "Sprint 18"]
+
+
+@requires_db
+def test_range_single_named_sprint_registered_returns_200():
+    """AC1: GET /range?start=Sprint%206&end=Sprint%206 with Sprint 6 registered
+    returns 200 and the sprints object has exactly one key, 'Sprint 6'."""
+    from datetime import date
+
+    import psycopg
+
+    from sprint_metrics.store import upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = 'Sprint 6'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = 'Sprint 6'")
+    conn.commit()
+
+    upsert_sprint(conn, "Sprint 6", date(2024, 3, 4), date(2024, 3, 15), "UTC")
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_named_single",
+                event_type="started",
+                timestamp="2024-03-05T10:00:00Z",
+                sprint="Sprint 6",
+                created="2024-03-04",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_named_single",
+                event_type="finished",
+                timestamp="2024-03-08T15:00:00Z",
+                sprint="Sprint 6",
+                created="2024-03-04",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%206&end=Sprint%206")
+        assert status == 200
+        sprints = body["sprints"]
+        assert list(sprints.keys()) == ["Sprint 6"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_single_named_sprint_unregistered_returns_400():
+    """AC2: GET /range?start=Sprint%206&end=Sprint%206 with Sprint 6 NOT registered
+    returns 400."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = 'Sprint 6'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = 'Sprint 6'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%206&end=Sprint%206")
+        assert status == 400
+        assert "error" in body
+    finally:
+        conn.close()
+
+
+class _FakeSprintCursor:
+    """Minimal cursor that returns pre-loaded rows from fetchall."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeSprintConn:
+    """In-memory stand-in for a psycopg connection, sufficient for
+    store.resolve_sprint_range. No database or SPRINT_METRICS_DB required."""
+
+    def __init__(self, sprints):
+        self._sprints = sprints
+
+    def execute(self, sql, params=()):
+        if "start_date BETWEEN" in sql:
+            lo, hi = params
+            names = sorted(
+                (name for name, sd in self._sprints.items() if lo <= sd <= hi),
+                key=lambda name: (self._sprints[name], name),
+            )
+            rows = [(name,) for name in names]
+        else:
+            wanted = set(params)
+            rows = [(name, sd) for name, sd in self._sprints.items() if name in wanted]
+        return _FakeSprintCursor(rows)
+
+
+def test_resolve_sprint_range_single_named_sprint_returns_that_sprint():
+    """AC1: a range of one registered sprint (start == end) resolves to that
+    sprint, not None. Fails against the old len(rows) < 2 guard that made a
+    single-sprint range look unregistered."""
+    from datetime import date
+
+    from sprint_metrics.store import resolve_sprint_range
+
+    conn = _FakeSprintConn({"Sprint 6": date(2024, 3, 4)})
+    assert resolve_sprint_range(conn, "Sprint 6", "Sprint 6") == ["Sprint 6"]
+
+
+def test_resolve_sprint_range_single_unregistered_sprint_returns_none():
+    """AC2: a range of one non-registered name still resolves to None (the 400
+    path), so the calendar-month fallback is reached rather than a silent
+    single-sprint answer."""
+    from sprint_metrics.store import resolve_sprint_range
+
+    conn = _FakeSprintConn({})
+    assert resolve_sprint_range(conn, "Sprint 6", "Sprint 6") is None
+
+
+@requires_db
 def test_sprint_superseded_metrics_with_mixed_events():
     """AC1: GET /sprint returns superseded_count, superseded_points,
     superseded_breakdown from stored superseded events; superseded card

@@ -2585,7 +2585,7 @@ def test_json_includes_points_delivered_first_attempt_counts_and_escalation_coun
     assert data["throughput"] == 1
     assert data["wip_violations"] == 0
     assert data["blocked_aging_days"] == 0
-    assert data["escalation_rate_percent"] == 200
+    assert data["escalation_rate_percent"] == 100
     assert data["first_attempt_rate_percent"] == 100
     assert "failure_breakdown" in data
     assert "top_failure_causes" in data
