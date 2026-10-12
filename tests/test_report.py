@@ -213,8 +213,13 @@ def test_table_header_superseded_position_and_separator():
 
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
-        {"created": "2024-01-02", "state": "Superseded", "points": 5},
-        {"created": "2024-01-03", "state": "Superseded", "points": 3},
+        {"created": "2024-01-02", "superseded": True, "superseded_because": "sponsor", "points": 5},
+        {
+            "created": "2024-01-03",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
     ]
     result = format_performance_table(cards)
     lines = result.splitlines()
