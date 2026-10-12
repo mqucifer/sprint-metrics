@@ -20,7 +20,7 @@ BEGIN:metrics
 | Lead time (min) | `lead_time_minutes` | Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_lead_time_minutes` |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards. | `sprint_points_delivered` |
 | Superseded breakdown | `superseded_breakdown` | Return the per-reason count of superseded stories. Excluded from throughput and in-flight calculations. | `sprint_superseded_breakdown` |
-| Superseded count | `superseded_count` | Return the count of superseded stories in the sprint. Excluded from throughput and in-flight calculations. | `sprint_superseded_count` |
+| Superseded | `superseded_count` | Return the count of superseded stories in the sprint. Excluded from throughput and in-flight calculations. | `sprint_superseded_count` |
 | Superseded points | `superseded_points` | Return the sum of points on superseded stories. Excluded from throughput and in-flight calculations. | `sprint_superseded_points` |
 | Throughput | `throughput` | Return the number of completed cards in the sprint. | `sprint_throughput` |
 | WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. | `sprint_wip_violations` |

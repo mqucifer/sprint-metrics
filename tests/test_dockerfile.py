@@ -66,7 +66,7 @@ def test_docker_run_with_cards(tmp_path):
         text=True,
     )
     assert run.returncode == 0, f"docker run failed: {run.stderr}"
-    assert "| Current | 5 days | 7 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in run.stdout
+    assert "| Current | 5 days | 7 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in run.stdout
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")

@@ -173,7 +173,7 @@ def test_table_superseded_zero_shows_bare_zero():
 
 
 def test_table_empty_sprint_superseded_zero():
-    """AC3: empty sprint exits 0 and Superseded cell is '0'."""
+    """AC3: empty sprint; Superseded cell reads '0'."""
     from sprint_metrics.report import format_performance_table
 
     result = format_performance_table([])
@@ -192,7 +192,7 @@ def test_table_prior_superseded_delta():
         {"created": "2024-01-02", "superseded": True, "superseded_because": "sponsor", "points": 5},
     ]
     prior_cards = [
-        {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+        {"created": "2023-12-01", "started": "2023-12-03", "completed": "2023-12-07"},
     ]
     result = format_performance_table(current_cards, prior_cards=prior_cards)
     lines = result.splitlines()
@@ -236,13 +236,13 @@ def test_table_header_superseded_position_and_separator():
 
 
 def test_table_superseded_no_points_shows_zero_pts():
-    """AC6: superseded card with no points field shows '1 (0 pts)'."""
+    """AC6: 1 superseded card with no points field; cell reads '1 (0 pts)'."""
     from sprint_metrics.report import format_performance_table
 
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
-        {"created": "2024-01-02", "started": "2024-01-03", "completed": "2024-01-07"},
-        {"created": "2024-01-02", "superseded": True, "superseded_because": "sponsor"},
+        {"created": "2024-01-02", "started": "2024-01-03", "completed": "2024-01-05"},
+        {"created": "2024-01-04", "superseded": True, "superseded_because": "sponsor"},
     ]
     result = format_performance_table(cards)
     lines = result.splitlines()
@@ -252,7 +252,7 @@ def test_table_superseded_no_points_shows_zero_pts():
 
 
 def test_table_metrics_filtered_superseded_only():
-    """AC7: --metrics 'throughput,superseded_count' shows exactly 3 columns."""
+    """AC7: --metrics 'throughput,superseded_count'; header has exactly 3 cells."""
     from sprint_metrics.report import format_performance_table
 
     cards = [
