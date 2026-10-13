@@ -451,6 +451,10 @@ def test_command_reports_prometheus_zero_for_an_empty_sprint(run_command):
     assert "sprint_wip_violations 0" in output
     assert "sprint_blocked_aging_days 0" in output
     assert "sprint_escalation_rate_percent 0" in output
+    assert "sprint_metrics_superseded_stories 0" in output
+    assert "sprint_metrics_superseded_points 0" in output
+    assert 'sprint_metrics_superseded_by_reason{reason="sponsor"} 0' in output
+    assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 0' in output
 
 
 def test_command_reports_prometheus_error_for_invalid_json(tmp_path, capsys):
@@ -1224,7 +1228,7 @@ def test_markdown_metrics_empty_sprint_shows_no_data_and_summary(tmp_path, capsy
 def test_prometheus_metrics_selected_lines_present_and_unselected_absent(tmp_path, capsys):
     """AC1: --prometheus --metrics cycle_time_days,throughput on a completed card shows
     only sprint_cycle_time_days 4 and sprint_throughput_cards 1, and does not contain
-    the other four metric lines."""
+    the other metric lines."""
     cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
     path = tmp_path / "cards.json"
     path.write_text(json.dumps(cards))
@@ -1240,6 +1244,9 @@ def test_prometheus_metrics_selected_lines_present_and_unselected_absent(tmp_pat
     assert "sprint_wip_violations" not in captured.out
     assert "sprint_blocked_aging_days" not in captured.out
     assert "sprint_escalation_rate_percent" not in captured.out
+    assert "sprint_metrics_superseded_stories" not in captured.out
+    assert "sprint_metrics_superseded_points" not in captured.out
+    assert "sprint_metrics_superseded_by_reason" not in captured.out
 
 
 def test_prometheus_metrics_empty_sprint_selected_lines(tmp_path, capsys):
@@ -3089,3 +3096,149 @@ def test_markdown_attention_and_summary_with_superseded_and_blocked(tmp_path, ca
     next_line = lines[superseded_idx + 1]
     assert next_line == ""
     assert lines[superseded_idx + 2].startswith("## ")
+
+
+def test_prometheus_superseded_lines_with_two_superseded_cards(tmp_path, capsys):
+    """AC1: 2 superseded cards (1 sponsor/5pts, 1 story_problem/3pts) + 1 completed
+    with --prometheus shows all four superseded metric lines."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+        {"created": "2024-01-01", "superseded": True, "superseded_because": "sponsor", "points": 5},
+        {
+            "created": "2024-01-01",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "sprint_metrics_superseded_stories 2" in captured.out
+    assert "sprint_metrics_superseded_points 8" in captured.out
+    assert 'sprint_metrics_superseded_by_reason{reason="sponsor"} 1' in captured.out
+    assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 1' in captured.out
+
+
+def test_prometheus_superseded_lines_zero_for_no_superseded(tmp_path, capsys):
+    """AC2: 1 completed card, no superseded cards, --prometheus shows all four
+    superseded lines at 0."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "sprint_metrics_superseded_stories 0" in captured.out
+    assert "sprint_metrics_superseded_points 0" in captured.out
+    assert 'sprint_metrics_superseded_by_reason{reason="sponsor"} 0' in captured.out
+    assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 0' in captured.out
+
+
+def test_prometheus_superseded_filtered_metrics_excludes_other_lines(tmp_path, capsys):
+    """AC3: --metrics superseded_count,superseded_points on a sprint with 1 superseded
+    card (5 pts, sponsor) shows the two superseded lines but NOT sprint_cycle_time_days
+    or sprint_throughput_cards."""
+    cards = [
+        {"created": "2024-01-01", "superseded": True, "superseded_because": "sponsor", "points": 5},
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus", "--metrics", "superseded_count,superseded_points"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "sprint_metrics_superseded_stories 1" in captured.out
+    assert "sprint_metrics_superseded_points 5" in captured.out
+    assert "sprint_cycle_time_days" not in captured.out
+    assert "sprint_throughput_cards" not in captured.out
+
+
+def test_prometheus_metrics_superseded_and_bogus_exits_2(tmp_path, capsys):
+    """AC4: --metrics superseded_count,bogus_metric exits 2, stderr contains
+    'bogus_metric', and stdout is empty."""
+    cards = [
+        {"created": "2024-01-01", "superseded": True, "superseded_because": "sponsor", "points": 5},
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus", "--metrics", "superseded_count,bogus_metric"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert "bogus_metric" in captured.err
+    assert captured.out == ""
+
+
+def test_prometheus_superseded_lines_each_appear_once_in_order(tmp_path, capsys):
+    """AC5: the four superseded lines each appear exactly once; sponsor line
+    appears before story_problem line; label values are in double quotes."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+        {"created": "2024-01-01", "superseded": True, "superseded_because": "sponsor", "points": 5},
+        {
+            "created": "2024-01-01",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    assert lines.count("sprint_metrics_superseded_stories 2") == 1
+    assert lines.count("sprint_metrics_superseded_points 8") == 1
+    assert lines.count('sprint_metrics_superseded_by_reason{reason="sponsor"} 1') == 1
+    assert lines.count('sprint_metrics_superseded_by_reason{reason="story_problem"} 1') == 1
+    sponsor_idx = lines.index('sprint_metrics_superseded_by_reason{reason="sponsor"} 1')
+    problem_idx = lines.index('sprint_metrics_superseded_by_reason{reason="story_problem"} 1')
+    assert sponsor_idx < problem_idx
+
+
+def test_prometheus_superseded_all_four_lines_present_when_zero(tmp_path, capsys):
+    """AC6: 0 superseded cards and 1 completed card, --prometheus: all four
+    superseded lines are present at 0, so a scraper sees the metric and does
+    not treat absence as an error."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"}]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    assert "sprint_metrics_superseded_stories 0" in lines
+    assert "sprint_metrics_superseded_points 0" in lines
+    assert 'sprint_metrics_superseded_by_reason{reason="sponsor"} 0' in lines
+    assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 0' in lines
+
+
+def test_prometheus_superseded_filtered_shows_all_four_lines(tmp_path, capsys):
+    """AC7: --metrics superseded_count,superseded_points with 1 superseded card
+    (5 pts, sponsor) shows exactly the four superseded lines; cycle_time and
+    throughput are absent."""
+    cards = [
+        {"created": "2024-01-01", "superseded": True, "superseded_because": "sponsor", "points": 5},
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus", "--metrics", "superseded_count,superseded_points"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = [line for line in captured.out.splitlines() if line]
+    assert len(lines) == 4
+    assert "sprint_metrics_superseded_stories 1" in lines
+    assert "sprint_metrics_superseded_points 5" in lines
+    assert 'sprint_metrics_superseded_by_reason{reason="sponsor"} 1' in lines
+    assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 0' in lines
+    assert "sprint_cycle_time_days" not in captured.out
+    assert "sprint_throughput_cards" not in captured.out

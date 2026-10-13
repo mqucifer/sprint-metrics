@@ -526,11 +526,24 @@ def format_prometheus_report(
     escalation_rate = calculate_escalation_rate(parsed, escalations)
     first_attempt_rate = calculate_first_attempt_rate(parsed)
     failure_breakdown = calculate_failure_breakdown(parsed)
+    superseded_count = calculate_superseded_count(parsed)
+    superseded_points = calculate_superseded_points(parsed)
+    superseded_breakdown = calculate_superseded_breakdown(parsed)
 
     all_lines: list[tuple[str, str]] = [
         ("cycle_time_days", f"sprint_cycle_time_days {cycle_time}"),
         ("lead_time_days", f"sprint_lead_time_days {lead_time}"),
         ("throughput", f"sprint_throughput_cards {throughput}"),
+        ("superseded_count", f"sprint_metrics_superseded_stories {superseded_count}"),
+        ("superseded_points", f"sprint_metrics_superseded_points {superseded_points}"),
+        (
+            "superseded_breakdown",
+            f'sprint_metrics_superseded_by_reason{{reason="sponsor"}} {superseded_breakdown["sponsor"]}',
+        ),
+        (
+            "superseded_breakdown",
+            f'sprint_metrics_superseded_by_reason{{reason="story_problem"}} {superseded_breakdown["story_problem"]}',
+        ),
         ("wip_violations", f"sprint_wip_violations {wip_violations}"),
         ("blocked_aging_days", f"sprint_blocked_aging_days {blocked_aging}"),
         ("escalation_rate_percent", f"sprint_escalation_rate_percent {escalation_rate}"),
@@ -539,8 +552,17 @@ def format_prometheus_report(
             f"sprint_first_attempt_rate_percent {first_attempt_rate}",
         ),
     ]
+    _superseded_requested = (
+        metrics & {"superseded_count", "superseded_points", "superseded_breakdown"}
+        if metrics
+        else set()
+    )
     if metrics is not None:
-        selected = [line for name, line in all_lines if name in metrics]
+        selected = [
+            line
+            for name, line in all_lines
+            if name in metrics or (name == "superseded_breakdown" and _superseded_requested)
+        ]
     else:
         selected = [line for _, line in all_lines]
 
