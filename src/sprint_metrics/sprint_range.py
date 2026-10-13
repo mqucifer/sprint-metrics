@@ -15,6 +15,9 @@ from sprint_metrics.metrics import (
     calculate_failure_breakdown,
     calculate_first_attempt_rate,
     calculate_lead_time_minutes,
+    calculate_superseded_breakdown,
+    calculate_superseded_count,
+    calculate_superseded_points,
     calculate_throughput,
     calculate_top_failure_causes,
     calculate_wip_violations,
@@ -102,13 +105,16 @@ def format_sprint_range_table(
     threshold exactly is not a breach).
     """
     rows = [
-        "| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |",
-        "|--------|------------|-----------|------------|----------------|---------------|-----------------|-------------|------------------|",
+        "| Sprint | Cycle time | Lead time | Throughput | Superseded | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |",
+        "|--------|------------|-----------|------------|------------|----------------|---------------|-----------------|---------------|------------------|",
     ]
     for label in labels:
         cards = sprints[label]
         cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
         throughput = calculate_throughput(cards)
+        sup_count = calculate_superseded_count(cards)
+        sup_points = calculate_superseded_points(cards)
+        sup_cell = f"{sup_count} ({sup_points} pts)" if sup_count > 0 else "0"
         wip_violations = calculate_wip_violations(cards, wip_limits)
         blocked_aging = calculate_blocked_aging(cards, as_of)
         escalation_rate = calculate_escalation_rate(cards, escalations)
@@ -118,6 +124,7 @@ def format_sprint_range_table(
             f"| {label} | {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')} "
             f"| {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')} "
             f"| {throughput}{_flag(throughput, thresholds, 'throughput')} "
+            f"| {sup_cell} "
             f"| {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')} "
             f"| {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')} "
             f"| {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')} "
@@ -323,6 +330,17 @@ def format_sprint_range_markdown(
             lines.append(f"- **Cycle time**: {cycle_time} days")
             lines.append(f"- **Lead time**: {lead_time} days")
             lines.append(f"- **Throughput**: {calculate_throughput(cards)} cards")
+            sup_count = calculate_superseded_count(cards)
+            sup_points = calculate_superseded_points(cards)
+            lines.append(f"- **Superseded stories**: {sup_count} ({sup_points} pts)")
+            if sup_count > 0:
+                breakdown = calculate_superseded_breakdown(cards)
+                parts = []
+                if breakdown["sponsor"] > 0:
+                    parts.append(f"{breakdown['sponsor']} by sponsor request")
+                if breakdown["story_problem"] > 0:
+                    parts.append(f"{breakdown['story_problem']} after story problem")
+                lines.append(f"  - {', '.join(parts)}")
             lines.append(f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}")
             lines.append(f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days")
             lines.append(f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%")

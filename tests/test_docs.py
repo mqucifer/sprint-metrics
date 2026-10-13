@@ -616,8 +616,30 @@ def test_sprint_range_doc_output_matches(tmp_path, capsys):
     row_02 = [line for line in lines if line.startswith("| 2024-02 |")][0]
     cells_01 = [c.strip() for c in row_01.split("|") if c.strip()]
     cells_02 = [c.strip() for c in row_02.split("|") if c.strip()]
-    assert cells_01 == ["2024-01", "4 days", "6 days", "1", "0", "0 days", "0%", "100%", "\u2014"]
-    assert cells_02 == ["2024-02", "4 days", "6 days", "1", "0", "0 days", "0%", "100%", "\u2014"]
+    assert cells_01 == [
+        "2024-01",
+        "4 days",
+        "6 days",
+        "1",
+        "0",
+        "0",
+        "0 days",
+        "0%",
+        "100%",
+        "\u2014",
+    ]
+    assert cells_02 == [
+        "2024-02",
+        "4 days",
+        "6 days",
+        "1",
+        "0",
+        "0",
+        "0 days",
+        "0%",
+        "100%",
+        "\u2014",
+    ]
 
 
 def test_sprint_range_doc_error_missing_sprint(tmp_path, capsys):

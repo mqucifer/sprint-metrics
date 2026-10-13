@@ -70,10 +70,10 @@ sprint-metrics sprints.json --sprint-range 2024-01..2024-02
 ```
 
 ```
-| Sprint | Cycle time | Lead time | Throughput | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |
-|--------|------------|-----------|------------|----------------|---------------|-----------------|-------------|------------------|
-| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | — |
-| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | — |
+| Sprint | Cycle time | Lead time | Throughput | Superseded | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |
+|--------|------------|-----------|------------|------------|----------------|---------------|-----------------|---------------|------------------|
+| 2024-01 | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | — |
+| 2024-02 | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | — |
 ```
 
 If the range includes a sprint label not present in the file, the command exits with code 2 and names the missing label on stderr:

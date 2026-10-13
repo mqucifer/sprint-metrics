@@ -52,8 +52,8 @@ def test_sprint_range_reports_one_row_per_sprint(run_range_command):
     exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02")
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in output
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in output
+    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in output
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in output
     assert "| Current |" not in output
     # Verify order: 2024-01 row appears before 2024-02 row
     idx_01 = output.index("| 2024-01 |")
@@ -153,8 +153,12 @@ def test_sprint_range_with_escalations(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 10 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 10 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
+    assert (
+        "| 2024-01 | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
+    )
+    assert (
+        "| 2024-02 | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
+    )
 
 
 def test_sprint_range_with_wip_limits(tmp_path, capsys):
@@ -171,8 +175,8 @@ def test_sprint_range_with_wip_limits(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 0 days | 0 days | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
-    assert "| 2024-02 | 0 days | 0 days | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
+    assert "| 2024-01 | 0 days | 0 days | 0 | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
+    assert "| 2024-02 | 0 days | 0 days | 0 | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
 
 
 def test_sprint_range_with_sprint_date(tmp_path, capsys):
@@ -195,8 +199,12 @@ def test_sprint_range_with_sprint_date(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
+    assert (
+        "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
+    )
+    assert (
+        "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
+    )
 
 
 def test_sprint_range_with_wip_limits_and_escalations(tmp_path, capsys):
@@ -225,8 +233,12 @@ def test_sprint_range_with_wip_limits_and_escalations(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 2 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 2 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
+    assert (
+        "| 2024-01 | 4 days | 6 days | 2 | 0 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
+    )
+    assert (
+        "| 2024-02 | 4 days | 6 days | 2 | 0 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
+    )
 
 
 def test_sprint_range_without_wip_limits_or_escalations(tmp_path, capsys):
@@ -243,8 +255,8 @@ def test_sprint_range_without_wip_limits_or_escalations(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 2 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 2 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-01 | 4 days | 6 days | 2 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 2 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
 
 
 def test_sprint_range_with_invalid_wip_limits_format(tmp_path, capsys):
@@ -718,8 +730,8 @@ def test_sprint_range_table_flags_cycle_time_when_threshold_breached(tmp_path, c
     """AC1: sprint 2024-01 has a card with cycle time 7 days (exceeds threshold of 5)
     and sprint 2024-02 has a card with cycle time 4 days (does not exceed threshold).
     Running with --sprint-range 2024-01..2024-02 --thresholds thresholds.json produces
-    a table where the 2024-01 row shows '7 days \u26a0\ufe0f' in the cycle time cell and the
-    2024-02 row shows '4 days' with no \u26a0\ufe0f marker."""
+    a table where the 2024-01 row shows '7 days ⚠️' in the cycle time cell and the
+    2024-02 row shows '4 days' with no ⚠️ marker."""
     sprints = {
         "2024-01": [{"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}],
         "2024-02": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}],
@@ -735,15 +747,15 @@ def test_sprint_range_table_flags_cycle_time_when_threshold_breached(tmp_path, c
 
     assert exit_code == 0
     assert (
-        "| 2024-01 | 7 days \u26a0\ufe0f | 7 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |"
+        "| 2024-01 | 7 days \u26a0\ufe0f | 7 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |"
         in captured.out
     )
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
     assert captured.out.count("\u26a0\ufe0f") == 1
 
 
 def test_sprint_range_table_has_no_flags_without_thresholds_flag(tmp_path, capsys):
-    """AC2: without --thresholds, the sprint-range table output contains no \u26a0\ufe0f markers
+    """AC2: without --thresholds, the sprint-range table output contains no ⚠️ markers
     and the metric cells are identical to the current behaviour."""
     sprints = {"2024-01": [COMPLETED_CARD], "2024-02": [COMPLETED_CARD]}
     path = tmp_path / "sprints.json"
@@ -752,8 +764,8 @@ def test_sprint_range_table_has_no_flags_without_thresholds_flag(tmp_path, capsy
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
-    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
     assert "\u26a0\ufe0f" not in captured.out
 
 
@@ -761,7 +773,7 @@ def test_sprint_range_table_does_not_flag_cycle_time_when_meeting_threshold_exac
     tmp_path, capsys
 ):
     """AC3: a card with cycle time exactly 5 days and a thresholds file with
-    cycle_time_days 5 produces no \u26a0\ufe0f marker, because meeting the threshold
+    cycle_time_days 5 produces no ⚠️ marker, because meeting the threshold
     exactly is not a breach."""
     card = {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"}
     sprints = {"2024-01": [card]}
@@ -775,7 +787,7 @@ def test_sprint_range_table_does_not_flag_cycle_time_when_meeting_threshold_exac
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 5 days | 6 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
+    assert "| 2024-01 | 5 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
     assert "\u26a0\ufe0f" not in captured.out
 
 
@@ -974,12 +986,17 @@ def test_sprint_range_table_shows_first_attempt_and_failure_causes(tmp_path, cap
     assert exit_code == 0
     assert "First-attempt" in captured.out
     assert "Top failure causes" in captured.out
+    assert "Superseded" in captured.out
     row_01 = [line for line in captured.out.splitlines() if line.startswith("| 2024-01")][0]
     row_02 = [line for line in captured.out.splitlines() if line.startswith("| 2024-02")][0]
     assert "67%" in row_01
     assert "bug (1)" in row_01
     assert "100%" in row_02
     assert "\u2014" in row_02
+    cells_01 = [c.strip() for c in row_01.split("|") if c.strip()]
+    cells_02 = [c.strip() for c in row_02.split("|") if c.strip()]
+    assert cells_01[4] == "0"
+    assert cells_02[4] == "0"
 
 
 def test_sprint_range_table_empty_sprint_shows_zero_and_dash(tmp_path, capsys):
@@ -1703,3 +1720,117 @@ def test_sprint_range_json_cycle_time_days_still_integer_when_minutes_null(tmp_p
     assert data["sprints"]["2024-02"]["delta"]["cycle_time_minutes"] is None
     assert isinstance(data["sprints"]["2024-01"]["cycle_time_days"], int)
     assert data["sprints"]["2024-01"]["cycle_time_days"] == 4
+
+
+def test_sprint_range_table_shows_superseded_column(tmp_path, capsys):
+    """AC1/AC4: the sprint-range table includes a Superseded column after Throughput;
+    a sprint with 1 superseded card (5 pts, sponsor) shows '1 (5 pts)', and a sprint
+    with no superseded cards shows '0'."""
+    sprints = {
+        "2024-01": [
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {
+                "created": "2024-01-05",
+                "superseded": True,
+                "superseded_because": "sponsor",
+                "points": 5,
+            },
+        ],
+        "2024-02": [
+            {"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-07"},
+            {"created": "2024-02-02", "started": "2024-02-04", "completed": "2024-02-08"},
+            {"created": "2024-02-03", "started": "2024-02-05", "completed": "2024-02-09"},
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    header = lines[0]
+    header_cells = [c.strip() for c in header.split("|") if c.strip()]
+    assert "Superseded" in header_cells
+    assert header_cells.index("Superseded") == 4  # 5th position, after Throughput
+
+    row_01 = [line for line in lines if line.startswith("| 2024-01")][0]
+    row_02 = [line for line in lines if line.startswith("| 2024-02")][0]
+    cells_01 = [c.strip() for c in row_01.split("|") if c.strip()]
+    cells_02 = [c.strip() for c in row_02.split("|") if c.strip()]
+    assert cells_01[4] == "1 (5 pts)"
+    assert cells_02[4] == "0"
+
+
+def test_sprint_range_markdown_shows_superseded_stories(run_range_command):
+    """AC2/AC5: the sprint-range markdown includes a Superseded stories line after
+    Throughput; when count > 0 an indented breakdown line follows, when count == 0
+    no indented line appears."""
+    sprints = {
+        "2024-01": [
+            {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+            {
+                "created": "2024-01-05",
+                "superseded": True,
+                "superseded_because": "sponsor",
+                "points": 5,
+            },
+        ],
+        "2024-02": [
+            {"created": "2024-02-01", "started": "2024-02-03", "completed": "2024-02-07"},
+            {"created": "2024-02-02", "started": "2024-02-04", "completed": "2024-02-08"},
+            {"created": "2024-02-03", "started": "2024-02-05", "completed": "2024-02-09"},
+        ],
+    }
+    exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02", markdown=True)
+
+    assert exit_code == 0
+    idx_01 = output.index("## Sprint 2024-01")
+    idx_02 = output.index("## Sprint 2024-02")
+    section_01 = output[idx_01:idx_02]
+    section_02 = output[idx_02:]
+
+    assert "- **Superseded stories**: 1 (5 pts)" in section_01
+    assert "  - 1 by sponsor request" in section_01
+    # The breakdown line immediately follows the Superseded stories line
+    sup_line_idx = section_01.index("- **Superseded stories**: 1 (5 pts)")
+    after_sup = section_01[sup_line_idx + len("- **Superseded stories**: 1 (5 pts)") :]
+    assert after_sup.startswith("\n  - 1 by sponsor request")
+
+    assert "- **Superseded stories**: 0 (0 pts)" in section_02
+    # No indented breakdown line beneath the zero
+    sup_line_idx_02 = section_02.index("- **Superseded stories**: 0 (0 pts)")
+    after_sup_02 = section_02[sup_line_idx_02 + len("- **Superseded stories**: 0 (0 pts)") :]
+    next_line = after_sup_02.split("\n", 1)[1]
+    assert next_line.startswith("- **") or next_line.startswith("\n") or next_line.startswith("##")
+    assert "  -" not in after_sup_02.split("\n")[1]
+
+
+def test_sprint_range_superseded_empty_sprints(run_range_command):
+    """AC3/AC6: when every sprint in the range has zero cards, the command exits 0,
+    each table row's Superseded cell reads '0', and each markdown section shows
+    'No performance data available' without a Superseded line."""
+    sprints = {"2024-01": [], "2024-02": []}
+
+    # Table output
+    exit_code, output, _ = run_range_command(sprints, "2024-01..2024-02")
+    assert exit_code == 0
+    lines = output.splitlines()
+    row_01 = [line for line in lines if line.startswith("| 2024-01")][0]
+    row_02 = [line for line in lines if line.startswith("| 2024-02")][0]
+    cells_01 = [c.strip() for c in row_01.split("|") if c.strip()]
+    cells_02 = [c.strip() for c in row_02.split("|") if c.strip()]
+    assert cells_01[4] == "0"
+    assert cells_02[4] == "0"
+
+    # Markdown output
+    exit_code_md, output_md, _ = run_range_command(sprints, "2024-01..2024-02", markdown=True)
+    assert exit_code_md == 0
+    idx_01 = output_md.index("## Sprint 2024-01")
+    idx_02 = output_md.index("## Sprint 2024-02")
+    section_01 = output_md[idx_01:idx_02]
+    section_02 = output_md[idx_02:]
+    assert "No performance data available" in section_01
+    assert "No performance data available" in section_02
+    assert "Superseded stories" not in section_01
+    assert "Superseded stories" not in section_02
