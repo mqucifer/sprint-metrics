@@ -2439,8 +2439,8 @@ def test_markdown_first_attempt_rate_no_retry_line_when_no_completed(run_command
 
 
 def test_markdown_first_attempt_rate_retry_line_before_top_causes(tmp_path, capsys):
-    """AC5 (UX): the retry count line appears before 'Top failure causes',
-    confirming it is attached to the first-attempt-rate metric."""
+    """AC5 (UX): the retry count line appears before the Superseded stories line,
+    which in turn appears before 'Top failure causes' or '## Definitions'."""
     cards = [
         {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
         {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
@@ -2475,8 +2475,15 @@ def test_markdown_first_attempt_rate_retry_line_before_top_causes(tmp_path, caps
     assert detail_line.startswith("  - ")
     assert "2 of 5" in detail_line
     assert "retry" in detail_line
-    next_non_blank = next(lines[i] for i in range(rate_idx + 2, len(lines)) if lines[i].strip())
-    assert next_non_blank == "Top failure causes"
+    # Next non-blank line is the Superseded stories line (0 superseded, no breakdown)
+    superseded_idx = next(i for i in range(rate_idx + 2, len(lines)) if lines[i].strip())
+    assert lines[superseded_idx] == "- **Superseded stories**: 0 (0 pts)"
+    # The next non-blank line after the Superseded line is 'Top failure causes'
+    # or '## Definitions'
+    next_after_superseded = next(
+        lines[i] for i in range(superseded_idx + 1, len(lines)) if lines[i].strip()
+    )
+    assert next_after_superseded in ("Top failure causes", "## Definitions")
 
 
 def test_markdown_first_attempt_rate_100_no_indented_line_before_next_section(tmp_path, capsys):
@@ -2495,8 +2502,6 @@ def test_markdown_first_attempt_rate_100_no_indented_line_before_next_section(tm
     assert "100%" in lines[rate_idx]
     next_line = lines[rate_idx + 1]
     assert not next_line.startswith("  - ")
-    next_non_blank = next(lines[i] for i in range(rate_idx + 1, len(lines)) if lines[i].strip())
-    assert "Top failure causes" in next_non_blank or "Definitions" in next_non_blank
 
 
 def test_markdown_first_attempt_rate_only_metric_shows_exactly_two_lines(tmp_path, capsys):
@@ -2892,3 +2897,195 @@ def test_json_superseded_card_excluded_from_throughput_cycle_points(tmp_path, ca
     assert data["superseded_count"] == 1
     assert data["superseded_points"] == 3
     assert data["superseded_breakdown"] == {"sponsor": 0, "story_problem": 1}
+
+
+def test_markdown_superseded_shows_count_points_and_breakdown(tmp_path, capsys):
+    """AC1: 2 superseded cards (1 sponsor 5pts, 1 story_problem 3pts) + 1 completed;
+    Current Sprint shows '- **Superseded stories**: 2 (8 pts)' immediately followed by
+    '  - 1 by sponsor request, 1 after story problem'."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    idx = lines.index("- **Superseded stories**: 2 (8 pts)")
+    assert lines[idx + 1] == "  - 1 by sponsor request, 1 after story problem"
+    # Summary section has the Superseded line after Blocked
+    blocked_idx = lines.index("- **Blocked**: 0")
+    assert lines[blocked_idx + 1] == "- **Superseded**: 2"
+
+
+def test_markdown_superseded_zero_shows_no_indented_line(tmp_path, capsys):
+    """AC2: 1 completed card, no superseded; '- **Superseded stories**: 0 (0 pts)'
+    is present with no indented line beneath it; summary shows '- **Superseded**: 0'."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    idx = lines.index("- **Superseded stories**: 0 (0 pts)")
+    # The next non-blank line must NOT be an indented detail line
+    next_line = lines[idx + 1]
+    assert not next_line.startswith("  -")
+    assert "- **Superseded**: 0" in lines
+
+
+def test_markdown_empty_sprint_has_no_superseded_stories(tmp_path, capsys):
+    """AC3: empty sprint; output contains 'No performance data available' and
+    does NOT contain 'Superseded stories'."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+    assert "No performance data available" in captured.out
+    assert "Superseded stories" not in captured.out
+
+
+def test_markdown_summary_and_attention_with_superseded_blocked_since(tmp_path, capsys):
+    """AC4: 1 completed, 1 in-progress, 1 superseded (blocked_since 2024-01-01),
+    --sprint-date 2024-01-06; summary shows correct counts and attention does not
+    count the superseded card's blocked_since."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-04"},
+        {"created": "2024-01-02", "started": "2024-01-03"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "blocked_since": "2024-01-01",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    main([str(path), "--markdown", "--sprint-date", "2024-01-06"])
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert "- **Completed**: 1" in lines
+    assert "- **In progress**: 1" in lines
+    assert "- **Blocked**: 0" in lines
+    assert "- **Superseded**: 1" in lines
+    attention_line = next(line for line in lines if line.startswith("Attention:"))
+    assert attention_line == "Attention: 0 blocked, 1 in progress"
+
+
+def test_markdown_superseded_position_after_first_attempt_before_definitions(tmp_path, capsys):
+    """AC5: 2 superseded (5+3 pts) + 1 completed; the Superseded stories line
+    appears after the First-attempt rate line (and its indented detail if any)
+    and before '## Definitions'; the immediately following line is the indented
+    breakdown."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "sponsor",
+            "points": 5,
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "points": 3,
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    superseded_idx = lines.index("- **Superseded stories**: 2 (8 pts)")
+    definitions_idx = lines.index("## Definitions")
+    assert superseded_idx < definitions_idx
+    # The line immediately after is the breakdown
+    assert lines[superseded_idx + 1] == "  - 1 by sponsor request, 1 after story problem"
+    # It comes after the First-attempt rate line
+    first_attempt_idx = lines.index("- **First-attempt rate**: 100%")
+    assert superseded_idx > first_attempt_idx
+
+
+def test_markdown_summary_exact_four_bullets_no_superseded_detail(tmp_path, capsys):
+    """AC6: 1 completed, no superseded; summary has exactly four bullets in order;
+    no fifth bullet or indented line follows '- **Superseded**: 0' before next '## '."""
+    cards = [
+        {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-05"},
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    summary_idx = lines.index("## Crew Performance Summary")
+    bullets = []
+    for line in lines[summary_idx + 1 :]:
+        if line.startswith("- **"):
+            bullets.append(line)
+        elif line.startswith("## "):
+            break
+    assert bullets == [
+        "- **Completed**: 1",
+        "- **In progress**: 0",
+        "- **Blocked**: 0",
+        "- **Superseded**: 0",
+    ]
+    # No indented line between the last bullet and the next heading
+    last_bullet_idx = lines.index("- **Superseded**: 0")
+    next_after = lines[last_bullet_idx + 1]
+    assert not next_after.startswith("  -")
+    assert next_after == "" or next_after.startswith("## ")
+
+
+def test_markdown_attention_and_summary_with_superseded_and_blocked(tmp_path, capsys):
+    """AC7: 1 in-progress, 1 blocked (blocked_since 2024-01-01), 1 superseded
+    (blocked_since 2024-01-01), --sprint-date 2024-01-06; Attention reads
+    '1 blocked (5 days), 1 in progress'; '- **Superseded**: 1' is the last
+    bullet before the blank line and '## ' heading."""
+    cards = [
+        {"created": "2024-01-02", "started": "2024-01-03"},
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "blocked_since": "2024-01-01",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "superseded": True,
+            "superseded_because": "story_problem",
+            "blocked_since": "2024-01-01",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    main([str(path), "--markdown", "--sprint-date", "2024-01-06"])
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    attention_line = next(line for line in lines if line.startswith("Attention:"))
+    assert attention_line == "Attention: 1 blocked (5 days), 1 in progress"
+    # Superseded is the last bullet in the summary
+    superseded_idx = lines.index("- **Superseded**: 1")
+    next_line = lines[superseded_idx + 1]
+    assert next_line == ""
+    assert lines[superseded_idx + 2].startswith("## ")

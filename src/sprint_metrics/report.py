@@ -223,11 +223,13 @@ def _sprint_section(
     first_attempt_rate = calculate_first_attempt_rate(cards)
     first_attempt_num, first_attempt_den = calculate_first_attempt_counts(cards)
     failure_breakdown = calculate_failure_breakdown(cards)
+    superseded_count = calculate_superseded_count(cards)
+    superseded_points = calculate_superseded_points(cards)
 
     if metrics is not None:
-        selected = [m for m in _CANONICAL_ORDER if m in metrics]
+        selected = [m for m in _MARKDOWN_ORDER if m in metrics]
     else:
-        selected = list(_CANONICAL_ORDER)
+        selected = list(_MARKDOWN_ORDER)
 
     if prior_cards is not None:
         prior_cycle, prior_lead = calculate_cycle_time_and_lead_time(prior_cards)
@@ -238,6 +240,8 @@ def _sprint_section(
         prior_escalation = calculate_escalation_rate(prior_cards, escalations)
         prior_first_attempt = calculate_first_attempt_rate(prior_cards)
         prior_fa_num, prior_fa_den = calculate_first_attempt_counts(prior_cards)
+        prior_superseded_count = calculate_superseded_count(prior_cards)
+        prior_superseded_points = calculate_superseded_points(prior_cards)
         lines: list[str] = ["## Current Sprint", ""]
         for metric in selected:
             if metric == "cycle_time_days":
@@ -267,6 +271,21 @@ def _sprint_section(
                     f"- **Points delivered**: {points_delivered} {_trend_arrow(delta)} "
                     f"(was {prior_points}, {_signed(delta)})"
                 )
+            elif metric == "superseded_count":
+                delta = superseded_count - prior_superseded_count
+                lines.append(
+                    f"- **Superseded stories**: {superseded_count} ({superseded_points} pts)"
+                    f" {_trend_arrow(delta)} "
+                    f"(was {prior_superseded_count} ({prior_superseded_points} pts), {_signed(delta)})"
+                )
+                if superseded_count > 0:
+                    breakdown = calculate_superseded_breakdown(cards)
+                    segments = []
+                    if breakdown["sponsor"] > 0:
+                        segments.append(f"{breakdown['sponsor']} by sponsor request")
+                    if breakdown["story_problem"] > 0:
+                        segments.append(f"{breakdown['story_problem']} after story problem")
+                    lines.append("  - " + ", ".join(segments))
             elif metric == "wip_violations":
                 delta = wip_violations - prior_wip
                 lines.append(
@@ -355,6 +374,16 @@ def _sprint_section(
             )
         elif metric == "points_delivered":
             lines.append(f"- **Points delivered**: {points_delivered}")
+        elif metric == "superseded_count":
+            lines.append(f"- **Superseded stories**: {superseded_count} ({superseded_points} pts)")
+            if superseded_count > 0:
+                breakdown = calculate_superseded_breakdown(cards)
+                segments = []
+                if breakdown["sponsor"] > 0:
+                    segments.append(f"{breakdown['sponsor']} by sponsor request")
+                if breakdown["story_problem"] > 0:
+                    segments.append(f"{breakdown['story_problem']} after story problem")
+                lines.append("  - " + ", ".join(segments))
         elif metric == "wip_violations":
             lines.append(
                 f"- **WIP violations**: {wip_violations}{_threshold_context(wip_violations, thresholds, 'wip_violations')}"
@@ -1029,3 +1058,16 @@ def _card_detail_section(cards: Sequence[Card]) -> list[str]:
             f" | {state} | {attempts} | {failure_class} | {failure_role} |"
         )
     return lines
+
+
+_MARKDOWN_ORDER: tuple[str, ...] = (
+    "cycle_time_days",
+    "lead_time_days",
+    "throughput",
+    "wip_violations",
+    "blocked_aging_days",
+    "escalation_rate_percent",
+    "first_attempt_rate_percent",
+    "superseded_count",
+    "failure_breakdown",
+)
