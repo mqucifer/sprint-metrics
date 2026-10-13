@@ -50,14 +50,12 @@ Long-lived HTTP service that accepts board events and answers sprint, range, and
 
 | Method | Path | Description |
 |---|---|---|
-| POST | /sprints | Register a sprint definition (name, start_date, end_date, timezone) |
-| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded) |
-| GET | /sprint | Query a single sprint's metrics |
-| GET | /range | Query a range of sprints |
-| GET | /trend | Return a time series for a single metric across an inclusive sprint range as a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs (params: metric, start, end); sprints with no stored events return the metric's zero value. Metric names: cycle_time_days, lead_time_days, throughput, wip_violations, blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, failure_breakdown, points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count, superseded_count, superseded_points, superseded_breakdown |
-| GET | /metrics | Prometheus text exposition of stored history, sprint-labelled |
-| GET | /schema/event | JSON Schema for the event intake format |
-| GET | /health | Liveness/readiness check; 200 when the database is reachable |
+| POST /events | Accept a board event | The request body must be a valid JSON event object. Valid event types: created, started, finished, superseded. The service validates the card's created date and event type. |
+| GET /sprint?label=<sprint> | Return metrics for a single sprint | Returns all computed metrics as a JSON object. Sprints with no events return all-null values. |
+| GET /range?start=<sprint>&end=<sprint> | Return metrics for a range of sprints | Returns one JSON object per sprint in chronological order. Each entry includes the prior-sprint delta. Sprints with no events return all-null values. |
+| GET /trend?metric=<name>&start=<sprint>&end=<sprint> | Return a single metric across a sprint range | Returns a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs (the values array). Valid metrics: cycle_time_days, lead_time_days, throughput, wip_violations, blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count, superseded_count, superseded_points, superseded_breakdown, cycle_time_minutes, lead_time_minutes. Minute-based metrics (cycle_time_minutes, lead_time_minutes) return JSON integer values in minutes (rounded); sprints with no events return JSON null. |
+| GET /metrics | Return Prometheus text exposition | Returns all metrics in Prometheus text format, one line per metric per sprint. |
+| GET /health | Health check | Returns 200 with {"status": "ok"} when the database is reachable, 503 otherwise. |
 END:service
 
 ## Automatic recovery

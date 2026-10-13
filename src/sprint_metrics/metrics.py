@@ -287,10 +287,12 @@ def metric_value(
     metric: str,
     cards: Iterable[Card | Mapping[str, object]],
     escalations: int = 0,
-) -> int:
-    """Return the integer value of the named metric for the given cards.
+) -> int | None:
+    """Return the value of the named metric for the given cards.
 
-    Raises ValueError if the metric name is not in ALL_METRICS.
+    Returns ``None`` when a sprint has events but no qualifying cards for the
+    metric (e.g. ``cycle_time_minutes`` when no card carries both sub-day
+    timestamps). Raises ``ValueError`` if the metric name is not in ALL_METRICS.
     """
     if metric not in ALL_METRICS:
         raise ValueError(f"unknown metric: {metric!r}")
@@ -322,6 +324,10 @@ def metric_value(
         return calculate_superseded_points(cards)
     if metric == "superseded_breakdown":
         return sum(calculate_superseded_breakdown(cards).values())
+    if metric == "cycle_time_minutes":
+        return calculate_cycle_time_minutes(cards)
+    if metric == "lead_time_minutes":
+        return calculate_lead_time_minutes(cards)
     breakdown = calculate_failure_breakdown(cards)
     return sum(count for _, _, count in breakdown)
 

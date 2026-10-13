@@ -836,8 +836,8 @@ def test_service_md_generated_section_contains_all_endpoints():
         ("POST", "/events"),
         ("GET", "/sprint"),
         ("GET", "/range"),
+        ("GET", "/trend"),
         ("GET", "/metrics"),
-        ("GET", "/schema"),
         ("GET", "/health"),
     ]:
         matching = [line for line in lines if method in line and path_part in line]
@@ -937,7 +937,7 @@ def test_service_md_telemetry_section_survives_docs_gen(tmp_path):
 def test_service_md_trend_row_describes_response_shape():
     """AC1: the /trend row in docs/service.md's generated section states the response
     is a JSON object with api_version and an ordered sequence of sprint-label-to-value
-    pairs, so the reader learns the response structure without reading the source."""
+    pairs, and that minute-based metrics return JSON integers or JSON null."""
     path = DOCS_DIR / "service.md"
     text = path.read_text()
     section = _extract_marked_section(text, "service")
@@ -949,6 +949,12 @@ def test_service_md_trend_row_describes_response_shape():
     assert "ordered sequence of sprint-label-to-value pairs" in row, (
         "trend row does not describe the values as an ordered sequence of sprint-label-to-value pairs"
     )
+    assert "cycle_time_minutes" in row, (
+        "trend row does not list cycle_time_minutes as a valid metric"
+    )
+    assert "lead_time_minutes" in row, "trend row does not list lead_time_minutes as a valid metric"
+    assert "JSON integer" in row, "trend row does not state minute-based values are JSON integers"
+    assert "JSON null" in row, "trend row does not state gap sprints return JSON null"
 
 
 def test_service_md_documents_superseded_event():

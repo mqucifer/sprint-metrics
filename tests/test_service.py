@@ -5997,3 +5997,201 @@ def test_sprint_cycle_and_lead_time_minutes_rounding():
         assert body["lead_time_minutes"] == 878
     finally:
         conn.close()
+
+
+@requires_db
+def test_trend_cycle_time_minutes_two_sprints():
+    """AC1/UX4: GET /trend?metric=cycle_time_minutes returns 200 with integer values.
+
+    Sprint 2024-01: started 10:00, finished 21:26 → 686 minutes.
+    Sprint 2024-02: started 08:00, finished 10:30 → 150 minutes.
+    """
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac_ctm_a', 'ac_ctm_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ctm_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-03",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ctm_a",
+                event_type="finished",
+                timestamp="2024-01-03T21:26:00Z",
+                sprint="2024-01",
+                created="2024-01-03",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ctm_b",
+                event_type="started",
+                timestamp="2024-02-05T08:00:00Z",
+                sprint="2024-02",
+                created="2024-02-05",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ctm_b",
+                event_type="finished",
+                timestamp="2024-02-05T10:30:00Z",
+                sprint="2024-02",
+                created="2024-02-05",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=cycle_time_minutes&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["metric"] == "cycle_time_minutes"
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 686}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 150}
+        assert isinstance(body["values"][0]["value"], int)
+        assert isinstance(body["values"][1]["value"], int)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_lead_time_minutes_gap_sprint_null():
+    """AC2/UX5: GET /trend?metric=lead_time_minutes over three sprints where the
+    middle sprint has no events: that sprint's value is JSON null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('ac_ltm_a', 'ac_ltm_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: created_at 2024-01-01T08:00:00Z, finished 2024-01-03T21:26:00Z
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ltm_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ltm_a",
+                event_type="finished",
+                timestamp="2024-01-03T21:26:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+        # Sprint 2024-03: created_at 2024-03-01T08:00:00Z, finished 2024-03-03T10:00:00Z
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ltm_b",
+                event_type="started",
+                timestamp="2024-03-03T09:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+                created_at="2024-03-01T08:00:00Z",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ltm_b",
+                event_type="finished",
+                timestamp="2024-03-03T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+                created_at="2024-03-01T08:00:00Z",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=lead_time_minutes&start=2024-01&end=2024-03"
+        )
+        assert status == 200
+        assert len(body["values"]) == 3
+        assert body["values"][0]["sprint"] == "2024-01"
+        assert isinstance(body["values"][0]["value"], int)
+        assert body["values"][1] == {"sprint": "2024-02", "value": None}
+        assert "value" in body["values"][1]
+        assert body["values"][1]["value"] is None
+        assert body["values"][2]["sprint"] == "2024-03"
+        assert isinstance(body["values"][2]["value"], int)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_lead_time_minutes_single_sprint_integer():
+    """UX7: GET /trend?metric=lead_time_minutes&start=2024-01&end=2024-01 (single
+    sprint) returns 200 with one entry whose value is a JSON integer."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac_ltm_single'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ltm_single",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac_ltm_single",
+                event_type="finished",
+                timestamp="2024-01-03T21:26:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=lead_time_minutes&start=2024-01&end=2024-01"
+        )
+        assert status == 200
+        assert len(body["values"]) == 1
+        assert body["values"][0]["sprint"] == "2024-01"
+        assert isinstance(body["values"][0]["value"], int)
+    finally:
+        conn.close()
