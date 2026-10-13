@@ -275,26 +275,6 @@ def test_changelog_1_2_0_section_content():
         assert phrase in changed, f"[1.2.0] Changed missing {phrase!r}"
 
 
-def test_pyproject_version_is_1_3_0():
-    """AC1: pyproject.toml version field reads 1.3.0 with other fields unchanged."""
-    import tomllib
-    from pathlib import Path
-
-    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    with open(pyproject, "rb") as f:
-        data = tomllib.load(f)
-    project = data["project"]
-    assert project["version"] == "1.3.0"
-    assert project["name"] == "sprint-metrics"
-    assert project["description"] == "Delivery metrics for the crew's own board."
-    assert project["requires-python"] == ">=3.12,<3.13"
-    assert project["dependencies"] == [
-        "psycopg>=3.1",
-        "opentelemetry-sdk>=1.24",
-        "opentelemetry-exporter-otlp>=1.24",
-    ]
-
-
 def test_changelog_1_3_0_section_content():
     """AC2: the [1.3.0] - 2026-10-13 section sits directly below [Unreleased], with
     six Added bullets, one Changed bullet, and three Fixed bullets."""
@@ -354,23 +334,88 @@ def test_changelog_1_3_0_section_content():
         assert phrase in fixed, f"[1.3.0] Fixed missing {phrase!r}"
 
 
-def test_changelog_unreleased_has_minute_metrics_docs_entry():
-    """After 1.3.0, [Unreleased] Added notes that docs/metrics.md, docs/cards.md
-    and docs/formats.md now describe cycle_time_minutes, lead_time_minutes and
-    the optional datetime card fields."""
+def test_pyproject_version_is_1_3_1():
+    """AC1: pyproject.toml version field reads 1.3.1 with other fields unchanged."""
+    import tomllib
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    project = data["project"]
+    assert project["version"] == "1.3.1"
+    assert project["name"] == "sprint-metrics"
+    assert project["description"] == "Delivery metrics for the crew's own board."
+    assert project["requires-python"] == ">=3.12,<3.13"
+    assert project["dependencies"] == [
+        "psycopg>=3.1",
+        "opentelemetry-sdk>=1.24",
+        "opentelemetry-exporter-otlp>=1.24",
+    ]
+
+
+def test_changelog_1_3_1_section_content():
+    """AC2: the [1.3.1] - 2026-10-13 section sits directly below [Unreleased],
+    with one Added bullet (docs entry) and one Fixed bullet (superseded counting)."""
+    content = CHANGELOG.read_text()
+
+    match = re.search(r"^## \[1\.3\.1\] - 2026-10-13$", content, re.MULTILINE)
+    assert match, "Missing '## [1.3.1] - 2026-10-13' heading"
+
+    # Positioned directly between [Unreleased] and [1.3.0]
+    unreleased = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
+    assert unreleased and unreleased.start() < match.start()
+    v130 = re.search(r"^## \[1\.3\.0\] - 2026-10-13$", content, re.MULTILINE)
+    assert v130 and match.start() < v130.start()
+
+    after = content[match.end() :]
+    next_version = re.search(r"^## \[", after, re.MULTILINE)
+    section = after[: next_version.start()] if next_version else after
+
+    # Added: one bullet for the docs entry
+    added_match = re.search(r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
+    assert added_match, "No ### Added subsection in [1.3.1]"
+    added = added_match.group(1)
+    added_bullets = [line for line in added.splitlines() if line.startswith("- ")]
+    assert len(added_bullets) == 1, f"Expected 1 Added entry in [1.3.1], got {len(added_bullets)}"
+    assert "docs/metrics.md" in added, "[1.3.1] Added missing 'docs/metrics.md'"
+    assert "docs/cards.md" in added, "[1.3.1] Added missing 'docs/cards.md'"
+    assert "docs/formats.md" in added, "[1.3.1] Added missing 'docs/formats.md'"
+    assert "cycle_time_minutes" in added, "[1.3.1] Added missing 'cycle_time_minutes'"
+    assert "lead_time_minutes" in added, "[1.3.1] Added missing 'lead_time_minutes'"
+
+    # Fixed: one bullet for the superseded counting
+    fixed_match = re.search(r"^### Fixed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
+    assert fixed_match, "No ### Fixed subsection in [1.3.1]"
+    fixed = fixed_match.group(1)
+    fixed_bullets = [line for line in fixed.splitlines() if line.startswith("- ")]
+    assert len(fixed_bullets) == 1, f"Expected 1 Fixed entry in [1.3.1], got {len(fixed_bullets)}"
+    assert "superseded" in fixed, "[1.3.1] Fixed missing 'superseded'"
+    assert "superseded_count" in fixed, "[1.3.1] Fixed missing 'superseded_count'"
+    assert "superseded_points" in fixed, "[1.3.1] Fixed missing 'superseded_points'"
+    assert "superseded_breakdown" in fixed, "[1.3.1] Fixed missing 'superseded_breakdown'"
+
+
+def test_changelog_unreleased_has_no_entries():
+    """AC3: [Unreleased] keeps its Added, Changed, Fixed, Removed subheadings
+    but has no bullets beneath any of them."""
     content = CHANGELOG.read_text()
     match = re.search(
         r"^## \[Unreleased\]\s*\n(.*?)(?=^## \[|\Z)", content, re.MULTILINE | re.DOTALL
     )
     assert match, "Missing '## [Unreleased]'"
     unreleased = match.group(1)
-    added_match = re.search(
-        r"^### Added\s*\n(.*?)(?=^### |\Z)", unreleased, re.MULTILINE | re.DOTALL
-    )
-    assert added_match, "No ### Added in [Unreleased]"
-    added = added_match.group(1)
-    assert "cycle_time_minutes" in added, "cycle_time_minutes not in [Unreleased] Added"
-    assert "lead_time_minutes" in added, "lead_time_minutes not in [Unreleased] Added"
-    assert "docs/metrics.md" in added, "docs/metrics.md not in [Unreleased] Added"
-    assert "docs/cards.md" in added, "docs/cards.md not in [Unreleased] Added"
-    assert "docs/formats.md" in added, "docs/formats.md not in [Unreleased] Added"
+
+    for heading in ["### Added", "### Changed", "### Fixed", "### Removed"]:
+        assert heading in unreleased, f"Unreleased section missing {heading!r}"
+
+    for subheading in ["Added", "Changed", "Fixed", "Removed"]:
+        sub_match = re.search(
+            rf"^### {subheading}\s*\n(.*?)(?=^### |\Z)",
+            unreleased,
+            re.MULTILINE | re.DOTALL,
+        )
+        assert sub_match, f"No content region after '### {subheading}'"
+        sub_content = sub_match.group(1).strip()
+        bullets = [line for line in sub_content.splitlines() if line.startswith("- ")]
+        assert not bullets, f"[Unreleased] ### {subheading} has entries: {bullets}; expected none"

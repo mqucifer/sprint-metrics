@@ -4,11 +4,23 @@
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [1.3.1] - 2026-10-13
+
+### Added
+
 - docs/metrics.md, docs/cards.md, and docs/formats.md now describe `cycle_time_minutes`, `lead_time_minutes`, and the optional datetime card fields
 
 ### Changed
 
 ### Fixed
+
+- `/sprint` and `/range` count `superseded` events in `superseded_count`, `superseded_points` and `superseded_breakdown`
 
 ### Removed
 
