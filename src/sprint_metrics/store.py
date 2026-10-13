@@ -136,9 +136,10 @@ def insert_event(conn: Connection, event: dict) -> None:
 
 
 def query_sprint(conn: Connection, label: str) -> list[Card]:
-    """Reconstruct Card objects for all cards whose 'finished' event has sprint=label.
+    """Reconstruct Card objects for all cards that finished or were superseded in the sprint.
 
-    For each card_id, reconstructs:
+    A card is included when it has a 'finished' or a 'superseded' row with
+    sprint=label. For each card_id, reconstructs:
     - created: from card_created (any row)
     - created_at: from card_created_at (first non-NULL row)
     - started: event_time date of the 'started' row
@@ -148,12 +149,13 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
     - blocked_since: event_time date of the most recent 'blocked' row with no later 'unblocked'
     - attempts: from the 'finished' row (default 1)
     - failure_class/failure_role: from the 'finished' row
-    - points: from the 'finished' row
+    - points: from the 'finished' row, or the 'superseded' row when there is no 'finished' row
+    - superseded / superseded_because: from the 'superseded' row
     """
     rows = conn.execute(
         """
         SELECT DISTINCT card_id FROM sprint_metrics.board_events
-        WHERE type = 'finished' AND sprint = %s
+        WHERE (type = 'finished' OR type = 'superseded') AND sprint = %s
         """,
         (label,),
     ).fetchall()
@@ -166,7 +168,7 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
         events = conn.execute(
             """
             SELECT type, event_time, card_created, card_created_at, attempts,
-                   failure_class, failure_role, points
+                   failure_class, failure_role, points, because
             FROM sprint_metrics.board_events
             WHERE card_id = %s
             ORDER BY event_time
@@ -187,7 +189,9 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     The card's attempts count is derived from the number of 'attempt_failed'
     rows in its history (1 + count) when any exist; otherwise it falls back
     to the attempts column on the 'finished' row (default 1).
-    Points are read from the 'finished' row.
+    Points are read from the 'finished' row, or from the 'superseded' row when
+    there is no 'finished' row. A 'superseded' row sets the card's superseded
+    flag and superseded_because from the row's because column.
     The card_created_at column (TIMESTAMPTZ) is read from the first non-NULL row
     and assigned to the Card's created_at field. The full event_time (TIMESTAMPTZ)
     is assigned to started_at and completed_at.
@@ -205,6 +209,8 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     failure_class: str | None = None
     failure_role: str | None = None
     points: int | None = None
+    superseded = False
+    superseded_because: str | None = None
 
     blocked_events: list[date] = []
     unblocked_events: list[date] = []
@@ -219,6 +225,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         ev_failure_class,
         ev_failure_role,
         ev_points,
+        ev_because,
     ) in events:
         event_date = event_time.date() if hasattr(event_time, "date") else event_time
         if created is None and card_created is not None:
@@ -236,6 +243,11 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
             failure_class = ev_failure_class
             failure_role = ev_failure_role
             points = ev_points
+        elif event_type == "superseded":
+            superseded = True
+            superseded_because = ev_because
+            if points is None:
+                points = ev_points
         elif event_type == "blocked":
             blocked_events.append(event_date)
         elif event_type == "unblocked":
@@ -265,6 +277,8 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         failure_class=failure_class,
         failure_role=failure_role,
         points=points,
+        superseded=superseded,
+        superseded_because=superseded_because,
         created_at=created_at,
         started_at=started_at,
         completed_at=completed_at,

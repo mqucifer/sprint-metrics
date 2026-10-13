@@ -15,7 +15,8 @@ try:
 except ImportError:
     psycopg = None
 
-from sprint_metrics.store import init_db, upsert_sprint
+from sprint_metrics.metrics import calculate_superseded_points
+from sprint_metrics.store import init_db, insert_event, query_sprint, upsert_sprint
 
 DB_URL = os.environ.get("SPRINT_METRICS_DB")
 
@@ -82,3 +83,83 @@ def test_board_events_has_card_created_at_column(conn):
     assert len(rows) == 1
     assert rows[0][0] == "card_created_at"
     assert rows[0][1] == "timestamp with time zone"
+
+
+def test_query_sprint_returns_superseded_card_with_because(conn):
+    """AC1: a card with a superseded row and no finished row is returned superseded."""
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('Sprint 19', 'Sprint 20', 'Sprint 99')"
+    )
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "api_version": "1",
+            "card_id": "sup19_c1",
+            "type": "superseded",
+            "timestamp": "2024-01-04T10:00:00Z",
+            "sprint": "Sprint 19",
+            "card": {"created": "2024-01-02"},
+            "because": "sponsor",
+        },
+    )
+    cards = query_sprint(conn, "Sprint 19")
+    assert len(cards) == 1
+    assert cards[0].superseded is True
+    assert cards[0].superseded_because == "sponsor"
+
+
+def test_query_sprint_superseded_points(conn):
+    """AC2: a superseded card's points flow through calculate_superseded_points."""
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('Sprint 19', 'Sprint 20', 'Sprint 99')"
+    )
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "api_version": "1",
+            "card_id": "sup20_c1",
+            "type": "superseded",
+            "timestamp": "2024-02-04T10:00:00Z",
+            "sprint": "Sprint 20",
+            "card": {"created": "2024-02-02", "points": 5},
+            "because": "story_problem",
+        },
+    )
+    cards = query_sprint(conn, "Sprint 20")
+    assert calculate_superseded_points(cards) == 5
+
+
+def test_query_sprint_finished_card_not_superseded(conn):
+    """AC3: a started+finished card with no superseded row is not superseded."""
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('Sprint 19', 'Sprint 20', 'Sprint 99')"
+    )
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "api_version": "1",
+            "card_id": "s99_c1",
+            "type": "started",
+            "timestamp": "2024-03-03T10:00:00Z",
+            "sprint": "Sprint 99",
+            "card": {"created": "2024-03-02"},
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "api_version": "1",
+            "card_id": "s99_c1",
+            "type": "finished",
+            "timestamp": "2024-03-05T10:00:00Z",
+            "sprint": "Sprint 99",
+            "card": {"created": "2024-03-02"},
+        },
+    )
+    cards = query_sprint(conn, "Sprint 99")
+    assert len(cards) == 1
+    assert cards[0].superseded is False
+    assert cards[0].superseded_because is None
