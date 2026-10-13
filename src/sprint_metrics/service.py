@@ -666,6 +666,8 @@ def _null_sprint_response() -> dict:
         "api_version": API_VERSION,
         "cycle_time_days": None,
         "lead_time_days": None,
+        "cycle_time_minutes": None,
+        "lead_time_minutes": None,
         "throughput": None,
         "points_delivered": None,
         "wip_violations": None,
@@ -689,6 +691,8 @@ def _null_range_entry() -> dict:
     return {
         "cycle_time_days": None,
         "lead_time_days": None,
+        "cycle_time_minutes": None,
+        "lead_time_minutes": None,
         "throughput": None,
         "points_delivered": None,
         "wip_violations": None,

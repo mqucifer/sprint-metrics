@@ -383,6 +383,8 @@ def test_sprint_response_key_set_no_sprint_date():
             "api_version",
             "cycle_time_days",
             "lead_time_days",
+            "cycle_time_minutes",
+            "lead_time_minutes",
             "throughput",
             "points_delivered",
             "wip_violations",
@@ -3678,6 +3680,10 @@ def test_range_null_metrics_for_sprints_without_events():
         assert sprints["2026-11"]["cycle_time_days"] is None
         assert sprints["2026-11"]["failure_breakdown"] is None
         assert sprints["2026-12"]["throughput"] is None
+        assert sprints["2026-11"]["cycle_time_minutes"] is None
+        assert sprints["2026-11"]["lead_time_minutes"] is None
+        assert sprints["2026-12"]["cycle_time_minutes"] is None
+        assert sprints["2026-12"]["lead_time_minutes"] is None
     finally:
         conn.close()
 
@@ -5781,5 +5787,213 @@ def test_post_event_with_invalid_created_at_returns_400():
         assert "error" in body
         assert isinstance(body["error"], str)
         assert len(body["error"]) > 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_cycle_and_lead_time_minutes_sub_day():
+    """AC1: sub-day cycle and lead time returned as integer minutes via /sprint."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_subday'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_subday",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac1_subday",
+                event_type="finished",
+                timestamp="2024-01-03T21:26:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["cycle_time_minutes"] == 686
+        assert body["cycle_time_days"] == 0
+        assert body["lead_time_minutes"] == 3686
+        assert body["lead_time_days"] == 2
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_no_events_minute_fields_null():
+    """AC2: /sprint with no stored events returns cycle_time_minutes and lead_time_minutes as null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-03'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-03")
+        assert status == 200
+        assert body["cycle_time_minutes"] is None
+        assert body["lead_time_minutes"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_cycle_and_lead_time_minutes_prior_and_delta():
+    """AC3+AC4: /range returns cycle_time_minutes for populated sprint, null for gap sprint,
+    prior carries the populated value, and delta is null for the gap sprint."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac3_range_min'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_range_min",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_range_min",
+                event_type="finished",
+                timestamp="2024-01-03T21:26:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                created_at="2024-01-01T08:00:00Z",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        sprints = body["sprints"]
+        assert sprints["2024-01"]["cycle_time_minutes"] == 686
+        assert sprints["2024-01"]["lead_time_minutes"] == 3686
+        assert sprints["2024-02"]["cycle_time_minutes"] is None
+        assert sprints["2024-02"]["lead_time_minutes"] is None
+        assert sprints["2024-02"]["prior"]["cycle_time_minutes"] == 686
+        assert sprints["2024-02"]["prior"]["lead_time_minutes"] == 3686
+        assert sprints["2024-02"]["delta"]["cycle_time_minutes"] is None
+        assert sprints["2024-02"]["delta"]["lead_time_minutes"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_same_day_card_minute_fields():
+    """AC5: same-day card returns cycle_time_days=0, lead_time_days=0,
+    cycle_time_minutes=30, lead_time_minutes=90 coexisting in the same response."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac5_sameday'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_sameday",
+                event_type="started",
+                timestamp="2024-01-03T09:00:00Z",
+                sprint="2024-01",
+                created="2024-01-03",
+                created_at="2024-01-03T08:00:00Z",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac5_sameday",
+                event_type="finished",
+                timestamp="2024-01-03T09:30:00Z",
+                sprint="2024-01",
+                created="2024-01-03",
+                created_at="2024-01-03T08:00:00Z",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["cycle_time_days"] == 0
+        assert body["lead_time_days"] == 0
+        assert body["cycle_time_minutes"] == 30
+        assert body["lead_time_minutes"] == 90
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_cycle_and_lead_time_minutes_rounding():
+    """AC10: sub-day spans rounded to whole minutes: 685.87→686, 877.6→878."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac10_round'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac10_round",
+                event_type="started",
+                timestamp="2026-10-11T07:31:56Z",
+                sprint="2026-10",
+                created="2026-10-11",
+                created_at="2026-10-11T04:20:12Z",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac10_round",
+                event_type="finished",
+                timestamp="2026-10-11T18:57:48Z",
+                sprint="2026-10",
+                created="2026-10-11",
+                created_at="2026-10-11T04:20:12Z",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-10")
+        assert status == 200
+        assert body["cycle_time_minutes"] == 686
+        assert body["lead_time_minutes"] == 878
     finally:
         conn.close()
