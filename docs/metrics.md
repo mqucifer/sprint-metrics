@@ -19,9 +19,9 @@ BEGIN:metrics
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_lead_time_days` |
 | Lead time (min) | `lead_time_minutes` | Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_lead_time_minutes` |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards. | `sprint_points_delivered` |
-| Superseded breakdown | `superseded_breakdown` | Return the per-reason count of superseded stories. Excluded from throughput and in-flight calculations. | `sprint_superseded_breakdown` |
-| Superseded | `superseded_count` | Return the count of superseded stories in the sprint. Excluded from throughput and in-flight calculations. | `sprint_superseded_count` |
-| Superseded points | `superseded_points` | Return the sum of points on superseded stories. Excluded from throughput and in-flight calculations. | `sprint_superseded_points` |
+| Superseded breakdown | `superseded_breakdown` | Return the per-reason count of superseded stories. Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_by_reason` |
+| Superseded | `superseded_count` | Return the count of superseded stories in the sprint. Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_stories` |
+| Superseded points | `superseded_points` | Return the sum of points on superseded stories. Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_points` |
 | Throughput | `throughput` | Return the number of completed cards in the sprint. | `sprint_throughput` |
 | WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. | `sprint_wip_violations` |
 END:metrics
@@ -111,7 +111,7 @@ escalation count.
 ### Superseded
 
 A sprint with no superseded events reports 0 for `superseded_count`, 0 for
-`superseded_points`, and `{"sponsor": 0, "story_problem": 0}` for
+`superseded_points`, and `{'sponsor': 0, 'story_problem': 0}` for
 `superseded_breakdown`. A superseded story is excluded from both throughput
 and in-flight calculations; it does not contribute to any in-flight or
 delivered metric.

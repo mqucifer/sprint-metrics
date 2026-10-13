@@ -60,3 +60,14 @@ def test_generate_file_missing_begin_marker(tmp_path, capsys):
     captured = capsys.readouterr()
     assert str(doc_path) in captured.err
     assert doc_path.read_text() == original_content
+
+
+def test_generated_metrics_has_correct_superseded_prometheus_names():
+    """AC5: the generated metrics table uses the R5 Prometheus names for
+    superseded_count, superseded_points, and superseded_breakdown."""
+    from sprint_metrics._docs_gen import _generate_metrics_content
+
+    content = _generate_metrics_content()
+    assert "sprint_metrics_superseded_stories" in content
+    assert "sprint_metrics_superseded_points" in content
+    assert "sprint_metrics_superseded_by_reason" in content
