@@ -618,28 +618,33 @@ def _metrics_text(sprints: dict[str, list]) -> str:
 
 SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
-        "POST /events",
-        "Accept a board event",
-        "The request body must be a valid JSON event object. "
-        "Valid event types: created, started, finished, superseded. "
-        "The service validates the card's created date and event type.",
+        "POST",
+        "/sprints",
+        "Register or update a sprint definition (name, start date, end date, timezone).",
     ),
     (
-        "GET /sprint?label=<sprint>",
-        "Return metrics for a single sprint",
-        "Returns all computed metrics as a JSON object. "
-        "Sprints with no events return all-null values.",
+        "POST",
+        "/events",
+        "Accept a board event (started, blocked, unblocked, finished, escalated, "
+        "attempt_failed, superseded). The service validates the card's created "
+        "date and event type.",
     ),
     (
-        "GET /range?start=<sprint>&end=<sprint>",
-        "Return metrics for a range of sprints",
-        "Returns one JSON object per sprint in chronological order. "
+        "GET",
+        "/sprint",
+        "Return metrics for a single sprint. Sprints with no events return all-null values.",
+    ),
+    (
+        "GET",
+        "/range",
+        "Return metrics for a range of sprints in chronological order. "
         "Each entry includes the prior-sprint delta. "
         "Sprints with no events return all-null values.",
     ),
     (
-        "GET /trend?metric=<name>&start=<sprint>&end=<sprint>",
-        "Return a single metric across a sprint range",
+        "GET",
+        "/trend",
+        "Return a single metric across a sprint range. "
         "Returns a JSON object with api_version and an ordered sequence of "
         "sprint-label-to-value pairs (the values array). "
         "Valid metrics: cycle_time_days, lead_time_days, throughput, "
@@ -653,14 +658,20 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "return JSON null.",
     ),
     (
-        "GET /metrics",
-        "Return Prometheus text exposition",
-        "Returns all metrics in Prometheus text format, one line per metric per sprint.",
+        "GET",
+        "/metrics",
+        "Return Prometheus text exposition format, one line per metric per sprint.",
     ),
     (
-        "GET /health",
-        "Health check",
-        'Returns 200 with {"status": "ok"} when the database is reachable, 503 otherwise.',
+        "GET",
+        "/schema/event",
+        "Return the JSON Schema for the event intake body.",
+    ),
+    (
+        "GET",
+        "/health",
+        'Health check. Returns 200 with {"status": "ok"} when the database '
+        "is reachable, 503 otherwise.",
     ),
 ]
 
