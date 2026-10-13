@@ -10,6 +10,29 @@
 
 ### Removed
 
+## [1.3.0] - 2026-10-13
+
+### Added
+
+- The `superseded` event type, stored with its reason and `replaced_by`
+- Superseded count, points and per-reason breakdown in the CLI's single-sprint and range JSON and in the service's `/sprint` and `/range` responses, and accepted as `/trend` metric names
+- The Superseded column in the single-sprint and range tables, and the superseded line in the markdown standup
+- Superseded metric lines in the Prometheus exposition
+- `cycle_time_minutes` and `lead_time_minutes` in the CLI's single-sprint and range JSON and in the service's `/sprint` and `/range` responses, and accepted as `/trend` metric names
+- `card_created_at` stored on event intake
+
+### Changed
+
+- Superseded cards are left out of the in-progress and blocked counts
+
+### Fixed
+
+- `/sprint` finds a sprint whose name has a space
+- The escalation rate has one definition and stays within 0 to 100
+- `/range` accepts a range of one named sprint
+
+### Removed
+
 ## [1.2.0] - 2026-10-10
 
 ### Added

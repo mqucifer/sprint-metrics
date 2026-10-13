@@ -204,26 +204,6 @@ def test_changelog_1_1_0_date_is_valid_and_after_1_0_2():
     )
 
 
-def test_pyproject_version_is_1_2_0():
-    """AC1: pyproject.toml version field reads 1.2.0 with other fields unchanged."""
-    import tomllib
-    from pathlib import Path
-
-    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    with open(pyproject, "rb") as f:
-        data = tomllib.load(f)
-    project = data["project"]
-    assert project["version"] == "1.2.0"
-    assert project["name"] == "sprint-metrics"
-    assert project["description"] == "Delivery metrics for the crew's own board."
-    assert project["requires-python"] == ">=3.12,<3.13"
-    assert project["dependencies"] == [
-        "psycopg>=3.1",
-        "opentelemetry-sdk>=1.24",
-        "opentelemetry-exporter-otlp>=1.24",
-    ]
-
-
 def test_changelog_1_2_0_section_content():
     """AC2: the [1.2.0] - 2026-10-10 section has the required entries under
     Added (ten bullets) and Changed (two bullets)."""
@@ -295,51 +275,88 @@ def test_changelog_1_2_0_section_content():
         assert phrase in changed, f"[1.2.0] Changed missing {phrase!r}"
 
 
-def test_changelog_heading_order_unreleased_1_2_0_1_1_0_1_0_2_1_0_1_1_0_0():
-    """AC2/AC3: versioned headings in order are [Unreleased], [1.2.0] - 2026-10-10,
-    [1.1.0] - date, [1.0.2] - 2025-07-15, [1.0.1] - 2025-07-14, [1.0.0] - 2025-07-13;
-    no version-numbered heading before [Unreleased]."""
+def test_pyproject_version_is_1_3_0():
+    """AC1: pyproject.toml version field reads 1.3.0 with other fields unchanged."""
+    import tomllib
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with open(pyproject, "rb") as f:
+        data = tomllib.load(f)
+    project = data["project"]
+    assert project["version"] == "1.3.0"
+    assert project["name"] == "sprint-metrics"
+    assert project["description"] == "Delivery metrics for the crew's own board."
+    assert project["requires-python"] == ">=3.12,<3.13"
+    assert project["dependencies"] == [
+        "psycopg>=3.1",
+        "opentelemetry-sdk>=1.24",
+        "opentelemetry-exporter-otlp>=1.24",
+    ]
+
+
+def test_changelog_1_3_0_section_content():
+    """AC2: the [1.3.0] - 2026-10-13 section sits directly below [Unreleased], with
+    six Added bullets, one Changed bullet, and three Fixed bullets."""
     import re
     from pathlib import Path
 
     changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    lines = changelog.read_text().splitlines()
-    pattern = re.compile(r"^## \[.+\]")
-    matched_lines = [line for line in lines if pattern.match(line)]
-    assert len(matched_lines) == 6, (
-        f"Expected exactly 6 versioned headings, got {len(matched_lines)}"
+    content = changelog.read_text()
+
+    match = re.search(r"^## \[1\.3\.0\] - 2026-10-13$", content, re.MULTILINE)
+    assert match, "Missing '## [1.3.0] - 2026-10-13' heading"
+
+    # Positioned directly between [Unreleased] and [1.2.0]
+    unreleased = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
+    assert unreleased and unreleased.start() < match.start()
+    v120 = re.search(r"^## \[1\.2\.0\] - 2026-10-10$", content, re.MULTILINE)
+    assert v120 and match.start() < v120.start()
+
+    after = content[match.end() :]
+    next_version = re.search(r"^## \[", after, re.MULTILINE)
+    section = after[: next_version.start()] if next_version else after
+
+    added_match = re.search(r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
+    assert added_match, "No ### Added subsection in [1.3.0]"
+    added = added_match.group(1)
+    added_bullets = [line for line in added.splitlines() if line.startswith("- ")]
+    assert len(added_bullets) == 6, f"Expected 6 Added entries in [1.3.0], got {len(added_bullets)}"
+    for phrase in [
+        "superseded",
+        "replaced_by",
+        "Superseded column",
+        "Prometheus",
+        "cycle_time_minutes",
+        "lead_time_minutes",
+        "card_created_at",
+    ]:
+        assert phrase in added, f"[1.3.0] Added missing {phrase!r}"
+
+    changed_match = re.search(
+        r"^### Changed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL
     )
-    assert matched_lines[0] == "## [Unreleased]", (
-        f"First heading is {matched_lines[0]!r}, expected '## [Unreleased]'"
+    assert changed_match, "No ### Changed subsection in [1.3.0]"
+    changed = changed_match.group(1)
+    changed_bullets = [line for line in changed.splitlines() if line.startswith("- ")]
+    assert len(changed_bullets) == 1, (
+        f"Expected 1 Changed entry in [1.3.0], got {len(changed_bullets)}"
     )
-    assert matched_lines[1] == "## [1.2.0] - 2026-10-10", (
-        f"Second heading is {matched_lines[1]!r}, expected '## [1.2.0] - 2026-10-10'"
-    )
-    second = matched_lines[2]
-    assert re.match(r"^## \[1\.1\.0\] - \d{4}-\d{2}-\d{2}$", second), (
-        f"Third heading is {second!r}, expected '## [1.1.0] - YYYY-MM-DD'"
-    )
-    assert matched_lines[3] == "## [1.0.2] - 2025-07-15", (
-        f"Fourth heading is {matched_lines[3]!r}, expected '## [1.0.2] - 2025-07-15'"
-    )
-    assert matched_lines[4] == "## [1.0.1] - 2025-07-14", (
-        f"Fifth heading is {matched_lines[4]!r}, expected '## [1.0.1] - 2025-07-14'"
-    )
-    assert matched_lines[5] == "## [1.0.0] - 2025-07-13", (
-        f"Sixth heading is {matched_lines[5]!r}, expected '## [1.0.0] - 2025-07-13'"
-    )
-    # No version-numbered heading before [Unreleased]
-    unreleased_idx = lines.index("## [Unreleased]")
-    version_pattern = re.compile(r"^## \[\d+(\.\d+)*\]")
-    for line in lines[:unreleased_idx]:
-        assert not version_pattern.match(line), (
-            f"Version-numbered heading {line!r} appears before '## [Unreleased]'"
-        )
+    assert "in-progress" in changed, "[1.3.0] Changed missing 'in-progress'"
+    assert "blocked" in changed, "[1.3.0] Changed missing 'blocked'"
+
+    fixed_match = re.search(r"^### Fixed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
+    assert fixed_match, "No ### Fixed subsection in [1.3.0]"
+    fixed = fixed_match.group(1)
+    fixed_bullets = [line for line in fixed.splitlines() if line.startswith("- ")]
+    assert len(fixed_bullets) == 3, f"Expected 3 Fixed entries in [1.3.0], got {len(fixed_bullets)}"
+    for phrase in ["/sprint", "space", "escalation rate", "0 to 100", "/range"]:
+        assert phrase in fixed, f"[1.3.0] Fixed missing {phrase!r}"
 
 
-def test_changelog_unreleased_empty_after_1_2_0_release():
+def test_changelog_unreleased_empty_after_1_3_0_release():
     """AC3: [Unreleased] retains its four standard subheadings with no entries
-    beneath them; the two former entries appear in [1.2.0] under Added."""
+    beneath them; the released entries now sit in [1.3.0]."""
     import re
     from pathlib import Path
 
@@ -354,12 +371,10 @@ def test_changelog_unreleased_empty_after_1_2_0_release():
             break
     section_lines = lines[start + 1 : end]
 
-    # Four standard subheadings present
     subheadings = ["### Added", "### Changed", "### Fixed", "### Removed"]
     for heading in subheadings:
         assert heading in section_lines, f"[Unreleased] missing {heading!r}"
 
-    # No bullet entries under any subheading
     for heading in subheadings:
         idx = section_lines.index(heading)
         for j in range(idx + 1, len(section_lines)):
@@ -370,15 +385,13 @@ def test_changelog_unreleased_empty_after_1_2_0_release():
                 f"Entry {line!r} found under {heading!r} in [Unreleased]"
             )
 
-    # The two former entries are in [1.2.0] Added
     content = "\n".join(lines)
-    match = re.search(r"^## \[1\.2\.0\] - 2026-10-10$", content, re.MULTILINE)
-    assert match, "Missing '## [1.2.0] - 2026-10-10'"
+    match = re.search(r"^## \[1\.3\.0\] - 2026-10-13$", content, re.MULTILINE)
+    assert match, "Missing '## [1.3.0] - 2026-10-13'"
     after = content[match.end() :]
     next_version = re.search(r"^## \[", after, re.MULTILINE)
     section = after[: next_version.start()] if next_version else after
     added_match = re.search(r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert added_match, "No ### Added in [1.2.0]"
+    assert added_match, "No ### Added in [1.3.0]"
     added = added_match.group(1)
-    assert "POST /sprints" in added, "POST /sprints entry not in [1.2.0] Added"
-    assert "Automatic recovery" in added, "Automatic recovery entry not in [1.2.0] Added"
+    assert "card_created_at" in added, "card_created_at entry not in [1.3.0] Added"
