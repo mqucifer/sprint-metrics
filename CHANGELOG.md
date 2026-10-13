@@ -4,6 +4,8 @@
 
 ### Added
 
+- docs/metrics.md, docs/cards.md, and docs/formats.md now describe `cycle_time_minutes`, `lead_time_minutes`, and the optional datetime card fields
+
 ### Changed
 
 ### Fixed

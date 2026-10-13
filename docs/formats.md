@@ -3,7 +3,9 @@
 The JSON response top level carries:
 
 - `api_version` — a string identifying the response shape (currently `"1"`)
-- Fifteen metric fields: `cycle_time_days`, `lead_time_days`, `throughput`, `points_delivered`, `wip_violations`, `blocked_aging_days`, `escalation_rate_percent`, `escalation_count`, `first_attempt_rate_percent`, `first_attempt_numerator`, `first_attempt_denominator`, `failure_breakdown`, `superseded_count`, `superseded_points`, `superseded_breakdown`
+- Seventeen metric fields: `cycle_time_days`, `lead_time_days`, `throughput`, `points_delivered`, `wip_violations`, `blocked_aging_days`, `escalation_rate_percent`, `escalation_count`, `first_attempt_rate_percent`, `first_attempt_numerator`, `first_attempt_denominator`, `failure_breakdown`, `superseded_count`, `superseded_points`, `superseded_breakdown`, `cycle_time_minutes`, `lead_time_minutes`
+- `cycle_time_minutes` and `lead_time_minutes` — integer or null, the mean cycle time and lead time in whole minutes; null when no completed card carries the required sub-day timestamps
+- In the sprint-range response, `cycle_time_minutes` and `lead_time_minutes` appear in each sprint's object, in its `prior` object, and in its `delta` object (where null means the value cannot be computed)
 - `superseded_count` — integer, the number of superseded stories in the sprint
 - `superseded_points` — integer, the sum of points on superseded stories
 - `superseded_breakdown` — object with `"sponsor"` and `"story_problem"` integer keys, the per-reason count

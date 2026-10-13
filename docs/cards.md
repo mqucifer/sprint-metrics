@@ -34,3 +34,10 @@ BEGIN:input-format
 ]
 ```
 END:input-format
+
+The datetime fields `created_at`, `started_at`, and `completed_at` are optional
+ISO-8601 datetime strings (with timezone offset) that enable sub-day precision.
+They are distinct from the date-only fields `created`, `started`, and `completed`,
+which carry no time-of-day information. When only the date-only fields are
+provided (without the corresponding `_at` datetime fields), the minute-level
+metrics (`cycle_time_minutes` and `lead_time_minutes`) report null.

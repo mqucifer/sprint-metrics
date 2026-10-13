@@ -63,6 +63,16 @@ value.
 Both keys are always present, even when one of the reasons has no superseded
 stories.
 
+### Cycle time and lead time (minutes)
+
+`cycle_time_minutes` is the mean of (completed_at − started_at) over all
+completed cards that carry both a `started_at` and a `completed_at`
+timestamp, expressed in whole minutes and rounded to the nearest integer.
+
+`lead_time_minutes` is the mean of (completed_at − created_at) over all
+completed cards that carry both a `created_at` and a `completed_at`
+timestamp, expressed in whole minutes and rounded to the nearest integer.
+
 ## Boundary conditions
 
 ### Zero values for an empty sprint
@@ -115,3 +125,11 @@ A sprint with no superseded events reports 0 for `superseded_count`, 0 for
 `superseded_breakdown`. A superseded story is excluded from both throughput
 and in-flight calculations; it does not contribute to any in-flight or
 delivered metric.
+
+### Minute-level metrics null behavior
+
+`cycle_time_minutes` is null (not 0) when no completed card carries both a
+`started_at` and a `completed_at` timestamp. `lead_time_minutes` is null when
+no completed card carries both a `created_at` and a `completed_at` timestamp.
+Cards that provide only the date-only fields (`started`, `completed`,
+`created`) do not contribute to the minute-level metrics.

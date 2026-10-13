@@ -354,44 +354,23 @@ def test_changelog_1_3_0_section_content():
         assert phrase in fixed, f"[1.3.0] Fixed missing {phrase!r}"
 
 
-def test_changelog_unreleased_empty_after_1_3_0_release():
-    """AC3: [Unreleased] retains its four standard subheadings with no entries
-    beneath them; the released entries now sit in [1.3.0]."""
-    import re
-    from pathlib import Path
-
-    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    lines = changelog.read_text().splitlines()
-
-    start = next(i for i, line in enumerate(lines) if line == "## [Unreleased]")
-    end = len(lines)
-    for i in range(start + 1, len(lines)):
-        if lines[i].startswith("## ["):
-            end = i
-            break
-    section_lines = lines[start + 1 : end]
-
-    subheadings = ["### Added", "### Changed", "### Fixed", "### Removed"]
-    for heading in subheadings:
-        assert heading in section_lines, f"[Unreleased] missing {heading!r}"
-
-    for heading in subheadings:
-        idx = section_lines.index(heading)
-        for j in range(idx + 1, len(section_lines)):
-            line = section_lines[j]
-            if line.startswith("### ") or line.startswith("## "):
-                break
-            assert not line.startswith("- "), (
-                f"Entry {line!r} found under {heading!r} in [Unreleased]"
-            )
-
-    content = "\n".join(lines)
-    match = re.search(r"^## \[1\.3\.0\] - 2026-10-13$", content, re.MULTILINE)
-    assert match, "Missing '## [1.3.0] - 2026-10-13'"
-    after = content[match.end() :]
-    next_version = re.search(r"^## \[", after, re.MULTILINE)
-    section = after[: next_version.start()] if next_version else after
-    added_match = re.search(r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert added_match, "No ### Added in [1.3.0]"
+def test_changelog_unreleased_has_minute_metrics_docs_entry():
+    """After 1.3.0, [Unreleased] Added notes that docs/metrics.md, docs/cards.md
+    and docs/formats.md now describe cycle_time_minutes, lead_time_minutes and
+    the optional datetime card fields."""
+    content = CHANGELOG.read_text()
+    match = re.search(
+        r"^## \[Unreleased\]\s*\n(.*?)(?=^## \[|\Z)", content, re.MULTILINE | re.DOTALL
+    )
+    assert match, "Missing '## [Unreleased]'"
+    unreleased = match.group(1)
+    added_match = re.search(
+        r"^### Added\s*\n(.*?)(?=^### |\Z)", unreleased, re.MULTILINE | re.DOTALL
+    )
+    assert added_match, "No ### Added in [Unreleased]"
     added = added_match.group(1)
-    assert "card_created_at" in added, "card_created_at entry not in [1.3.0] Added"
+    assert "cycle_time_minutes" in added, "cycle_time_minutes not in [Unreleased] Added"
+    assert "lead_time_minutes" in added, "lead_time_minutes not in [Unreleased] Added"
+    assert "docs/metrics.md" in added, "docs/metrics.md not in [Unreleased] Added"
+    assert "docs/cards.md" in added, "docs/cards.md not in [Unreleased] Added"
+    assert "docs/formats.md" in added, "docs/formats.md not in [Unreleased] Added"
