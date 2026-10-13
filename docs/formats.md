@@ -493,6 +493,15 @@ Status: All clear
 
 > The report date reflects the day the example was captured.
 
+When cards carry datetime fields (`created_at`, `started_at`, `completed_at`), the Cycle time and Lead time lines render in hours-and-minutes format (e.g. `11h 26m`) instead of whole days. When only date-level data is available, the report falls back to the day-level rendering.
+
+For example, a card with `started_at` `2024-01-01T08:00:00Z` and `completed_at` `2024-01-01T19:26:00Z` (686 minutes of cycle time) renders:
+
+```markdown
+- **Cycle time**: 11h 26m
+- **Lead time**: 13h 26m
+```
+
 ### Prometheus
 
 ```

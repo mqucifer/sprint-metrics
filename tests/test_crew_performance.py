@@ -3242,3 +3242,137 @@ def test_prometheus_superseded_filtered_shows_all_four_lines(tmp_path, capsys):
     assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 0' in lines
     assert "sprint_cycle_time_days" not in captured.out
     assert "sprint_throughput_cards" not in captured.out
+
+
+def test_markdown_datetime_cycle_and_lead_time(tmp_path, capsys):
+    """AC1: one card with datetime fields shows cycle time 11h 26m and lead time 13h 26m."""
+    import json
+
+    from sprint_metrics import main
+
+    card = {
+        "created": "2024-01-01",
+        "started": "2024-01-01",
+        "completed": "2024-01-01",
+        "created_at": "2024-01-01T06:00:00Z",
+        "started_at": "2024-01-01T08:00:00Z",
+        "completed_at": "2024-01-01T19:26:00Z",
+    }
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 11h 26m" in captured.out
+    assert "- **Lead time**: 13h 26m" in captured.out
+    for line in captured.out.splitlines():
+        if "**Cycle time**" in line:
+            assert "0 days" not in line
+        if "**Lead time**" in line:
+            assert "0 days" not in line
+
+
+def test_markdown_date_only_fallback_to_days(tmp_path, capsys):
+    """AC2: date-only cards (no datetime fields) show '0 days' for both cycle and lead time."""
+    import json
+
+    from sprint_metrics import main
+
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-01"}
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 0 days" in captured.out
+    assert "- **Lead time**: 0 days" in captured.out
+
+
+def test_markdown_partial_datetime_cycle_minutes_lead_days(tmp_path, capsys):
+    """AC3: started_at+completed_at without created_at shows '5m' cycle, '0 days' lead, no warning."""
+    import json
+
+    from sprint_metrics import main
+
+    card = {
+        "created": "2024-01-01",
+        "started": "2024-01-01",
+        "completed": "2024-01-01",
+        "started_at": "2024-01-01T08:00:00Z",
+        "completed_at": "2024-01-01T08:05:00Z",
+    }
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 5m" in captured.out
+    assert "- **Lead time**: 0 days" in captured.out
+    assert "\u26a0\ufe0f" not in captured.out
+
+
+def test_markdown_two_datetime_cards_average_minutes(tmp_path, capsys):
+    """AC5: two datetime cards show average cycle 13h 3m and average lead 14h 48m, no ' days'."""
+    import json
+
+    from sprint_metrics import main
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-01",
+            "completed": "2024-01-01",
+            "created_at": "2024-01-01T06:00:00Z",
+            "started_at": "2024-01-01T08:00:00Z",
+            "completed_at": "2024-01-01T19:26:00Z",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-01",
+            "completed": "2024-01-01",
+            "created_at": "2024-01-01T06:00:00Z",
+            "started_at": "2024-01-01T07:30:00Z",
+            "completed_at": "2024-01-01T22:09:38Z",
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    cycle_idx = lines.index("- **Cycle time**: 13h 3m")
+    lead_idx = lines.index("- **Lead time**: 14h 48m")
+    assert cycle_idx > lines.index("## Current Sprint")
+    assert cycle_idx < lead_idx
+    assert " days" not in lines[cycle_idx]
+    assert " days" not in lines[lead_idx]
+
+
+def test_markdown_cycle_minutes_lead_days_adjacent_lines(tmp_path, capsys):
+    """AC6: cycle '5m' immediately followed by lead '0 days' when only cycle has datetime data."""
+    import json
+
+    from sprint_metrics import main
+
+    card = {
+        "created": "2024-01-01",
+        "started": "2024-01-01",
+        "completed": "2024-01-01",
+        "started_at": "2024-01-01T08:00:00Z",
+        "completed_at": "2024-01-01T08:05:00Z",
+    }
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    cycle_idx = lines.index("- **Cycle time**: 5m")
+    lead_idx = lines.index("- **Lead time**: 0 days")
+    assert lead_idx == cycle_idx + 1
