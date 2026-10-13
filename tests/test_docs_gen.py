@@ -71,3 +71,15 @@ def test_generated_metrics_has_correct_superseded_prometheus_names():
     assert "sprint_metrics_superseded_stories" in content
     assert "sprint_metrics_superseded_points" in content
     assert "sprint_metrics_superseded_by_reason" in content
+
+
+def test_generated_metrics_superseded_count_display_name():
+    """AC5: the generated metrics table row for superseded_count has
+    Display name 'Superseded count'."""
+    from sprint_metrics._docs_gen import _generate_metrics_content
+
+    content = _generate_metrics_content()
+    lines = content.splitlines()
+    row = next(line for line in lines if "`superseded_count`" in line)
+    cells = [c.strip() for c in row.split("|") if c.strip()]
+    assert cells[0] == "Superseded count"

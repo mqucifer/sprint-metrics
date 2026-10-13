@@ -80,12 +80,16 @@ def _generate_metrics_content() -> str:
         "superseded_breakdown": "sprint_metrics_superseded_by_reason",
     }
 
+    display_overrides: dict[str, str] = {
+        "superseded_count": "Superseded count",
+    }
+
     lines = [
         "| Display name | Metric key | Description | Prometheus name |",
         "|---|---|---|---|",
     ]
     for metric_key in sorted(ALL_METRICS):
-        display_name = _METRIC_COLUMNS.get(metric_key)
+        display_name = display_overrides.get(metric_key, _METRIC_COLUMNS.get(metric_key))
         if display_name is None:
             continue
         if metric_key in metric_descriptions:
