@@ -58,15 +58,17 @@ def _generate_metrics_content() -> str:
         "first_attempt_denominator": "Return the total count of completed cards.",
         "escalation_count": "Return the number of escalated events in the sprint.",
         "superseded_count": (
-            "Return the count of superseded stories in the sprint. "
+            "Return the number of cards marked superseded in the sprint. "
             "Excluded from throughput and in-flight calculations."
         ),
         "superseded_points": (
-            "Return the sum of points on superseded stories. "
+            "Return the sum of the points value on superseded cards "
+            "(0 when a superseded card carries no points value). "
             "Excluded from throughput and in-flight calculations."
         ),
         "superseded_breakdown": (
-            "Return the per-reason count of superseded stories. "
+            "Return the per-reason breakdown of superseded cards, "
+            "keyed by 'sponsor' and 'story_problem' with their counts. "
             "Excluded from throughput and in-flight calculations."
         ),
     }
