@@ -6197,6 +6197,88 @@ def test_trend_lead_time_minutes_single_sprint_integer():
         conn.close()
 
 
+@requires_db
+def test_resend_event_fills_null_points_via_service():
+    """AC3: POST /events without points, then with points=5: /sprint shows points_delivered=5."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_svc'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event_no_points = {
+            "api_version": "1",
+            "card_id": "c_svc",
+            "type": "finished",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "card": {"created": "2024-01-01"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event_no_points)
+        assert status == 200
+
+        event_with_points = {
+            "api_version": "1",
+            "card_id": "c_svc",
+            "type": "finished",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "card": {"created": "2024-01-01", "points": 5},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event_with_points)
+        assert status == 200
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["points_delivered"] == 5
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_resend_event_keeps_existing_points_via_service():
+    """AC4: POST /events with points=5, then with points=3: /sprint shows points_delivered=5."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_svc2'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event_points_5 = {
+            "api_version": "1",
+            "card_id": "c_svc2",
+            "type": "finished",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "card": {"created": "2024-01-01", "points": 5},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event_points_5)
+        assert status == 200
+
+        event_points_3 = {
+            "api_version": "1",
+            "card_id": "c_svc2",
+            "type": "finished",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "card": {"created": "2024-01-01", "points": 3},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event_points_3)
+        assert status == 200
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["points_delivered"] == 5
+    finally:
+        conn.close()
+
+
 def test_trend_escalation_rate_percent_correct_value(monkeypatch):
     """AC1: GET /trend?metric=escalation_rate_percent&start=2024-01&end=2024-02 with
     sprint 2024-01 having no events and sprint 2024-02 having one card (started,
