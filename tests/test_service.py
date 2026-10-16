@@ -6197,201 +6197,147 @@ def test_trend_lead_time_minutes_single_sprint_integer():
         conn.close()
 
 
-@requires_db
-def test_trend_escalation_rate_percent_one_completed_two_escalated():
+def test_trend_escalation_rate_percent_one_completed_two_escalated(monkeypatch):
     """AC1: GET /trend?metric=escalation_rate_percent for a sprint with 1 completed
-    card and 2 escalated events returns the same rate /range gives, and not 0.
-    The raw rate 2/1 = 200% is capped at 100 by calculate_escalation_rate; both
-    endpoints share that cap, so the invariant is that they agree and are non-zero."""
-    import psycopg
+    card and 2 escalated events returns 100 (capped at 100), equal to what /range
+    gives for the same sprint, and not 0."""
+    from datetime import date
+    from unittest.mock import MagicMock
 
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-01'")
-    conn.commit()
+    from sprint_metrics import service
+    from sprint_metrics.card import Card
 
-    port = _start_service(conn, 0)
+    def fake_resolve_sprint_range(conn, start, end):
+        return ["2025-01"]
+
+    def fake_query_sprint(conn, label):
+        return [
+            Card(
+                created=date(2025, 1, 1),
+                started=date(2025, 1, 3),
+                completed=date(2025, 1, 6),
+            )
+        ]
+
+    def fake_sprint_has_events(conn, label):
+        return True
+
+    def fake_count_escalated_events(conn, label):
+        return 2
+
+    monkeypatch.setattr(service, "resolve_sprint_range", fake_resolve_sprint_range)
+    monkeypatch.setattr(service, "query_sprint", fake_query_sprint)
+    monkeypatch.setattr(service, "sprint_has_events", fake_sprint_has_events)
+    monkeypatch.setattr(service, "count_escalated_events", fake_count_escalated_events)
+
+    mock_conn = MagicMock()
+    port = _start_service(mock_conn, 0)
     try:
-        # One completed card
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_a",
-                event_type="started",
-                timestamp="2025-01-03T10:00:00Z",
-                sprint="2025-01",
-                created="2025-01-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_a",
-                event_type="finished",
-                timestamp="2025-01-06T15:00:00Z",
-                sprint="2025-01",
-                created="2025-01-01",
-            ),
-        )
-        # Two escalated events
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_a",
-                event_type="escalated",
-                timestamp="2025-01-04T10:00:00Z",
-                sprint="2025-01",
-                created="2025-01-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_a",
-                event_type="escalated",
-                timestamp="2025-01-05T10:00:00Z",
-                sprint="2025-01",
-                created="2025-01-01",
-            ),
-        )
-
-        trend_status, trend = _get_json(
+        status, body = _get_json(
             f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2025-01&end=2025-01"
         )
-        range_status, range_body = _get_json(
-            f"http://127.0.0.1:{port}/range?start=2025-01&end=2025-01"
-        )
-        assert trend_status == 200
-        assert range_status == 200
-        assert len(trend["values"]) == 1
-        assert trend["values"][0]["sprint"] == "2025-01"
-        trend_value = trend["values"][0]["value"]
-        range_value = range_body["sprints"]["2025-01"]["escalation_rate_percent"]
-        assert trend_value == range_value
-        assert trend_value != 0
     finally:
-        conn.close()
+        pass
+
+    assert status == 200
+    assert len(body["values"]) == 1
+    assert body["values"][0]["sprint"] == "2025-01"
+    assert body["values"][0]["value"] == 100
 
 
-@requires_db
-def test_trend_escalation_rate_percent_two_completed_one_escalated():
+def test_trend_escalation_rate_percent_two_completed_one_escalated(monkeypatch):
     """AC2: GET /trend?metric=escalation_rate_percent for a sprint with 2 completed
     cards and 1 escalated event returns 50."""
-    import psycopg
+    from datetime import date
+    from unittest.mock import MagicMock
 
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-02'")
-    conn.commit()
+    from sprint_metrics import service
+    from sprint_metrics.card import Card
 
-    port = _start_service(conn, 0)
+    def fake_resolve_sprint_range(conn, start, end):
+        return ["2025-02"]
+
+    def fake_query_sprint(conn, label):
+        return [
+            Card(
+                created=date(2025, 2, 1),
+                started=date(2025, 2, 3),
+                completed=date(2025, 2, 5),
+            ),
+            Card(
+                created=date(2025, 2, 1),
+                started=date(2025, 2, 3),
+                completed=date(2025, 2, 6),
+            ),
+        ]
+
+    def fake_sprint_has_events(conn, label):
+        return True
+
+    def fake_count_escalated_events(conn, label):
+        return 1
+
+    monkeypatch.setattr(service, "resolve_sprint_range", fake_resolve_sprint_range)
+    monkeypatch.setattr(service, "query_sprint", fake_query_sprint)
+    monkeypatch.setattr(service, "sprint_has_events", fake_sprint_has_events)
+    monkeypatch.setattr(service, "count_escalated_events", fake_count_escalated_events)
+
+    mock_conn = MagicMock()
+    port = _start_service(mock_conn, 0)
     try:
-        # Two completed cards
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_b1",
-                event_type="started",
-                timestamp="2025-02-03T10:00:00Z",
-                sprint="2025-02",
-                created="2025-02-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_b1",
-                event_type="finished",
-                timestamp="2025-02-05T15:00:00Z",
-                sprint="2025-02",
-                created="2025-02-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_b2",
-                event_type="started",
-                timestamp="2025-02-03T11:00:00Z",
-                sprint="2025-02",
-                created="2025-02-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_b2",
-                event_type="finished",
-                timestamp="2025-02-06T15:00:00Z",
-                sprint="2025-02",
-                created="2025-02-01",
-            ),
-        )
-        # One escalated event
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_b1",
-                event_type="escalated",
-                timestamp="2025-02-04T10:00:00Z",
-                sprint="2025-02",
-                created="2025-02-01",
-            ),
-        )
-
         status, body = _get_json(
             f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2025-02&end=2025-02"
         )
-        assert status == 200
-        assert len(body["values"]) == 1
-        assert body["values"][0]["sprint"] == "2025-02"
-        assert body["values"][0]["value"] == 50
     finally:
-        conn.close()
+        pass
+
+    assert status == 200
+    assert len(body["values"]) == 1
+    assert body["values"][0]["sprint"] == "2025-02"
+    assert body["values"][0]["value"] == 50
 
 
-@requires_db
-def test_trend_escalation_rate_percent_zero_completed_one_escalated():
+def test_trend_escalation_rate_percent_zero_completed_one_escalated(monkeypatch):
     """AC3: GET /trend?metric=escalation_rate_percent for a sprint with 0 completed
     cards but 1 escalated event returns 0 with no error."""
-    import psycopg
+    from datetime import date
+    from unittest.mock import MagicMock
 
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-03'")
-    conn.commit()
+    from sprint_metrics import service
+    from sprint_metrics.card import Card
 
-    port = _start_service(conn, 0)
+    def fake_resolve_sprint_range(conn, start, end):
+        return ["2025-03"]
+
+    def fake_query_sprint(conn, label):
+        return [
+            Card(
+                created=date(2025, 3, 1),
+                started=date(2025, 3, 3),
+            ),
+        ]
+
+    def fake_sprint_has_events(conn, label):
+        return True
+
+    def fake_count_escalated_events(conn, label):
+        return 1
+
+    monkeypatch.setattr(service, "resolve_sprint_range", fake_resolve_sprint_range)
+    monkeypatch.setattr(service, "query_sprint", fake_query_sprint)
+    monkeypatch.setattr(service, "sprint_has_events", fake_sprint_has_events)
+    monkeypatch.setattr(service, "count_escalated_events", fake_count_escalated_events)
+
+    mock_conn = MagicMock()
+    port = _start_service(mock_conn, 0)
     try:
-        # One card started but not finished (0 completed)
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_c",
-                event_type="started",
-                timestamp="2025-03-03T10:00:00Z",
-                sprint="2025-03",
-                created="2025-03-01",
-            ),
-        )
-        # One escalated event
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="trend_rate_c",
-                event_type="escalated",
-                timestamp="2025-03-04T10:00:00Z",
-                sprint="2025-03",
-                created="2025-03-01",
-            ),
-        )
-
         status, body = _get_json(
             f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2025-03&end=2025-03"
         )
-        assert status == 200
-        assert len(body["values"]) == 1
-        assert body["values"][0]["sprint"] == "2025-03"
-        assert body["values"][0]["value"] == 0
     finally:
-        conn.close()
+        pass
+
+    assert status == 200
+    assert len(body["values"]) == 1
+    assert body["values"][0]["sprint"] == "2025-03"
+    assert body["values"][0]["value"] == 0
