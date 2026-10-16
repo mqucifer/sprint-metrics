@@ -6195,3 +6195,104 @@ def test_trend_lead_time_minutes_single_sprint_integer():
         assert isinstance(body["values"][0]["value"], int)
     finally:
         conn.close()
+
+
+def test_trend_escalation_rate_percent_correct_value(monkeypatch):
+    """AC1: GET /trend?metric=escalation_rate_percent&start=2024-01&end=2024-02 with
+    sprint 2024-01 having no events and sprint 2024-02 having one card (started,
+    finished, escalated) returns 200 with values[0] = 0 (zero value for empty sprint)
+    and values[1] = 100 (one escalation over one completed card)."""
+    from datetime import date
+
+    from sprint_metrics import service
+    from sprint_metrics.card import Card
+
+    cards_2024_02 = [
+        Card(
+            created=date(2024, 2, 1),
+            started=date(2024, 2, 3),
+            completed=date(2024, 2, 7),
+        )
+    ]
+    sprints_data = {
+        "2024-01": [],
+        "2024-02": cards_2024_02,
+    }
+    escalation_counts = {"2024-01": 0, "2024-02": 1}
+    has_events = {"2024-01": False, "2024-02": True}
+
+    monkeypatch.setattr(service, "resolve_sprint_range", lambda conn, start, end: None)
+    monkeypatch.setattr(service, "query_range", lambda conn, start, end: sprints_data)
+    monkeypatch.setattr(service, "sprint_has_events", lambda conn, label: has_events[label])
+    monkeypatch.setattr(
+        service, "count_escalated_events", lambda conn, label: escalation_counts[label]
+    )
+
+    class FakeConn:
+        def execute(self, sql, params=()):
+            if "SELECT 1" in sql:
+                return _FakeSprintCursor([(1,)])
+            raise AssertionError(f"unexpected SQL: {sql}")
+
+    port = _start_service(FakeConn(), 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 0}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 100}
+    finally:
+        pass
+
+
+def test_trend_escalation_rate_percent_matches_range(monkeypatch):
+    """AC2: For the same sprint data, /trend's escalation_rate_percent value equals
+    /range's escalation_rate_percent for that sprint (both 100)."""
+    from datetime import date
+
+    from sprint_metrics import service
+    from sprint_metrics.card import Card
+
+    cards_2024_02 = [
+        Card(
+            created=date(2024, 2, 1),
+            started=date(2024, 2, 3),
+            completed=date(2024, 2, 7),
+        )
+    ]
+    sprints_data = {"2024-02": cards_2024_02}
+    escalation_counts = {"2024-02": 1}
+    has_events = {"2024-02": True}
+
+    monkeypatch.setattr(service, "resolve_sprint_range", lambda conn, start, end: None)
+    monkeypatch.setattr(service, "query_range", lambda conn, start, end: sprints_data)
+    monkeypatch.setattr(service, "sprint_has_events", lambda conn, label: has_events[label])
+    monkeypatch.setattr(
+        service, "count_escalated_events", lambda conn, label: escalation_counts[label]
+    )
+
+    class FakeConn:
+        def execute(self, sql, params=()):
+            if "SELECT 1" in sql:
+                return _FakeSprintCursor([(1,)])
+            raise AssertionError(f"unexpected SQL: {sql}")
+
+    port = _start_service(FakeConn(), 0)
+    try:
+        # /trend
+        status_t, body_t = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2024-02&end=2024-02"
+        )
+        assert status_t == 200
+        trend_value = body_t["values"][0]["value"]
+
+        # /range
+        status_r, body_r = _get_json(f"http://127.0.0.1:{port}/range?start=2024-02&end=2024-02")
+        assert status_r == 200
+        range_value = body_r["sprints"]["2024-02"]["escalation_rate_percent"]
+
+        assert trend_value == range_value == 100
+    finally:
+        pass
