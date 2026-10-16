@@ -6,7 +6,7 @@ Skips when SPRINT_METRICS_DB is not set.
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import UTC, date
 
 import pytest
 
@@ -163,3 +163,101 @@ def test_query_sprint_finished_card_not_superseded(conn):
     assert len(cards) == 1
     assert cards[0].superseded is False
     assert cards[0].superseded_because is None
+
+
+def test_upsert_fills_null_points_on_resend(conn):
+    """AC1: re-sending an event with points fills a NULL points column."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_fill'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "c_fill",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01"},
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "c_fill",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "points": 5},
+        },
+    )
+    rows = conn.execute(
+        "SELECT points FROM sprint_metrics.board_events "
+        "WHERE card_id = 'c_fill' AND type = 'finished' AND timestamp = '2024-01-07T15:00:00Z'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == 5
+
+
+def test_upsert_keeps_existing_points_on_resend(conn):
+    """AC2: re-sending an event with a different points value does not overwrite a set column."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_keep'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "c_keep",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "points": 5},
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "c_keep",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "points": 3},
+        },
+    )
+    rows = conn.execute(
+        "SELECT points FROM sprint_metrics.board_events "
+        "WHERE card_id = 'c_keep' AND type = 'finished' AND timestamp = '2024-01-07T15:00:00Z'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == 5
+
+
+def test_upsert_fills_null_card_created_at_on_resend(conn):
+    """AC5: re-sending an event with card.created_at fills a NULL card_created_at column."""
+    from datetime import datetime
+
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'c_created'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "c_created",
+            "type": "started",
+            "timestamp": "2024-01-03T10:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01"},
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "c_created",
+            "type": "started",
+            "timestamp": "2024-01-03T10:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01", "created_at": "2024-01-01T08:30:00Z"},
+        },
+    )
+    rows = conn.execute(
+        "SELECT card_created_at FROM sprint_metrics.board_events "
+        "WHERE card_id = 'c_created' AND type = 'started' AND timestamp = '2024-01-03T10:00:00Z'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == datetime(2024, 1, 1, 8, 30, 0, tzinfo=UTC)

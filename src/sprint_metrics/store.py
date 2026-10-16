@@ -69,7 +69,7 @@ def init_db(conn: Connection) -> None:
 
 
 def insert_event(conn: Connection, event: dict) -> None:
-    """Insert a board event, doing nothing if it already exists (idempotent upsert).
+    """Insert a board event, filling NULL fields on re-send without overwriting set values.
 
     The event dict must have keys: card_id, type, timestamp, sprint, card (with 'created').
     Optional card fields: attempts, failure_class, failure_role (stored only on 'finished' rows),
@@ -78,6 +78,9 @@ def insert_event(conn: Connection, event: dict) -> None:
     Optional top-level fields: attempt_number, failure_class, failure_role
     (stored only on 'attempt_failed' rows).
     Optional top-level fields: because, epic, replaced_by (stored only on 'superseded' rows).
+
+    On re-send (conflict on the primary key), NULL columns receive the new value;
+    columns that already hold a value are left unchanged (epic R1).
     """
     card = event.get("card", {})
     event_type = event["type"]
@@ -113,7 +116,16 @@ def insert_event(conn: Connection, event: dict) -> None:
              attempts, failure_class, failure_role, attempt_number, points,
              because, epic, replaced_by, card_created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (card_id, type, event_time) DO NOTHING
+        ON CONFLICT (card_id, type, event_time) DO UPDATE SET
+            attempts = COALESCE(board_events.attempts, EXCLUDED.attempts),
+            failure_class = COALESCE(board_events.failure_class, EXCLUDED.failure_class),
+            failure_role = COALESCE(board_events.failure_role, EXCLUDED.failure_role),
+            attempt_number = COALESCE(board_events.attempt_number, EXCLUDED.attempt_number),
+            points = COALESCE(board_events.points, EXCLUDED.points),
+            because = COALESCE(board_events.because, EXCLUDED.because),
+            epic = COALESCE(board_events.epic, EXCLUDED.epic),
+            replaced_by = COALESCE(board_events.replaced_by, EXCLUDED.replaced_by),
+            card_created_at = COALESCE(board_events.card_created_at, EXCLUDED.card_created_at)
         """,
         (
             event["card_id"],
