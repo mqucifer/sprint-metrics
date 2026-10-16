@@ -999,3 +999,150 @@ def test_service_md_handwritten_section_survives_docs_gen(tmp_path):
     assert orig_handwritten == new_handwritten, (
         "hand-written content before BEGIN:service was modified by docs_gen"
     )
+
+
+def test_service_md_documents_resend_fills_null_fields():
+    """AC1: the re-send paragraph states the re-send is safe and that fields
+    currently NULL in the stored row receive the value supplied by the re-sent event."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    lines = before.splitlines()
+    resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
+    # The paragraph is a single non-blank line (or group); collect until blank.
+    para_lines = [lines[resend_idx]]
+    for j in range(resend_idx + 1, len(lines)):
+        if lines[j].strip():
+            para_lines.append(lines[j])
+        else:
+            break
+    paragraph = " ".join(para_lines)
+    assert "safe" in paragraph, "re-send paragraph does not state the re-send is safe"
+    assert "NULL" in paragraph, "re-send paragraph does not mention NULL fields"
+    assert "receive the value supplied" in paragraph, (
+        "re-send paragraph does not state NULL fields receive the supplied value"
+    )
+
+
+def test_service_md_documents_resend_preserves_existing_values():
+    """AC2: the re-send paragraph states that a field which already holds a value
+    is not changed by the re-sent event."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    lines = before.splitlines()
+    resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
+    para_lines = [lines[resend_idx]]
+    for j in range(resend_idx + 1, len(lines)):
+        if lines[j].strip():
+            para_lines.append(lines[j])
+        else:
+            break
+    paragraph = " ".join(para_lines)
+    assert "already hold a value" in paragraph, (
+        "re-send paragraph does not state existing values are preserved"
+    )
+    assert "not changed" in paragraph, (
+        "re-send paragraph does not state existing values are not changed"
+    )
+
+
+def test_service_md_resend_paragraph_no_negation_terms():
+    """AC3: none of 'discarded', 'ignored', 'skipped', 'DO NOTHING', 'no-op'
+    appear in the re-send paragraph."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    lines = before.splitlines()
+    resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
+    para_lines = [lines[resend_idx]]
+    for j in range(resend_idx + 1, len(lines)):
+        if lines[j].strip():
+            para_lines.append(lines[j])
+        else:
+            break
+    paragraph = " ".join(para_lines)
+    for term in ("discarded", "ignored", "skipped", "DO NOTHING", "no-op"):
+        assert term not in paragraph, f"re-send paragraph contains forbidden term {term!r}"
+
+
+def test_service_md_resend_paragraph_placement():
+    """AC6: the re-send paragraph is preceded by a line beginning 'No prior event
+    on the card is required' and followed by a line beginning 'The intake format
+    carries'."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    lines = before.splitlines()
+    resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
+    # Find the immediately preceding non-blank line.
+    prev_idx = resend_idx - 1
+    while prev_idx >= 0 and not lines[prev_idx].strip():
+        prev_idx -= 1
+    assert prev_idx >= 0, "no preceding line found"
+    assert lines[prev_idx].startswith("No prior event on the card is required"), (
+        f"preceding line is {lines[prev_idx]!r}, expected to start with "
+        "'No prior event on the card is required'"
+    )
+    # Find the immediately following non-blank line.
+    next_idx = resend_idx + 1
+    while next_idx < len(lines) and not lines[next_idx].strip():
+        next_idx += 1
+    assert next_idx < len(lines), "no following line found"
+    assert lines[next_idx].startswith("The intake format carries"), (
+        f"following line is {lines[next_idx]!r}, expected to start with 'The intake format carries'"
+    )
+
+
+def test_service_md_resend_paragraph_names_identity_fields():
+    """AC7: 'card_id', 'type', and 'timestamp' all appear in the re-send paragraph,
+    each enclosed in backticks."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    lines = before.splitlines()
+    resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
+    para_lines = [lines[resend_idx]]
+    for j in range(resend_idx + 1, len(lines)):
+        if lines[j].strip():
+            para_lines.append(lines[j])
+        else:
+            break
+    paragraph = " ".join(para_lines)
+    for field in ("card_id", "type", "timestamp"):
+        assert f"`{field}`" in paragraph, (
+            f"re-send paragraph does not contain `{field}` in backticks"
+        )
+
+
+def test_service_md_resend_paragraph_no_implementation_terms():
+    """AC8: none of 'COALESCE', 'upsert', 'ON CONFLICT', 'SQL' appear in the
+    re-send paragraph."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    lines = before.splitlines()
+    resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
+    para_lines = [lines[resend_idx]]
+    for j in range(resend_idx + 1, len(lines)):
+        if lines[j].strip():
+            para_lines.append(lines[j])
+        else:
+            break
+    paragraph = " ".join(para_lines)
+    for term in ("COALESCE", "upsert", "ON CONFLICT", "SQL"):
+        assert term not in paragraph, (
+            f"re-send paragraph contains forbidden implementation term {term!r}"
+        )
+
+
+def test_service_md_resend_paragraph_starts_at_column_zero():
+    """AC9: the re-send paragraph's first line begins at column 0 with the
+    character 'R' (the start of 'Re-sending')."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    lines = before.splitlines()
+    resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
+    line = lines[resend_idx]
+    assert line[0] == "R", f"re-send paragraph first line starts with {line[0]!r}, expected 'R'"

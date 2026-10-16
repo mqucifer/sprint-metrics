@@ -29,6 +29,8 @@ A `superseded` event marks a card that was replaced by other stories. It carries
 
 No prior event on the card is required for a `superseded` event to be accepted.
 
+Re-sending an event the service already holds (the same `card_id`, `type`, and `timestamp`) is safe. Fields that are currently NULL in the stored row receive the value supplied by the re-sent event; fields that already hold a value are not changed. You can replay your event log or upgrade your event payload without risking data corruption.
+
 The intake format carries an `api_version` field. The current version is "1". The JSON Schema for the event body is available at GET /schema/event.
 
 ## Endpoints
