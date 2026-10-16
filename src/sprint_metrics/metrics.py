@@ -307,7 +307,7 @@ def metric_value(
     if metric == "blocked_aging_days":
         return calculate_blocked_aging(cards, None)
     if metric == "escalation_rate_percent":
-        return calculate_escalation_rate(cards, 0)
+        return calculate_escalation_rate(cards, escalations)
     if metric == "first_attempt_rate_percent":
         return calculate_first_attempt_rate(cards)
     if metric == "points_delivered":

@@ -666,3 +666,40 @@ def test_cycle_time_minutes_excludes_in_flight_card():
     )
     assert card.is_completed is False
     assert calculate_cycle_time_minutes([card]) is None
+
+
+def test_metric_value_escalation_rate_percent_uses_escalations_param():
+    """AC1: metric_value('escalation_rate_percent', cards, escalations=2) with 1
+    completed card returns 100 (capped), not 0."""
+    from sprint_metrics.metrics import metric_value
+
+    cards = [
+        {"created": "2025-01-01", "started": "2025-01-03", "completed": "2025-01-06"},
+    ]
+    result = metric_value("escalation_rate_percent", cards, escalations=2)
+    assert result == 100
+
+
+def test_metric_value_escalation_rate_percent_two_completed_one_escalated():
+    """AC2: metric_value('escalation_rate_percent', cards, escalations=1) with 2
+    completed cards returns 50."""
+    from sprint_metrics.metrics import metric_value
+
+    cards = [
+        {"created": "2025-02-01", "started": "2025-02-03", "completed": "2025-02-05"},
+        {"created": "2025-02-01", "started": "2025-02-03", "completed": "2025-02-06"},
+    ]
+    result = metric_value("escalation_rate_percent", cards, escalations=1)
+    assert result == 50
+
+
+def test_metric_value_escalation_rate_percent_zero_completed_one_escalated():
+    """AC3: metric_value('escalation_rate_percent', cards, escalations=1) with 0
+    completed cards returns 0 with no error."""
+    from sprint_metrics.metrics import metric_value
+
+    cards = [
+        {"created": "2025-03-01", "started": "2025-03-03"},
+    ]
+    result = metric_value("escalation_rate_percent", cards, escalations=1)
+    assert result == 0

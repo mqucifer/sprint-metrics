@@ -6195,3 +6195,195 @@ def test_trend_lead_time_minutes_single_sprint_integer():
         assert isinstance(body["values"][0]["value"], int)
     finally:
         conn.close()
+
+
+@requires_db
+def test_trend_escalation_rate_percent_one_completed_two_escalated():
+    """AC1: GET /trend?metric=escalation_rate_percent for a sprint with 1 completed
+    card and 2 escalated events returns the same rate /range gives (100, capped),
+    not 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # One completed card
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_a",
+                event_type="started",
+                timestamp="2025-01-03T10:00:00Z",
+                sprint="2025-01",
+                created="2025-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_a",
+                event_type="finished",
+                timestamp="2025-01-06T15:00:00Z",
+                sprint="2025-01",
+                created="2025-01-01",
+            ),
+        )
+        # Two escalated events
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_a",
+                event_type="escalated",
+                timestamp="2025-01-04T10:00:00Z",
+                sprint="2025-01",
+                created="2025-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_a",
+                event_type="escalated",
+                timestamp="2025-01-05T10:00:00Z",
+                sprint="2025-01",
+                created="2025-01-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2025-01&end=2025-01"
+        )
+        assert status == 200
+        assert len(body["values"]) == 1
+        assert body["values"][0]["sprint"] == "2025-01"
+        assert body["values"][0]["value"] == 100
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_escalation_rate_percent_two_completed_one_escalated():
+    """AC2: GET /trend?metric=escalation_rate_percent for a sprint with 2 completed
+    cards and 1 escalated event returns 50."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-02'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Two completed cards
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_b1",
+                event_type="started",
+                timestamp="2025-02-03T10:00:00Z",
+                sprint="2025-02",
+                created="2025-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_b1",
+                event_type="finished",
+                timestamp="2025-02-05T15:00:00Z",
+                sprint="2025-02",
+                created="2025-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_b2",
+                event_type="started",
+                timestamp="2025-02-03T11:00:00Z",
+                sprint="2025-02",
+                created="2025-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_b2",
+                event_type="finished",
+                timestamp="2025-02-06T15:00:00Z",
+                sprint="2025-02",
+                created="2025-02-01",
+            ),
+        )
+        # One escalated event
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_b1",
+                event_type="escalated",
+                timestamp="2025-02-04T10:00:00Z",
+                sprint="2025-02",
+                created="2025-02-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2025-02&end=2025-02"
+        )
+        assert status == 200
+        assert len(body["values"]) == 1
+        assert body["values"][0]["sprint"] == "2025-02"
+        assert body["values"][0]["value"] == 50
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_escalation_rate_percent_zero_completed_one_escalated():
+    """AC3: GET /trend?metric=escalation_rate_percent for a sprint with 0 completed
+    cards but 1 escalated event returns 0 with no error."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-03'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # One card started but not finished (0 completed)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_c",
+                event_type="started",
+                timestamp="2025-03-03T10:00:00Z",
+                sprint="2025-03",
+                created="2025-03-01",
+            ),
+        )
+        # One escalated event
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="trend_rate_c",
+                event_type="escalated",
+                timestamp="2025-03-04T10:00:00Z",
+                sprint="2025-03",
+                created="2025-03-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2025-03&end=2025-03"
+        )
+        assert status == 200
+        assert len(body["values"]) == 1
+        assert body["values"][0]["sprint"] == "2025-03"
+        assert body["values"][0]["value"] == 0
+    finally:
+        conn.close()

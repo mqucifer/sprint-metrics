@@ -509,6 +509,19 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 }
                                 for label in sprints
                             ]
+                        elif metric == "escalation_rate_percent":
+                            values = [
+                                {
+                                    "sprint": label,
+                                    "value": calculate_escalation_rate(
+                                        sprints[label],
+                                        count_escalated_events(conn_holder[0], label),
+                                    )
+                                    if label in has_events
+                                    else None,
+                                }
+                                for label in sprints
+                            ]
                         else:
                             values = [
                                 {
