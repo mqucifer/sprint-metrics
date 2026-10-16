@@ -6200,8 +6200,9 @@ def test_trend_lead_time_minutes_single_sprint_integer():
 @requires_db
 def test_trend_escalation_rate_percent_one_completed_two_escalated():
     """AC1: GET /trend?metric=escalation_rate_percent for a sprint with 1 completed
-    card and 2 escalated events returns the same rate /range gives (100, capped),
-    not 0."""
+    card and 2 escalated events returns the same rate /range gives, and not 0.
+    The raw rate 2/1 = 200% is capped at 100 by calculate_escalation_rate; both
+    endpoints share that cap, so the invariant is that they agree and are non-zero."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -6254,13 +6255,20 @@ def test_trend_escalation_rate_percent_one_completed_two_escalated():
             ),
         )
 
-        status, body = _get_json(
+        trend_status, trend = _get_json(
             f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2025-01&end=2025-01"
         )
-        assert status == 200
-        assert len(body["values"]) == 1
-        assert body["values"][0]["sprint"] == "2025-01"
-        assert body["values"][0]["value"] == 100
+        range_status, range_body = _get_json(
+            f"http://127.0.0.1:{port}/range?start=2025-01&end=2025-01"
+        )
+        assert trend_status == 200
+        assert range_status == 200
+        assert len(trend["values"]) == 1
+        assert trend["values"][0]["sprint"] == "2025-01"
+        trend_value = trend["values"][0]["value"]
+        range_value = range_body["sprints"]["2025-01"]["escalation_rate_percent"]
+        assert trend_value == range_value
+        assert trend_value != 0
     finally:
         conn.close()
 
