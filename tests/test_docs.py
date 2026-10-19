@@ -1159,3 +1159,19 @@ def test_thresholds_md_parenthetical_names_threshold_in_effect():
     assert "threshold in effect for that metric" in section
     assert "built-in default when no --thresholds" in section
     assert "configured override when one is" in section
+
+
+def test_thresholds_md_default_section_covers_table_marker():
+    """AC4: the opening 'Default thresholds' section of docs/thresholds.md states the
+    built-in thresholds determine when a warning marker appears in table output, which
+    covers the sprint-range table; no doc demonstrates the sprint-range markdown, which
+    never renders a flag, so no doc describes markers in it."""
+    text = (DOCS_DIR / "thresholds.md").read_text()
+    opening = text.split("## --thresholds")[0]
+    assert "Default thresholds" in opening
+    # The built-in thresholds drive the table-output warning marker (range table included).
+    assert "a warning marker appears in table" in opening
+    # No doc demonstrates the sprint-range markdown, so no doc can describe markers in it.
+    for doc in ALL_DOCS:
+        for line in (DOCS_DIR / doc).read_text().splitlines():
+            assert not ("--sprint-range" in line and "--markdown" in line)
