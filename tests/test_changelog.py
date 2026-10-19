@@ -334,8 +334,8 @@ def test_changelog_1_3_0_section_content():
         assert phrase in fixed, f"[1.3.0] Fixed missing {phrase!r}"
 
 
-def test_pyproject_version_is_1_3_2():
-    """AC1: pyproject.toml version field reads 1.3.2 with other fields unchanged."""
+def test_pyproject_version_is_1_3_3():
+    """AC1: pyproject.toml version field reads 1.3.3 with other fields unchanged."""
     import tomllib
     from pathlib import Path
 
@@ -343,7 +343,7 @@ def test_pyproject_version_is_1_3_2():
     with open(pyproject, "rb") as f:
         data = tomllib.load(f)
     project = data["project"]
-    assert project["version"] == "1.3.2"
+    assert project["version"] == "1.3.3"
     assert project["name"] == "sprint-metrics"
     assert project["description"] == "Delivery metrics for the crew's own board."
     assert project["requires-python"] == ">=3.12,<3.13"

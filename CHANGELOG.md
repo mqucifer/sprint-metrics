@@ -10,6 +10,18 @@
 
 ### Removed
 
+## [1.3.3] - 2026-10-20
+
+### Added
+
+### Changed
+
+### Fixed
+
+- The single-sprint and sprint-range tables and the markdown standup report now flag every metric against the built-in default thresholds when no --thresholds file is given; a --thresholds file still overrides the defaults for the metrics it names, and the sprint-range markdown stays flag-free
+
+### Removed
+
 ## [1.3.2] - 2026-10-21
 
 ### Added
