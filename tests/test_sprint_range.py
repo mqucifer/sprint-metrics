@@ -154,10 +154,10 @@ def test_sprint_range_with_escalations(tmp_path, capsys):
 
     assert exit_code == 0
     assert (
-        "| 2024-01 | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
+        "| 2024-01 | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% \u26a0\ufe0f | 100% | \u2014 |" in captured.out
     )
     assert (
-        "| 2024-02 | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% | 100% | \u2014 |" in captured.out
+        "| 2024-02 | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% \u26a0\ufe0f | 100% | \u2014 |" in captured.out
     )
 
 
@@ -175,8 +175,8 @@ def test_sprint_range_with_wip_limits(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| 2024-01 | 0 days | 0 days | 0 | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
-    assert "| 2024-02 | 0 days | 0 days | 0 | 0 | 1 | 0 days | 0% | 0% | \u2014 |" in captured.out
+    assert "| 2024-01 | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 1 \u26a0\ufe0f | 0 days | 0% | 0% | \u2014 |" in captured.out
+    assert "| 2024-02 | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 1 \u26a0\ufe0f | 0 days | 0% | 0% | \u2014 |" in captured.out
 
 
 def test_sprint_range_with_sprint_date(tmp_path, capsys):
@@ -200,10 +200,10 @@ def test_sprint_range_with_sprint_date(tmp_path, capsys):
 
     assert exit_code == 0
     assert (
-        "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
+        "| 2024-01 | 4 days | 6 days | 1 | 0 | 0 | 29 days \u26a0\ufe0f | 0% | 100% | \u2014 |" in captured.out
     )
     assert (
-        "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 | 29 days | 0% | 100% | \u2014 |" in captured.out
+        "| 2024-02 | 4 days | 6 days | 1 | 0 | 0 | 29 days \u26a0\ufe0f | 0% | 100% | \u2014 |" in captured.out
     )
 
 
@@ -234,10 +234,10 @@ def test_sprint_range_with_wip_limits_and_escalations(tmp_path, capsys):
 
     assert exit_code == 0
     assert (
-        "| 2024-01 | 4 days | 6 days | 2 | 0 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
+        "| 2024-01 | 4 days | 6 days | 2 | 0 | 1 \u26a0\ufe0f | 0 days | 50% \u26a0\ufe0f | 100% | \u2014 |" in captured.out
     )
     assert (
-        "| 2024-02 | 4 days | 6 days | 2 | 0 | 1 | 0 days | 50% | 100% | \u2014 |" in captured.out
+        "| 2024-02 | 4 days | 6 days | 2 | 0 | 1 \u26a0\ufe0f | 0 days | 50% \u26a0\ufe0f | 100% | \u2014 |" in captured.out
     )
 
 

@@ -1866,7 +1866,7 @@ def test_markdown_wip_violations_names_breached_state_with_peak_and_limit(run_co
 
     assert exit_code == 0
     lines = output.splitlines()
-    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1 \u26a0\ufe0f (threshold: 0)")
     detail_line = lines[wip_idx + 1]
     assert detail_line.startswith("  - ")
     assert "In Progress" in detail_line
@@ -1912,7 +1912,7 @@ def test_markdown_wip_violations_names_multiple_breached_states_in_order(run_com
 
     assert exit_code == 0
     lines = output.splitlines()
-    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 2")
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 2 \u26a0\ufe0f (threshold: 0)")
     line1 = lines[wip_idx + 1]
     line2 = lines[wip_idx + 2]
     assert line1.startswith("  - ")
@@ -1948,7 +1948,7 @@ def test_markdown_wip_violations_only_metric_shows_exactly_two_lines(tmp_path, c
 
     assert exit_code == 0
     lines = captured.out.splitlines()
-    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1 \u26a0\ufe0f (threshold: 0)")
     detail_line = lines[wip_idx + 1]
     assert detail_line.startswith("  - ")
     assert "In Progress" in detail_line
@@ -1972,7 +1972,7 @@ def test_markdown_wip_violations_only_names_breached_state(run_command):
 
     assert exit_code == 0
     lines = output.splitlines()
-    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1 \u26a0\ufe0f (threshold: 0)")
     detail_line = lines[wip_idx + 1]
     assert detail_line.startswith("  - ")
     assert "In Progress" in detail_line
@@ -1992,7 +1992,7 @@ def test_markdown_wip_detail_line_followed_by_next_metric(run_command):
 
     assert exit_code == 0
     lines = output.splitlines()
-    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1")
+    wip_idx = next(i for i, line in enumerate(lines) if line == "- **WIP violations**: 1 \u26a0\ufe0f (threshold: 0)")
     detail_line = lines[wip_idx + 1]
     assert detail_line.startswith("  - ")
     next_metric_line = lines[wip_idx + 2]
@@ -2008,7 +2008,7 @@ def test_markdown_blocked_aging_names_worst_card(run_command):
 
     assert exit_code == 0
     lines = output.splitlines()
-    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 29 days")
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 29 days \u26a0\ufe0f (threshold: 5 days)")
     detail_line = lines[aging_idx + 1]
     assert detail_line.startswith("  - ")
     assert "2024-01-01" in detail_line
@@ -2037,7 +2037,7 @@ def test_markdown_blocked_aging_names_only_worst_card(run_command):
 
     assert exit_code == 0
     lines = output.splitlines()
-    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 30 days")
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 30 days \u26a0\ufe0f (threshold: 5 days)")
     detail_line = lines[aging_idx + 1]
     assert detail_line.startswith("  - ")
     assert "2024-01-05" in detail_line
@@ -2055,7 +2055,7 @@ def test_markdown_blocked_aging_names_tied_cards(run_command):
 
     assert exit_code == 0
     lines = output.splitlines()
-    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 30 days")
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 30 days \u26a0\ufe0f (threshold: 5 days)")
     line1 = lines[aging_idx + 1]
     line2 = lines[aging_idx + 2]
     assert line1.startswith("  - ")
@@ -2085,7 +2085,7 @@ def test_markdown_blocked_aging_only_metric_shows_exactly_two_lines(tmp_path, ca
 
     assert exit_code == 0
     lines = captured.out.splitlines()
-    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 29 days")
+    aging_idx = next(i for i, line in enumerate(lines) if line == "- **Blocked aging**: 29 days \u26a0\ufe0f (threshold: 5 days)")
     detail_line = lines[aging_idx + 1]
     assert detail_line.startswith("  - ")
     assert "2024-01-01" in detail_line
@@ -2134,7 +2134,7 @@ def test_markdown_escalation_rate_shows_count_and_completed_cards(run_command):
 
     assert exit_code == 0
     lines = output.splitlines()
-    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 20%")
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 20% \u26a0\ufe0f (threshold: 10%)")
     detail_line = lines[esc_idx + 1]
     assert detail_line.startswith("  - ")
     assert "2 escalations" in detail_line
@@ -2204,7 +2204,7 @@ def test_markdown_escalation_rate_only_metric_shows_exactly_two_lines(tmp_path, 
 
     assert exit_code == 0
     lines = captured.out.splitlines()
-    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 20%")
+    esc_idx = next(i for i, line in enumerate(lines) if line == "- **Escalation rate**: 20% \u26a0\ufe0f (threshold: 10%)")
     detail_line = lines[esc_idx + 1]
     assert detail_line.startswith("  - ")
     assert "2 escalations" in detail_line
