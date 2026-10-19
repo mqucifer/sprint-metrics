@@ -45,10 +45,11 @@ def format_performance_table(
     third row labelled Delta shows the signed change in each metric from the
     prior period to the current period.
 
-    When ``thresholds`` is provided, a ⚠️ marker is appended to any metric cell
-    in the Current row whose value exceeds its threshold (strict greater-than;
-    meeting the threshold exactly is not a breach). The Prior and Delta rows are
-    never flagged.
+    A ⚠️ marker is appended to any metric cell in the Current row whose value
+    breaches its effective threshold (the caller's ``thresholds`` merged over
+    ``DEFAULT_THRESHOLDS``; strict greater-than for most metrics, strict
+    less-than for throughput and first-attempt rate; meeting the threshold
+    exactly is not a breach). The Prior and Delta rows are never flagged.
 
     When ``metrics`` is provided, only the requested metric columns are emitted;
     the header, separator, and every data row use the same column set.
@@ -204,10 +205,11 @@ def _sprint_section(
     arrow (\u2193, \u2191, or \u2192) between the current value and the parenthetical,
     the prior sprint's value, and the signed change from prior to current.
 
-    When ``thresholds`` is provided, a \u26a0\ufe0f marker followed by a parenthetical
-    naming the configured threshold is appended to any metric line whose value
-    exceeds its threshold (strict greater-than; meeting the threshold exactly
-    is not a breach).
+    A ⚠️ marker followed by a parenthetical naming the effective threshold
+    (the caller's ``thresholds`` merged over ``DEFAULT_THRESHOLDS``) is
+    appended to any metric line whose value breaches its threshold (strict
+    greater-than for most metrics, strict less-than for throughput and
+    first-attempt rate; meeting the threshold exactly is not a breach).
 
     When ``metrics`` is provided, only the requested metric lines are emitted;
     the section heading is always present when cards exist.

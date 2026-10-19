@@ -100,9 +100,10 @@ def format_sprint_range_table(
 
     Each row uses the same WIP limits, escalation count, and reference date.
 
-    When ``thresholds`` is provided, a \u26a0\ufe0f marker is appended to any metric cell
-    whose value exceeds its threshold (strict greater-than; meeting the
-    threshold exactly is not a breach).
+    A ⚠️ marker is appended to any metric cell whose value breaches its
+    effective threshold (the caller's ``thresholds`` merged over
+    ``DEFAULT_THRESHOLDS``; strict greater-than for most metrics, strict
+    less-than for throughput; meeting the threshold exactly is not a breach).
     """
     rows = [
         "| Sprint | Cycle time | Lead time | Throughput | Superseded | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |",

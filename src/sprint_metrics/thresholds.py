@@ -107,15 +107,16 @@ def _threshold_display(metric: str, threshold: float) -> str:
 
 
 def _threshold_context(value: int, thresholds: Mapping[str, float] | None, metric: str) -> str:
-    """Return ' \u26a0\ufe0f (threshold: <value><unit>)' when the metric breaches, else ''.
+    """Return ' ⚠️ (threshold: <value><unit>)' when the metric breaches, else ''.
 
-    Same breach logic as _flag, but includes the threshold value with the
-    metric's display unit in a parenthetical after the marker. Used in
-    markdown output where the reader benefits from seeing the target.
+    The effective threshold is the caller's ``thresholds`` merged over
+    ``DEFAULT_THRESHOLDS``: a metric the caller did not specify falls back to
+    its default. Same breach logic as _flag, but includes the threshold value
+    with the metric's display unit in a parenthetical after the marker. Used
+    in markdown output where the reader benefits from seeing the target.
     """
-    if thresholds is None:
-        return ""
-    threshold = thresholds.get(metric)
+    effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
+    threshold = effective.get(metric)
     if threshold is None:
         return ""
     if not _is_breached(value, threshold, metric):
@@ -124,17 +125,17 @@ def _threshold_context(value: int, thresholds: Mapping[str, float] | None, metri
 
 
 def _flag(value: int, thresholds: Mapping[str, float] | None, metric: str) -> str:
-    """Return ' \u26a0\ufe0f' when the metric breaches its threshold, else ''.
+    """Return ' ⚠️' when the metric breaches its threshold, else ''.
 
-    A ``None`` thresholds mapping means no thresholds are in effect, so no
-    metric is flagged. For metrics where lower is worse (throughput,
+    The effective threshold is the caller's ``thresholds`` merged over
+    ``DEFAULT_THRESHOLDS``: a metric the caller did not specify falls back to
+    its default. For metrics where lower is worse (throughput,
     first_attempt_rate_percent) the flag fires when value is strictly less
     than the threshold; for all others it fires when value is strictly
     greater.
     """
-    if thresholds is None:
-        return ""
-    threshold = thresholds.get(metric)
+    effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
+    threshold = effective.get(metric)
     if threshold is None:
         return ""
     return " \u26a0\ufe0f" if _is_breached(value, threshold, metric) else ""
