@@ -72,21 +72,24 @@ def test_command_reports_cycle_and_lead_time_for_a_completed_card(run_command):
 
 def test_command_reports_zero_when_nothing_is_completed(run_command):
     """AC2: with no completed cards the current sprint row shows 0 days for both
-    metrics, and the command exits successfully."""
+    metrics, and the command exits successfully. Throughput 0 and first-attempt
+    rate 0% both breach their built-in defaults, so they carry the ⚠️ marker."""
     exit_code, output, _ = run_command([IN_FLIGHT_CARD])
 
     assert exit_code == 0
     assert HEADER in output
     assert SEPARATOR in output
-    assert "| Current | 0 days | 0 days | 0 | 0 | 0 | 0 days | 0% |" in output
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% |" in output
 
 
 def test_command_reports_zero_for_an_empty_sprint(run_command):
-    """A sprint with no cards at all is still a successful, well-formed report."""
+    """A sprint with no cards at all is still a successful, well-formed report.
+    Throughput 0 and first-attempt rate 0% both breach their built-in defaults,
+    so they carry the ⚠️ marker."""
     exit_code, output, _ = run_command([])
 
     assert exit_code == 0
-    assert "| Current | 0 days | 0 days | 0 | 0 | 0 | 0 days | 0% |" in output
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% |" in output
 
 
 def test_command_reports_throughput_for_five_completed_cards(run_command):
@@ -103,14 +106,15 @@ def test_command_reports_throughput_for_five_completed_cards(run_command):
 
 def test_command_reports_throughput_zero_when_no_cards_completed(run_command):
     """AC2: when the current sprint has no completed cards, the table shows
-    Throughput 0 and the command exits successfully."""
+    Throughput 0 with the ⚠️ marker (breaching the default of 1) and the
+    command exits successfully."""
     cards = [IN_FLIGHT_CARD] * 3
     exit_code, output, _ = run_command(cards)
 
     assert exit_code == 0
     assert HEADER in output
     assert SEPARATOR in output
-    assert "| Current | 0 days | 0 days | 0 | 0 | 0 | 0 days | 0% |" in output
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% |" in output
 
 
 def test_malformed_dates_are_reported_without_a_traceback(run_command):
@@ -169,26 +173,28 @@ def test_throughput_is_zero_for_an_empty_sprint():
 
 def test_command_reports_a_wip_violation_when_the_limit_is_exceeded(run_command):
     """AC1: with a WIP limit of 3 for In Progress and 4 cards in In Progress at the
-    same time, the current sprint row shows WIP violations 1."""
+    same time, the current sprint row shows WIP violations 1 with the ⚠️ marker
+    (breaching the built-in default of 0), and throughput 0 also flagged."""
     cards = [IN_FLIGHT_CARD] * 4
     exit_code, output, _ = run_command(cards, wip_limits={"In Progress": 3})
 
     assert exit_code == 0
     assert HEADER in output
     assert SEPARATOR in output
-    assert "| Current | 0 days | 0 days | 0 | 0 | 1 | 0 days | 0% |" in output
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 1 \u26a0\ufe0f | 0 days | 0% |" in output
 
 
 def test_command_reports_no_wip_violations_when_no_limits_are_configured(run_command):
     """AC2: with no WIP limits configured the current sprint row shows WIP
-    violations 0, and the command exits successfully."""
+    violations 0 (not flagged since 0 is not greater than 0), and the command
+    exits successfully. Throughput 0 breaches the default of 1."""
     cards = [IN_FLIGHT_CARD] * 4
     exit_code, output, _ = run_command(cards)
 
     assert exit_code == 0
     assert HEADER in output
     assert SEPARATOR in output
-    assert "| Current | 0 days | 0 days | 0 | 0 | 0 | 0 days | 0% |" in output
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% |" in output
 
 
 def test_malformed_wip_limits_are_reported_without_a_traceback(run_command):
@@ -244,7 +250,8 @@ def test_wip_violations_are_zero_without_limits():
 
 def test_command_reports_blocked_aging_for_a_blocked_card(run_command):
     """AC1: one card blocked for 2 days shows a current sprint row with Blocked
-    aging 2 days."""
+    aging 2 days (not flagged, since 2 does not exceed the 5-day default).
+    Throughput 0 breaches the default of 1."""
     from datetime import date, timedelta
 
     today = date.today()
@@ -259,7 +266,7 @@ def test_command_reports_blocked_aging_for_a_blocked_card(run_command):
     assert exit_code == 0
     assert HEADER in output
     assert SEPARATOR in output
-    assert "| Current | 0 days | 0 days | 0 | 0 | 0 | 2 days | 0% |" in output
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 2 days | 0% |" in output
 
 
 def test_command_reports_zero_blocked_aging_when_no_cards_blocked(run_command):
@@ -275,25 +282,27 @@ def test_command_reports_zero_blocked_aging_when_no_cards_blocked(run_command):
 
 def test_command_reports_escalation_rate_with_escalations(run_command):
     """AC1: with 2 escalations and 10 completed cards, the table shows
-    Escalation rate 20%."""
+    Escalation rate 20% with the ⚠️ marker (breaching the built-in default of
+    10%)."""
     cards = [COMPLETED_CARD] * 10
     exit_code, output, _ = run_command(cards, escalations=2)
 
     assert exit_code == 0
     assert HEADER in output
     assert SEPARATOR in output
-    assert "| Current | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% |" in output
+    assert "| Current | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% \u26a0\ufe0f |" in output
 
 
 def test_command_reports_zero_escalation_rate_when_no_completed_cards(run_command):
     """AC2: with no completed cards and no escalations, the table shows
-    Escalation rate 0% and the command exits successfully."""
+    Escalation rate 0% (not flagged) and the command exits successfully.
+    Throughput 0 breaches the default of 1."""
     exit_code, output, _ = run_command([IN_FLIGHT_CARD])
 
     assert exit_code == 0
     assert HEADER in output
     assert SEPARATOR in output
-    assert "| Current | 0 days | 0 days | 0 | 0 | 0 | 0 days | 0% |" in output
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% |" in output
 
 
 def test_escalation_rate_is_zero_when_no_cards_completed():
@@ -657,7 +666,8 @@ def test_markdown_summary_counts_each_card_in_one_state_only(run_command):
 
 def test_command_reports_blocked_aging_as_of_sprint_date_in_table(run_command):
     """AC1: with --sprint-date 2024-01-31, a blocked card blocked since 2024-01-02
-    shows 29 days of blocked aging in the table output."""
+    shows 29 days of blocked aging in the table output with the ⚠️ marker
+    (breaching the built-in 5-day default)."""
     cards = [
         {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
         {"created": "2024-01-01", "blocked_since": "2024-01-02"},
@@ -665,7 +675,7 @@ def test_command_reports_blocked_aging_as_of_sprint_date_in_table(run_command):
     exit_code, output, _ = run_command(cards, sprint_date="2024-01-31")
 
     assert exit_code == 0
-    assert "| 4 days | 6 days | 1 | 0 | 0 | 29 days | 0% |" in output
+    assert "| 4 days | 6 days | 1 | 0 | 0 | 29 days \u26a0\ufe0f | 0% |" in output
 
 
 def test_command_reports_blocked_aging_as_of_sprint_date_in_json(run_command):
