@@ -51,8 +51,9 @@ The lead time (7 days) meets its default threshold of 7 exactly and is not
 flagged (a breach requires strict greater-than).
 
 In markdown output, the ⚠️ marker is followed by a parenthetical naming the
-configured threshold that was exceeded, so the reader sees the target without
-opening the thresholds file:
+threshold in effect for that metric — the built-in default when no --thresholds
+file is given, and a configured override when one is — so the reader sees the
+target without opening the thresholds file:
 
 ```
 sprint-metrics cards.json --thresholds thresholds.json --markdown
