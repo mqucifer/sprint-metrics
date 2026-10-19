@@ -1146,3 +1146,16 @@ def test_service_md_resend_paragraph_starts_at_column_zero():
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     line = lines[resend_idx]
     assert line[0] == "R", f"re-send paragraph first line starts with {line[0]!r}, expected 'R'"
+
+
+def test_thresholds_md_parenthetical_names_threshold_in_effect():
+    """AC5: the '--thresholds (custom thresholds)' section of docs/thresholds.md
+    states that the parenthetical names the threshold in effect for that metric —
+    the built-in default when no --thresholds file is given, and a configured
+    override when one is."""
+    path = DOCS_DIR / "thresholds.md"
+    text = path.read_text()
+    section = text.split("## --thresholds")[1]
+    assert "threshold in effect for that metric" in section
+    assert "built-in default when no --thresholds" in section
+    assert "configured override when one is" in section
