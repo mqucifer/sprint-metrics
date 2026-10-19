@@ -253,6 +253,130 @@ def test_sprint_range_with_wip_limits_and_escalations(tmp_path, capsys):
     )
 
 
+def test_sprint_range_table_flags_cycle_time_against_default(tmp_path, capsys):
+    """AC1: with no --thresholds the range table flags a breaching cycle time against
+    the built-in 5-day default and leaves a non-breaching value unmarked, so the
+    output contains exactly one marker."""
+    sprints = {
+        "2024-01": [
+            {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"},
+        ],
+        "2024-02": [
+            {"created": "2024-02-01", "started": "2024-02-01", "completed": "2024-02-05"},
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert (
+        "| 2024-01 | 7 days \u26a0\ufe0f | 7 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |"
+        in captured.out
+    )
+    assert (
+        "| 2024-02 | 4 days | 4 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |"
+        in captured.out
+    )
+    assert captured.out.count("\u26a0\ufe0f") == 1
+
+
+def test_sprint_range_table_and_json_flags_agree(tmp_path, capsys):
+    """AC5: a marker-bearing cell carries a marker exactly when the sprint's flags
+    object in the --json output reports true for that metric; for this data the
+    table's only marker is 2024-01's cycle-time cell."""
+    sprints = {
+        "2024-01": [
+            {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"},
+        ],
+        "2024-02": [
+            {"created": "2024-02-01", "started": "2024-02-01", "completed": "2024-02-05"},
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
+    table_out = capsys.readouterr().out
+    exit_code_json = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
+    data = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert exit_code_json == 0
+    assert data["sprints"]["2024-01"]["flags"]["cycle_time_days"] is True
+    assert data["sprints"]["2024-02"]["flags"]["cycle_time_days"] is False
+    for label in ("2024-01", "2024-02"):
+        for metric in (
+            "lead_time_days",
+            "throughput",
+            "wip_violations",
+            "blocked_aging_days",
+            "escalation_rate_percent",
+        ):
+            assert data["sprints"][label]["flags"][metric] is False
+    # The table's only marker is on 2024-01's cycle-time cell, matching the flags.
+    assert "| 2024-01 | 7 days \u26a0\ufe0f |" in table_out
+    assert "| 2024-02 | 4 days |" in table_out
+    assert table_out.count("\u26a0\ufe0f") == 1
+
+
+def test_sprint_range_markdown_stays_flag_free_with_thresholds(tmp_path, capsys):
+    """AC3: the range markdown takes no thresholds and never renders a flag, even when
+    a --thresholds file names a breached metric; no marker or parenthetical appears."""
+    sprints = {
+        "2024-01": [
+            {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"},
+        ]
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 5}))
+    exit_code = main(
+        [
+            str(path),
+            "--sprint-range",
+            "2024-01..2024-01",
+            "--markdown",
+            "--thresholds",
+            str(thresholds_path),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 7 days" in captured.out
+    assert "\u26a0\ufe0f" not in captured.out
+    assert "(threshold:" not in captured.out
+
+
+def test_sprint_range_table_superseded_cell_never_flagged(tmp_path, capsys):
+    """AC6: a sprint whose only card is superseded shows the Superseded cell as
+    '1 (5 pts)' with no marker; the built-in defaults apply to the metrics that are
+    flagged, and no marker is invented for Superseded."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-05",
+                "superseded": True,
+                "superseded_because": "sponsor",
+                "points": 5,
+            }
+        ]
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    row = [line for line in captured.out.splitlines() if line.startswith("| 2024-01")][0]
+    cells = [c.strip() for c in row.split("|") if c.strip()]
+    assert cells[4] == "1 (5 pts)"
+    assert "\u26a0\ufe0f" not in cells[4]
+
+
 def test_sprint_range_without_wip_limits_or_escalations(tmp_path, capsys):
     """AC2: without --wip-limits and --escalations, each sprint shows 0 violations and 0% escalation."""
     in_flight = {"created": "2024-01-01", "started": "2024-01-02", "completed": ""}
