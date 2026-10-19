@@ -334,8 +334,8 @@ def test_changelog_1_3_0_section_content():
         assert phrase in fixed, f"[1.3.0] Fixed missing {phrase!r}"
 
 
-def test_pyproject_version_is_1_3_1():
-    """AC1: pyproject.toml version field reads 1.3.1 with other fields unchanged."""
+def test_pyproject_version_is_1_3_2():
+    """AC1: pyproject.toml version field reads 1.3.2 with other fields unchanged."""
     import tomllib
     from pathlib import Path
 
@@ -343,7 +343,7 @@ def test_pyproject_version_is_1_3_1():
     with open(pyproject, "rb") as f:
         data = tomllib.load(f)
     project = data["project"]
-    assert project["version"] == "1.3.1"
+    assert project["version"] == "1.3.2"
     assert project["name"] == "sprint-metrics"
     assert project["description"] == "Delivery metrics for the crew's own board."
     assert project["requires-python"] == ">=3.12,<3.13"
@@ -354,8 +354,87 @@ def test_pyproject_version_is_1_3_1():
     ]
 
 
+def test_changelog_1_3_2_section_position_and_structure():
+    """AC5: '## [1.3.2]' appears exactly once, sits directly above '## [1.3.1] - 2026-10-13',
+    and beneath it exactly four subheadings appear in order: Added, Changed, Fixed, Removed."""
+    content = CHANGELOG.read_text()
+
+    # Appears exactly once
+    matches = list(re.finditer(r"^## \[1\.3\.2\]", content, re.MULTILINE))
+    assert len(matches) == 1, f"'## [1.3.2]' appears {len(matches)} times, expected 1"
+    match = matches[0]
+
+    # Sits directly above '## [1.3.1] - 2026-10-13'
+    v131 = re.search(r"^## \[1\.3\.1\] - 2026-10-13$", content, re.MULTILINE)
+    assert v131, "Missing '## [1.3.1] - 2026-10-13' heading"
+    # No other '## [' heading between [1.3.2] and [1.3.1]
+    between = content[match.end() : v131.start()]
+    assert not re.search(r"^## \[", between, re.MULTILINE), (
+        f"Another '## [' heading found between [1.3.2] and [1.3.1]: {between!r}"
+    )
+
+    # Four subheadings in order
+    section_end = v131.start()
+    section = content[match.end() : section_end]
+    headings = ["### Added", "### Changed", "### Fixed", "### Removed"]
+    positions = []
+    for heading in headings:
+        assert heading in section, f"[1.3.2] section missing {heading!r}"
+        positions.append(section.index(heading))
+    assert positions == sorted(positions), f"[1.3.2] sub-headings not in order: {headings}"
+
+
+def test_changelog_1_3_2_fixed_section_has_single_entry():
+    """AC6: the [1.3.2] section's '### Fixed' subsection has exactly one entry
+    naming both fixes: escalation rate no longer capped at 100, and /metrics
+    now reports the stored per-sprint escalation rate."""
+    content = CHANGELOG.read_text()
+
+    match = re.search(r"^## \[1\.3\.2\] - 2026-10-21$", content, re.MULTILINE)
+    assert match, "Missing '## [1.3.2] - 2026-10-21' heading"
+
+    after = content[match.end() :]
+    next_version = re.search(r"^## \[", after, re.MULTILINE)
+    section = after[: next_version.start()] if next_version else after
+
+    fixed_match = re.search(r"^### Fixed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
+    assert fixed_match, "No ### Fixed subsection in [1.3.2]"
+    fixed = fixed_match.group(1)
+    bullets = [line for line in fixed.splitlines() if line.startswith("- ")]
+    assert len(bullets) == 1, f"Expected 1 Fixed entry in [1.3.2], got {len(bullets)}: {bullets}"
+    entry = bullets[0]
+    assert "no longer capped at 100" in entry, f"[1.3.2] Fixed missing 'no longer capped at 100': {entry!r}"
+    assert "/metrics" in entry, f"[1.3.2] Fixed missing '/metrics': {entry!r}"
+    assert "stored per-sprint escalation rate" in entry, (
+        f"[1.3.2] Fixed missing 'stored per-sprint escalation rate': {entry!r}"
+    )
+
+
+def test_changelog_1_3_2_added_changed_removed_have_no_entries():
+    """AC2: the [1.3.2] section's Added, Changed, and Removed subsections carry no entries."""
+    content = CHANGELOG.read_text()
+
+    match = re.search(r"^## \[1\.3\.2\] - 2026-10-21$", content, re.MULTILINE)
+    assert match, "Missing '## [1.3.2] - 2026-10-21' heading"
+
+    after = content[match.end() :]
+    next_version = re.search(r"^## \[", after, re.MULTILINE)
+    section = after[: next_version.start()] if next_version else after
+
+    for subheading in ["Added", "Changed", "Removed"]:
+        sub_match = re.search(
+            rf"^### {subheading}\s*\n(.*?)(?=^### |\Z)",
+            section,
+            re.MULTILINE | re.DOTALL,
+        )
+        assert sub_match, f"No content region after '### {subheading}' in [1.3.2]"
+        sub_content = sub_match.group(1).strip()
+        bullets = [line for line in sub_content.splitlines() if line.startswith("- ")]
+        assert not bullets, f"[1.3.2] ### {subheading} has entries: {bullets}; expected none"
+
+
 def test_changelog_1_3_1_section_content():
-    """AC2: the [1.3.1] - 2026-10-13 section sits directly below [Unreleased],
+    """AC3: the [1.3.1] - 2026-10-13 section sits below [1.3.2],
     with one Added bullet (docs entry) and one Fixed bullet (superseded counting)."""
     content = CHANGELOG.read_text()
 

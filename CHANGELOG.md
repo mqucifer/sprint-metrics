@@ -10,6 +10,18 @@
 
 ### Removed
 
+## [1.3.2] - 2026-10-21
+
+### Added
+
+### Changed
+
+### Fixed
+
+- The escalation rate is no longer capped at 100% (2 escalations on 1 completed card reports 200%), and the service's /metrics endpoint reports the stored per-sprint escalation rate instead of always 0
+
+### Removed
+
 ## [1.3.1] - 2026-10-13
 
 ### Added
