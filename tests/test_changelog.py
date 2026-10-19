@@ -403,7 +403,9 @@ def test_changelog_1_3_2_fixed_section_has_single_entry():
     bullets = [line for line in fixed.splitlines() if line.startswith("- ")]
     assert len(bullets) == 1, f"Expected 1 Fixed entry in [1.3.2], got {len(bullets)}: {bullets}"
     entry = bullets[0]
-    assert "no longer capped at 100" in entry, f"[1.3.2] Fixed missing 'no longer capped at 100': {entry!r}"
+    assert "no longer capped at 100" in entry, (
+        f"[1.3.2] Fixed missing 'no longer capped at 100': {entry!r}"
+    )
     assert "/metrics" in entry, f"[1.3.2] Fixed missing '/metrics': {entry!r}"
     assert "stored per-sprint escalation rate" in entry, (
         f"[1.3.2] Fixed missing 'stored per-sprint escalation rate': {entry!r}"
