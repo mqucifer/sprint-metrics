@@ -380,7 +380,7 @@ def test_table_and_json_agree_on_cycle_time_flag(tmp_path, capsys):
     table_has_flag = "\u26a0\ufe0f" in table_out.split("\n")[2]  # Current row
 
     # JSON output
-    exit_code = main([str(cards_path), "--json"])
+    main([str(cards_path), "--json"])
     captured = capsys.readouterr()
     data = json.loads(captured.out)
     json_flags_cycle = data["flags"]["cycle_time_days"]
