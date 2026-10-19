@@ -161,6 +161,9 @@ def test_sprint_range_with_escalations(tmp_path, capsys):
         "| 2024-02 | 4 days | 6 days | 10 | 0 | 0 | 0 days | 20% \u26a0\ufe0f | 100% | \u2014 |"
         in captured.out
     )
+    # Every row's escalation rate breaches the built-in 10% default and no other
+    # metric does, so the range table carries exactly two markers.
+    assert captured.out.count("\u26a0\ufe0f") == 2
 
 
 def test_sprint_range_with_wip_limits(tmp_path, capsys):
