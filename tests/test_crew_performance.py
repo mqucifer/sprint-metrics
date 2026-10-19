@@ -3332,7 +3332,9 @@ def test_markdown_thresholds_file_governs_named_metric_default_governs_rest(tmp_
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    cycle_lines = [line for line in captured.out.splitlines() if line.startswith("- **Cycle time**")]
+    cycle_lines = [
+        line for line in captured.out.splitlines() if line.startswith("- **Cycle time**")
+    ]
     assert cycle_lines == ["- **Cycle time**: 7 days"]
     assert "- **Lead time**: 9 days \u26a0\ufe0f (threshold: 7 days)" in captured.out
 
@@ -3368,7 +3370,9 @@ def test_markdown_empty_sprint_no_threshold_annotation_on_first_attempt(tmp_path
 
     assert exit_code == 0
     assert "No performance data available" in captured.out
-    fa_lines = [line for line in captured.out.splitlines() if line.startswith("- **First-attempt rate**")]
+    fa_lines = [
+        line for line in captured.out.splitlines() if line.startswith("- **First-attempt rate**")
+    ]
     assert fa_lines == ["- **First-attempt rate**: 0%"]
 
     exit_code_json = main([str(path), "--json"])
