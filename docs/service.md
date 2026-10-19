@@ -57,7 +57,7 @@ Long-lived HTTP service that accepts board events and answers sprint, range, and
 | GET | /sprint | Return metrics for a single sprint. Sprints with no events return all-null values. |
 | GET | /range | Return metrics for a range of sprints in chronological order. Each entry includes the prior-sprint delta. Sprints with no events return all-null values. |
 | GET | /trend | Return a single metric across a sprint range. Returns a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs (the values array). Valid metrics: cycle_time_days, lead_time_days, throughput, wip_violations, blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count, superseded_count, superseded_points, superseded_breakdown, cycle_time_minutes, lead_time_minutes. Minute-based metrics (cycle_time_minutes, lead_time_minutes) return JSON integer values in minutes (rounded); sprints with no events return JSON null. |
-| GET | /metrics | Return Prometheus text exposition format, one line per metric per sprint. |
+| GET | /metrics | Return Prometheus text exposition format, one line per metric per sprint. Emits lines only for sprints that have at least one finished event. |
 | GET | /schema/event | Return the JSON Schema for the event intake body. |
 | GET | /health | Health check. Returns 200 with {"status": "ok"} when the database is reachable, 503 otherwise. |
 END:service

@@ -1122,6 +1122,482 @@ def test_metrics_no_sprint_prefix_when_empty():
 
 
 @requires_db
+def test_metrics_escalation_rate_reads_stored_escalations():
+    """AC1: GET /metrics reports the stored escalation rate for a sprint with
+    1 finished card and 2 escalated events: line reads 200."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('esc_rate_a', 'esc_rate_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_rate_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_rate_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_rate_b",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_rate_b",
+                event_type="escalated",
+                timestamp="2024-01-06T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert 'sprint_escalation_rate_percent{sprint="2024-01"} 200' in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_agrees_with_trend_for_escalation_rate():
+    """AC2: /metrics escalation-rate line and /trend value both read 200 for the same sprint."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('esc_trend_a', 'esc_trend_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_trend_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_trend_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_trend_b",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_trend_b",
+                event_type="escalated",
+                timestamp="2024-01-06T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert 'sprint_escalation_rate_percent{sprint="2024-01"} 200' in body
+
+        status, _, trend_body = _get_text(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2024-01&end=2024-01"
+        )
+        assert status == 200
+        trend = json.loads(trend_body)
+        assert trend["values"][0]["value"] == 200
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_no_lines_for_sprint_without_finished_event():
+    """AC3: a sprint with escalated events but no finished event produces no
+    lines in /metrics."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('esc_no_fin_a', 'esc_no_fin_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_no_fin_a",
+                event_type="started",
+                timestamp="2024-03-03T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_no_fin_b",
+                event_type="escalated",
+                timestamp="2024-03-05T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        lines_with_sprint = [line for line in body.splitlines() if 'sprint="2024-03"' in line]
+        assert len(lines_with_sprint) == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_other_six_lines_unchanged_with_escalations():
+    """AC4: with 1 completed card and 2 escalated events, the other six metric
+    lines are identical to what the endpoint produced before escalations were read."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('esc_six_a', 'esc_six_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_six_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_six_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_six_b",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_six_b",
+                event_type="escalated",
+                timestamp="2024-01-06T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        lines = body.splitlines()
+        lines_01 = [line for line in lines if 'sprint="2024-01"' in line]
+        # The six non-escalation lines must be present and correct
+        assert 'sprint_cycle_time_days{sprint="2024-01"} 4' in lines_01
+        assert 'sprint_lead_time_days{sprint="2024-01"} 6' in lines_01
+        assert 'sprint_throughput_cards{sprint="2024-01"} 1' in lines_01
+        assert 'sprint_wip_violations{sprint="2024-01"} 0' in lines_01
+        assert 'sprint_blocked_aging_days{sprint="2024-01"} 0' in lines_01
+        assert 'sprint_first_attempt_rate_percent{sprint="2024-01"} 100' in lines_01
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_escalation_rate_zero_and_nonzero_sprints():
+    """AC6: sprint 2024-01 with 1 finished card and 2 escalations reports 200;
+    sprint 2024-02 with 4 finished cards and no escalations reports 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('esc_zero_a', 'esc_zero_b', 'esc_zero_c', 'esc_zero_d', 'esc_zero_e', 'esc_zero_f')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Sprint 2024-01: 1 card started+finished, 2 escalations
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_zero_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_zero_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_zero_b",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_zero_b",
+                event_type="escalated",
+                timestamp="2024-01-06T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # Sprint 2024-02: 4 cards finished, no escalations
+        for i, card_id in enumerate(
+            ["esc_zero_c", "esc_zero_d", "esc_zero_e", "esc_zero_f"]
+        ):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="started",
+                    timestamp=f"2024-02-03T{10 + i}:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=card_id,
+                    event_type="finished",
+                    timestamp=f"2024-02-06T{10 + i}:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                ),
+            )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert 'sprint_escalation_rate_percent{sprint="2024-01"} 200' in body
+        assert 'sprint_escalation_rate_percent{sprint="2024-02"} 0' in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_agrees_with_range_for_escalation_rate():
+    """AC7: /range entry for 2024-01 carries escalation_rate_percent 200 and
+    /metrics line reads 200."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('esc_range_a', 'esc_range_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_range_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_range_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_range_b",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_range_b",
+                event_type="escalated",
+                timestamp="2024-01-06T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        assert 'sprint_escalation_rate_percent{sprint="2024-01"} 200' in body
+
+        status, range_data = _get_json(
+            f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01"
+        )
+        assert status == 200
+        entry = range_data["sprints"]["2024-01"]
+        assert entry["escalation_rate_percent"] == 200
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_metrics_exactly_one_escalation_rate_line_per_sprint():
+    """AC8: a single sprint with 1 finished card and 2 escalated events produces
+    exactly one line beginning 'sprint_escalation_rate_percent'."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('esc_one_a', 'esc_one_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_one_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_one_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_one_b",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="esc_one_b",
+                event_type="escalated",
+                timestamp="2024-01-06T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
+        assert status == 200
+        esc_lines = [
+            line
+            for line in body.splitlines()
+            if line.startswith("sprint_escalation_rate_percent")
+        ]
+        assert len(esc_lines) == 1
+        assert esc_lines[0] == 'sprint_escalation_rate_percent{sprint="2024-01"} 200'
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_schema_event_get_returns_200_json_schema():
     """AC1: GET /schema/event returns 200, Content-Type application/json, body is a
     JSON Schema whose $schema is draft 2020-12 and required includes api_version."""

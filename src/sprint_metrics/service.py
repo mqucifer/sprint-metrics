@@ -551,7 +551,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
-                        body = _metrics_text(sprints)
+                        sprint_escs = {
+                            lbl: count_escalated_events(conn_holder[0], lbl) for lbl in sprints
+                        }
+                        body = _metrics_text(sprints, escalations=sprint_escs)
                         encoded = body.encode("utf-8")
                         self.send_response(200)
                         self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -607,15 +610,17 @@ def _sprint_json(cards, escalations: int = 0) -> str:
     return format_json_report(cards, escalations=escalations)
 
 
-def _metrics_text(sprints: dict[str, list]) -> str:
+def _metrics_text(sprints: dict[str, list], escalations: dict[str, int] | None = None) -> str:
     """Format stored sprint history as Prometheus text exposition with sprint labels."""
+    if escalations is None:
+        escalations = {}
     lines: list[str] = []
     for sprint_label, cards in sprints.items():
         cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
         throughput = calculate_throughput(cards)
         wip_violations = calculate_wip_violations(cards, None)
         blocked_aging = calculate_blocked_aging(cards, None)
-        escalation_rate = calculate_escalation_rate(cards, 0)
+        escalation_rate = calculate_escalation_rate(cards, escalations.get(sprint_label, 0))
         first_attempt_rate = calculate_first_attempt_rate(cards)
 
         label = f'sprint="{sprint_label}"'
@@ -674,7 +679,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "GET",
         "/metrics",
-        "Return Prometheus text exposition format, one line per metric per sprint.",
+        "Return Prometheus text exposition format, one line per metric per sprint. "
+        "Emits lines only for sprints that have at least one finished event.",
     ),
     (
         "GET",
