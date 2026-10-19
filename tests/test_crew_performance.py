@@ -3299,3 +3299,141 @@ def test_prometheus_superseded_filtered_shows_all_four_lines(tmp_path, capsys):
     assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 0' in lines
     assert "sprint_cycle_time_days" not in captured.out
     assert "sprint_throughput_cards" not in captured.out
+
+
+def test_markdown_default_threshold_cycle_breached_lead_meets_default(tmp_path, capsys):
+    """AC1: cycle time 7 breaches the built-in default of 5; lead time 7 meets
+    the built-in default of 7 exactly (not a breach). Without --thresholds,
+    the cycle line carries the marker naming the default, and the lead line
+    has no marker and no parenthetical."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-08"}
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Cycle time**: 7 days \u26a0\ufe0f (threshold: 5 days)" in captured.out
+    lead_lines = [line for line in captured.out.splitlines() if line.startswith("- **Lead time**")]
+    assert lead_lines == ["- **Lead time**: 7 days"]
+
+
+def test_markdown_thresholds_file_governs_named_metric_default_governs_rest(tmp_path, capsys):
+    """AC2: thresholds file overrides cycle_time_days to 10, so cycle (7) no
+    longer breaches; lead (9) still breaches its built-in default of 7. The
+    file's value governs the metric it names and the built-in default governs
+    the rest."""
+    card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-10"}
+    cards_path = tmp_path / "cards.json"
+    cards_path.write_text(json.dumps([card]))
+    thresholds_path = tmp_path / "thresholds.json"
+    thresholds_path.write_text(json.dumps({"cycle_time_days": 10}))
+    exit_code = main([str(cards_path), "--thresholds", str(thresholds_path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    cycle_lines = [line for line in captured.out.splitlines() if line.startswith("- **Cycle time**")]
+    assert cycle_lines == ["- **Cycle time**: 7 days"]
+    assert "- **Lead time**: 9 days \u26a0\ufe0f (threshold: 7 days)" in captured.out
+
+
+def test_markdown_in_progress_only_flags_throughput_and_first_attempt(tmp_path, capsys):
+    """AC3: cards with nothing completed show throughput 0 (breach of default 1)
+    and first-attempt rate 0% (breach of default 80%), both flagged in the
+    sprint section, and the health summary names both as breached."""
+    cards = [IN_FLIGHT_CARD]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "- **Throughput**: 0 cards \u26a0\ufe0f (threshold: 1)" in captured.out
+    assert "- **First-attempt rate**: 0% \u26a0\ufe0f (threshold: 80%)" in captured.out
+    assert "Status: Attention needed (2 metrics breached)" in captured.out
+    assert "- Throughput: 0 cards (threshold 1 card)" in captured.out
+    assert "- First attempt rate: 0% (threshold 80%)" in captured.out
+
+
+def test_markdown_empty_sprint_no_threshold_annotation_on_first_attempt(tmp_path, capsys):
+    """AC4: empty cards array with --markdown shows 'No performance data
+    available' and '- **First-attempt rate**: 0%' with no marker or
+    parenthetical (the empty-sprint line is deliberately not
+    threshold-annotated). --json on the same file still reports flags for
+    throughput and first_attempt_rate_percent as true."""
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "No performance data available" in captured.out
+    fa_lines = [line for line in captured.out.splitlines() if line.startswith("- **First-attempt rate**")]
+    assert fa_lines == ["- **First-attempt rate**: 0%"]
+
+    exit_code_json = main([str(path), "--json"])
+    captured_json = capsys.readouterr()
+    assert exit_code_json == 0
+    data = json.loads(captured_json.out)
+    assert data["flags"]["throughput"] is True
+    assert data["flags"]["first_attempt_rate_percent"] is True
+
+
+def test_markdown_escalation_rate_breaches_default_without_thresholds(tmp_path, capsys):
+    """AC6: 5 completed cards with 2 escalations gives 40% escalation rate,
+    breaching the built-in default of 10%. The line carries the marker with
+    the default threshold immediately followed by the detail line."""
+    cards = [COMPLETED_CARD] * 5
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown", "--escalations", "2"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    esc_idx = next(
+        i
+        for i, line in enumerate(lines)
+        if line == "- **Escalation rate**: 40% \u26a0\ufe0f (threshold: 10%)"
+    )
+    assert lines[esc_idx + 1] == "  - 2 escalations, 5 completed cards"
+
+
+def test_markdown_wip_violations_breaches_default_without_thresholds(tmp_path, capsys):
+    """AC7: 2 in-progress cards with WIP limit 1 gives 1 WIP violation,
+    breaching the built-in default of 0. The line carries the marker with
+    the default threshold immediately followed by the detail line."""
+    cards = [IN_FLIGHT_CARD] * 2
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    limits_path = tmp_path / "wip-limits.json"
+    limits_path.write_text(json.dumps({"In Progress": 1}))
+    exit_code = main([str(path), "--wip-limits", str(limits_path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    wip_idx = next(
+        i
+        for i, line in enumerate(lines)
+        if line == "- **WIP violations**: 1 \u26a0\ufe0f (threshold: 0)"
+    )
+    assert lines[wip_idx + 1] == "  - In Progress: peak 2, limit 1"
+
+
+def test_markdown_cycle_and_lead_both_breach_defaults_summary_and_sprint_agree(tmp_path, capsys):
+    """AC8: cycle time 8 and lead time 8 both breach their built-in defaults
+    (5 and 7). The health summary bullets and the sprint section lines name
+    the same built-in defaults for the same breach."""
+    card = {"created": "2024-01-01", "started": "2024-01-01", "completed": "2024-01-09"}
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps([card]))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Status: Attention needed (2 metrics breached)" in captured.out
+    assert "- Cycle time: 8 days (threshold 5 days)" in captured.out
+    assert "- Lead time: 8 days (threshold 7 days)" in captured.out
+    assert "- **Cycle time**: 8 days \u26a0\ufe0f (threshold: 5 days)" in captured.out
+    assert "- **Lead time**: 8 days \u26a0\ufe0f (threshold: 7 days)" in captured.out
