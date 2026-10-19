@@ -340,7 +340,10 @@ def test_table_in_progress_only_flags_throughput_and_first_attempt(tmp_path, cap
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% | 0% \u26a0\ufe0f | \u2014 |" in captured.out
+    assert (
+        "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% | 0% \u26a0\ufe0f | \u2014 |"
+        in captured.out
+    )
 
 
 def test_table_prior_and_delta_rows_not_flagged_without_thresholds(tmp_path, capsys):
