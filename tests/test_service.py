@@ -6378,3 +6378,79 @@ def test_trend_escalation_rate_percent_matches_range(monkeypatch):
         assert trend_value == range_value == 100
     finally:
         pass
+
+
+@requires_db
+def test_service_escalation_rate_200_on_sprint_range_and_trend():
+    """AC3: sprint 2024-01 has one completed card and 2 escalated events;
+    /sprint, /range, and /trend all report escalation_rate_percent 200."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac3_esc_rate'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Post started, finished, and 2 escalated events for one card
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_esc_rate",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_esc_rate",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_esc_rate",
+                event_type="escalated",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ac3_esc_rate",
+                event_type="escalated",
+                timestamp="2024-01-06T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        # /sprint
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["escalation_rate_percent"] == 200
+
+        # /range
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        assert body["sprints"]["2024-01"]["escalation_rate_percent"] == 200
+
+        # /trend
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2024-01&end=2024-01"
+        )
+        assert status == 200
+        assert body["values"][0] == {"sprint": "2024-01", "value": 200}
+    finally:
+        conn.close()
