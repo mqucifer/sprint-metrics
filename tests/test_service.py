@@ -1426,9 +1426,7 @@ def test_metrics_escalation_rate_zero_and_nonzero_sprints():
             ),
         )
         # Sprint 2024-02: 4 cards finished, no escalations
-        for i, card_id in enumerate(
-            ["esc_zero_c", "esc_zero_d", "esc_zero_e", "esc_zero_f"]
-        ):
+        for i, card_id in enumerate(["esc_zero_c", "esc_zero_d", "esc_zero_e", "esc_zero_f"]):
             _post_events(
                 f"http://127.0.0.1:{port}/events",
                 _make_event(
@@ -1518,9 +1516,7 @@ def test_metrics_agrees_with_range_for_escalation_rate():
         assert status == 200
         assert 'sprint_escalation_rate_percent{sprint="2024-01"} 200' in body
 
-        status, range_data = _get_json(
-            f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01"
-        )
+        status, range_data = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
         entry = range_data["sprints"]["2024-01"]
         assert entry["escalation_rate_percent"] == 200
@@ -1587,9 +1583,7 @@ def test_metrics_exactly_one_escalation_rate_line_per_sprint():
         status, _, body = _get_text(f"http://127.0.0.1:{port}/metrics")
         assert status == 200
         esc_lines = [
-            line
-            for line in body.splitlines()
-            if line.startswith("sprint_escalation_rate_percent")
+            line for line in body.splitlines() if line.startswith("sprint_escalation_rate_percent")
         ]
         assert len(esc_lines) == 1
         assert esc_lines[0] == 'sprint_escalation_rate_percent{sprint="2024-01"} 200'
