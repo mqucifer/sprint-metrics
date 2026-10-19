@@ -11,7 +11,7 @@ BEGIN:metrics
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_cycle_time_days` |
 | Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_cycle_time_minutes` |
 | Escalation count | `escalation_count` | Return the number of escalated events in the sprint. | `sprint_escalation_count` |
-| Escalation rate | `escalation_rate_percent` | Return the escalation rate as a percentage (0-100). | `sprint_escalation_rate_percent` |
+| Escalation rate | `escalation_rate_percent` | Return the escalation rate as a whole-number percentage of escalations over completed cards; 0 when no cards are completed. | `sprint_escalation_rate_percent` |
 | Top causes | `failure_breakdown` | Return the failure causes grouped by (class, role), sorted by count descending. | `sprint_failure_count` |
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. | `sprint_first_attempt_denominator` |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. | `sprint_first_attempt_numerator` |

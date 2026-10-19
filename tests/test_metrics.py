@@ -558,10 +558,16 @@ def test_all_metrics_includes_superseded():
     assert "superseded_breakdown" in ALL_METRICS
 
 
-def test_calculate_escalation_rate_capped_at_100():
-    """With 2 escalations and 1 completed card, the rate is capped at 100, not 200."""
+def test_calculate_escalation_rate_exceeds_100():
+    """With 2 escalations and 1 completed card, the rate is 200 — no upper bound."""
     cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    assert calculate_escalation_rate(cards, escalations=2) == 100
+    assert calculate_escalation_rate(cards, escalations=2) == 200
+
+
+def test_calculate_escalation_rate_rounds_up():
+    """With 2 escalations and 3 completed cards, the rate rounds up to 67 (66.67)."""
+    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}] * 3
+    assert calculate_escalation_rate(cards, escalations=2) == 67
 
 
 def test_cycle_and_lead_time_minutes_single_card():

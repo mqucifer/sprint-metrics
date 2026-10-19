@@ -2665,7 +2665,7 @@ def test_json_includes_points_delivered_first_attempt_counts_and_escalation_coun
     assert data["throughput"] == 1
     assert data["wip_violations"] == 0
     assert data["blocked_aging_days"] == 0
-    assert data["escalation_rate_percent"] == 100
+    assert data["escalation_rate_percent"] == 200
     assert data["first_attempt_rate_percent"] == 100
     assert "failure_breakdown" in data
     assert "top_failure_causes" in data
@@ -3299,6 +3299,76 @@ def test_prometheus_superseded_filtered_shows_all_four_lines(tmp_path, capsys):
     assert 'sprint_metrics_superseded_by_reason{reason="story_problem"} 0' in lines
     assert "sprint_cycle_time_days" not in captured.out
     assert "sprint_throughput_cards" not in captured.out
+
+
+def test_escalation_rate_200_all_four_cli_surfaces(run_command):
+    """AC2: 1 completed card with --escalations 2 shows 200% in table, markdown,
+    JSON, and Prometheus — all four surfaces report the same unbounded value."""
+    cards = [COMPLETED_CARD]
+
+    # Table
+    exit_code, output, _ = run_command(cards, escalations=2)
+    assert exit_code == 0
+    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 200% \u26a0\ufe0f |" in output
+
+    # Markdown
+    exit_code, output, _ = run_command(cards, escalations=2, markdown=True)
+    assert exit_code == 0
+    assert "- **Escalation rate**: 200% \u26a0\ufe0f (threshold: 10%)" in output
+
+    # JSON
+    exit_code, output, _ = run_command(cards, escalations=2, json_output=True)
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["escalation_rate_percent"] == 200
+
+    # Prometheus
+    exit_code, output, _ = run_command(cards, escalations=2, prometheus=True)
+    assert exit_code == 0
+    assert "sprint_escalation_rate_percent 200" in output
+
+
+def test_escalation_rate_150_all_four_cli_surfaces(run_command):
+    """AC7: 2 completed cards with --escalations 3 shows 150% in table, markdown,
+    JSON, and Prometheus — above the old 100 cap."""
+    cards = [COMPLETED_CARD] * 2
+
+    # Table
+    exit_code, output, _ = run_command(cards, escalations=3)
+    assert exit_code == 0
+    assert "| Current | 4 days | 6 days | 2 | 0 | 0 | 0 days | 150% \u26a0\ufe0f |" in output
+
+    # Markdown
+    exit_code, output, _ = run_command(cards, escalations=3, markdown=True)
+    assert exit_code == 0
+    assert "- **Escalation rate**: 150% \u26a0\ufe0f (threshold: 10%)" in output
+
+    # JSON
+    exit_code, output, _ = run_command(cards, escalations=3, json_output=True)
+    assert exit_code == 0
+    data = json.loads(output)
+    assert data["escalation_rate_percent"] == 150
+
+    # Prometheus
+    exit_code, output, _ = run_command(cards, escalations=3, prometheus=True)
+    assert exit_code == 0
+    assert "sprint_escalation_rate_percent 150" in output
+
+
+def test_escalation_rate_zero_all_surfaces_with_escalations(run_command):
+    """AC8: 1 in-flight card (no completed) with --escalations 5 shows 0% in
+    table and markdown — the zero-completed-cards guard renders as 0%, not an error."""
+    cards = [IN_FLIGHT_CARD]
+
+    # Table
+    exit_code, output, _ = run_command(cards, escalations=5)
+    assert exit_code == 0
+    assert "| Current | 0 days | 0 days | 0 \u26a0\ufe0f | 0 | 0 | 0 days | 0% |" in output
+
+    # Markdown
+    exit_code, output, _ = run_command(cards, escalations=5, markdown=True)
+    assert exit_code == 0
+    assert "- **Escalation rate**: 0%" in output
 
 
 def test_markdown_default_threshold_cycle_breached_lead_meets_default(tmp_path, capsys):

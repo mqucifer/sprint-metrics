@@ -131,16 +131,15 @@ def calculate_escalation_rate(
     cards: Iterable[Card | Mapping[str, object]],
     escalations: int = 0,
 ) -> int:
-    """Return the escalation rate as a percentage (0-100).
+    """Return the escalation rate as a whole-number percentage of escalations over completed cards; 0 when no cards are completed.
 
     The rate is the number of escalations divided by the number of completed
-    cards, expressed as a whole-number percentage, capped at 100.
-    When no cards are completed the rate is 0.
+    cards, expressed as a whole-number percentage.
     """
     completed = sum(1 for card in _as_cards(cards) if card.is_completed)
     if completed == 0:
         return 0
-    return min(100, round(escalations / completed * 100))
+    return round(escalations / completed * 100)
 
 
 def _load_wip_limits(source: str) -> dict[str, int]:
