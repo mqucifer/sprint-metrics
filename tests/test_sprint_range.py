@@ -278,10 +278,7 @@ def test_sprint_range_table_flags_cycle_time_against_default(tmp_path, capsys):
         "| 2024-01 | 7 days \u26a0\ufe0f | 7 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |"
         in captured.out
     )
-    assert (
-        "| 2024-02 | 4 days | 4 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |"
-        in captured.out
-    )
+    assert "| 2024-02 | 4 days | 4 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in captured.out
     assert captured.out.count("\u26a0\ufe0f") == 1
 
 
