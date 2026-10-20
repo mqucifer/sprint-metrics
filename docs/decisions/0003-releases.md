@@ -1,7 +1,7 @@
 # 3. A release is a pull request
 
 - **Date:** 2026-09-28
-- **Status:** Accepted
+- **Status:** Superseded by 0011
 
 ## Context
 

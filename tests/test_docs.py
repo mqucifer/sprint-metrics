@@ -1175,3 +1175,130 @@ def test_thresholds_md_default_section_covers_table_marker():
     for doc in ALL_DOCS:
         for line in (DOCS_DIR / doc).read_text().splitlines():
             assert not ("--sprint-range" in line and "--markdown" in line)
+
+
+# --- Changelog-rules release-cut docs (epic #692) ---
+
+
+def _versioning_section() -> str:
+    """Extract the README's Versioning section (from '## Versioning' to the next '## ')."""
+    text = README.read_text()
+    start = text.index("## Versioning")
+    rest = text[start + len("## Versioning"):]
+    next_heading = rest.find("\n## ")
+    if next_heading == -1:
+        return rest
+    return rest[:next_heading]
+
+
+def _adr_0011_decision() -> str:
+    """Extract the Decision section from the 0011 ADR file."""
+    adr_dir = DOCS_DIR / "decisions"
+    adr_files = sorted(adr_dir.glob("0011-*.md"))
+    assert len(adr_files) == 1, f"Expected one 0011 ADR, found: {adr_files}"
+    text = adr_files[0].read_text()
+    start = text.index("## Decision")
+    rest = text[start + len("## Decision"):]
+    next_heading = rest.find("\n## ")
+    if next_heading == -1:
+        return rest
+    return rest[:next_heading]
+
+
+def test_readme_versioning_states_pyproject_version_rule():
+    """AC1: the Versioning section states the version in pyproject.toml equals
+    the newest released section's version in CHANGELOG.md."""
+    section = _versioning_section()
+    assert "pyproject.toml" in section
+    assert "newest released section" in section
+
+
+def test_readme_versioning_states_newest_first_and_date_bound():
+    """AC2: the Versioning section states released sections run newest first by
+    version, and no released section's date is later than the date of the section
+    above it or later than the day the check runs."""
+    section = _versioning_section()
+    assert "newest first" in section
+    assert "later than the day the check runs" in section
+
+
+def test_readme_versioning_states_unreleased_first_with_subheadings():
+    """AC3: the Versioning section states ## [Unreleased] is the first section,
+    with the subheadings Added, Changed, Fixed, Removed in that order."""
+    section = _versioning_section()
+    assert "## [Unreleased]" in section
+    assert "Added, Changed, Fixed" in section
+
+
+def test_readme_versioning_states_released_heading_date_format():
+    """AC4: the Versioning section states every released section's heading is
+    dated YYYY-MM-DD."""
+    section = _versioning_section()
+    assert "YYYY-MM-DD" in section
+
+
+def test_readme_versioning_states_content_not_checked_by_tests():
+    """AC5: the Versioning section states a section's content is not checked by
+    tests, and entries are checked by review, not by CI."""
+    section = _versioning_section()
+    assert "not checked by tests" in section
+    assert "review, not by CI" in section
+
+
+def test_adr_0011_decision_states_same_rules_in_order():
+    """AC6/AC10: the four rules' markers appear in the same order in both the
+    README's Versioning section and ADR 0011's Decision section."""
+    readme_section = _versioning_section()
+    adr_decision = _adr_0011_decision()
+
+    # Rule 1 marker
+    r1_readme = readme_section.index("pyproject.toml")
+    r1_adr = adr_decision.index("pyproject.toml")
+
+    # Rule 2 marker
+    r2_readme = readme_section.index("newest first")
+    r2_adr = adr_decision.index("newest first")
+
+    # Rule 3 marker
+    r3_readme = readme_section.index("## [Unreleased]")
+    r3_adr = adr_decision.index("## [Unreleased]")
+
+    # Rule 4 marker
+    r4_readme = readme_section.index("YYYY-MM-DD")
+    r4_adr = adr_decision.index("YYYY-MM-DD")
+
+    # In both files, rule 1 before rule 2 before rule 3 before rule 4
+    assert r1_readme < r2_readme < r3_readme < r4_readme
+    assert r1_adr < r2_adr < r3_adr < r4_adr
+
+
+def test_readme_versioning_preserves_semver_and_github_releases():
+    """AC11: the Versioning section still contains the SemVer bullets and the
+    GitHub Releases sentence."""
+    section = _versioning_section()
+    assert "SemVer" in section
+    assert "MAJOR" in section
+    assert "MINOR" in section
+    assert "PATCH" in section
+    assert "GitHub Releases" in section
+
+
+def test_adr_0011_file_name_and_heading():
+    """AC12: the new ADR file name starts with '0011-' and its H1 heading reads
+    '# 11. '."""
+    adr_dir = DOCS_DIR / "decisions"
+    adr_files = sorted(adr_dir.glob("0011-*.md"))
+    assert len(adr_files) == 1, f"Expected one 0011 ADR file, found: {adr_files}"
+    first_line = adr_files[0].read_text().splitlines()[0]
+    assert first_line.startswith("# 11. ")
+
+
+def test_adr_0003_status_superseded_by_0011():
+    """AC7: 0003's Status line reads 'Superseded by 0011' and its body is
+    unedited (Date, Context, Decision, Consequences, Source unchanged)."""
+    text = (DOCS_DIR / "decisions" / "0003-releases.md").read_text()
+    assert "Superseded by 0011" in text
+    assert "**Date:** 2026-09-28" in text
+    assert "Releases were cut by hand" in text
+    assert "A release is a pull request with the version bump" in text
+    assert "The release is reviewed like any change" in text

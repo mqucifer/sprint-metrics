@@ -83,6 +83,15 @@ Versions follow SemVer:
 
 Release notes are published as GitHub Releases on the [sprint-metrics repository](https://github.com/mqucifer/sprint-metrics/releases). The [CHANGELOG.md](CHANGELOG.md) file in the repository tracks changes between versions.
 
+CI checks `CHANGELOG.md` for four invariants on every pull request:
+
+1. The version in `pyproject.toml` equals the newest released section's version in `CHANGELOG.md`.
+2. Released sections run newest first by version, and no released section's date is later than the date of the section above it or later than the day the check runs.
+3. `## [Unreleased]` is the first section, with the subheadings Added, Changed, Fixed, and Removed in that order.
+4. Every released section's heading is dated `YYYY-MM-DD`.
+
+A section's content — the entries under its subheadings — is not checked by tests; entries are checked by review, not by CI.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for the version-to-version change history.
