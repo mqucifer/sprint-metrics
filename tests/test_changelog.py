@@ -390,8 +390,8 @@ def test_changelog_1_3_2_fixed_section_has_single_entry():
     now reports the stored per-sprint escalation rate."""
     content = CHANGELOG.read_text()
 
-    match = re.search(r"^## \[1\.3\.2\] - 2026-10-21$", content, re.MULTILINE)
-    assert match, "Missing '## [1.3.2] - 2026-10-21' heading"
+    match = re.search(r"^## \[1\.3\.2\] - 2026-10-19$", content, re.MULTILINE)
+    assert match, "Missing '## [1.3.2] - 2026-10-19' heading"
 
     after = content[match.end() :]
     next_version = re.search(r"^## \[", after, re.MULTILINE)
@@ -416,8 +416,8 @@ def test_changelog_1_3_2_added_changed_removed_have_no_entries():
     """AC2: the [1.3.2] section's Added, Changed, and Removed subsections carry no entries."""
     content = CHANGELOG.read_text()
 
-    match = re.search(r"^## \[1\.3\.2\] - 2026-10-21$", content, re.MULTILINE)
-    assert match, "Missing '## [1.3.2] - 2026-10-21' heading"
+    match = re.search(r"^## \[1\.3\.2\] - 2026-10-19$", content, re.MULTILINE)
+    assert match, "Missing '## [1.3.2] - 2026-10-19' heading"
 
     after = content[match.end() :]
     next_version = re.search(r"^## \[", after, re.MULTILINE)
