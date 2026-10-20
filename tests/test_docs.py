@@ -1184,7 +1184,7 @@ def _versioning_section() -> str:
     """Extract the README's Versioning section (from '## Versioning' to the next '## ')."""
     text = README.read_text()
     start = text.index("## Versioning")
-    rest = text[start + len("## Versioning"):]
+    rest = text[start + len("## Versioning") :]
     next_heading = rest.find("\n## ")
     if next_heading == -1:
         return rest
@@ -1198,7 +1198,7 @@ def _adr_0011_decision() -> str:
     assert len(adr_files) == 1, f"Expected one 0011 ADR, found: {adr_files}"
     text = adr_files[0].read_text()
     start = text.index("## Decision")
-    rest = text[start + len("## Decision"):]
+    rest = text[start + len("## Decision") :]
     next_heading = rest.find("\n## ")
     if next_heading == -1:
         return rest
