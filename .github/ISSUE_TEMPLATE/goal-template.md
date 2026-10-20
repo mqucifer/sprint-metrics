@@ -12,6 +12,13 @@ assignees: ''
   State what the tool should do. The crew proposes the epics; you approve them.
   Don't specify architecture, implementation, or how it's built.
   Keep it to: what, and what "done" looks like.
+
+  Each Goal also (the crew's ways of working, "Writing a Goal"):
+  - gives one worked example for each wanted answer, e.g. "stories of 3, 5
+    and 10 model minutes show a median of 5 and a total of 18", plus the
+    empty case;
+  - names each measure precisely: the statistic, the unit, which items;
+  - says what the reader sees for every "so that…".
 -->
 
 [One or two sentences. What should the tool be able to do that it can't do today?]
