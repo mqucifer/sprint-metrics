@@ -42,6 +42,19 @@ def _version_key(v: str) -> tuple:
     return tuple(int(p) for p in v.split("."))
 
 
+def _unreleased_body_span(content: str) -> tuple[int, int]:
+    """Return (start, end) char positions of the [Unreleased] section body.
+
+    start is just after the '## [Unreleased]' heading line.
+    end is the start of the next '## [...]' heading (or end of content).
+    """
+    headings = list(_HEADING_RE.finditer(content))
+    first = headings[0]
+    assert first.group(1) == "Unreleased"
+    end = headings[1].start() if len(headings) > 1 else len(content)
+    return first.end(), end
+
+
 def check_pyproject_version(changelog_text: str, pyproject_version: str) -> list[str]:
     """Rule 1: the version in pyproject.toml equals the newest released section's version."""
     violations = []
@@ -241,18 +254,20 @@ def test_rule_unreleased_first_with_subheadings_in_order():
     )
 
     # Mutation: a missing subheading in [Unreleased]
-    mutated = content.replace("### Removed\n\n## [1.3.3]", "## [1.3.3]", 1)
+    start, end = _unreleased_body_span(content)
+    body = content[start:end]
+    mutated = content[:start] + body.replace("### Removed\n", "", 1) + content[end:]
     violations = check_unreleased_first_and_subheadings(mutated)
     missing = [v for v in violations if "missing" in v]
     assert missing, f"expected a missing-subheading violation: {violations}"
     assert "### Removed" in missing[0], f"message must name the missing subheading: {missing[0]}"
 
     # Mutation: subheadings out of order in [Unreleased]
-    mutated = content.replace(
-        "### Changed\n\n### Fixed\n\n### Removed\n\n## [1.3.3]",
-        "### Fixed\n\n### Changed\n\n### Removed\n\n## [1.3.3]",
-        1,
-    )
+    start, end = _unreleased_body_span(content)
+    body = content[start:end]
+    mutated = content[:start] + body.replace(
+        "### Changed\n\n### Fixed", "### Fixed\n\n### Changed", 1
+    ) + content[end:]
     violations = check_unreleased_first_and_subheadings(mutated)
     order = [v for v in violations if "not in order" in v]
     assert order, f"expected an order violation: {violations}"
