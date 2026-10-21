@@ -1357,7 +1357,10 @@ def test_metrics_md_names_all_cost_measures():
     detail = text[detail_start:]
     model_cost_start = detail.index("### Model cost")
     model_cost_section = detail[model_cost_start:]
-    assert "display unit" in model_cost_section.lower() or "whole minutes" in model_cost_section.lower()
+    assert (
+        "display unit" in model_cost_section.lower()
+        or "whole minutes" in model_cost_section.lower()
+    )
     assert "model_seconds" in model_cost_section
     assert "model_minutes" in model_cost_section
 
@@ -1374,7 +1377,10 @@ def test_metrics_md_explains_cost_aggregation_semantics():
     next_heading = detail.index("\n##", model_cost_start + 1)
     model_cost_section = detail[model_cost_start:next_heading]
     # Story cost is summed total across every role's model calls
-    assert "summed total across every role" in model_cost_section or "summed total" in model_cost_section
+    assert (
+        "summed total across every role" in model_cost_section
+        or "summed total" in model_cost_section
+    )
     # Middle is the median of per-story values
     assert "median" in model_cost_section.lower()
     # Total is the sum
