@@ -400,6 +400,8 @@ def test_sprint_response_key_set_no_sprint_date():
             "superseded_points",
             "superseded_breakdown",
             "flags",
+            "story_costs",
+            "cost",
         }
         assert set(body.keys()) == expected_keys
         assert "sprint_date" not in body
