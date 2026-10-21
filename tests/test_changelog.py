@@ -62,9 +62,7 @@ def check_pyproject_version(changelog_text: str, pyproject_version: str) -> list
     return violations
 
 
-def check_released_order_and_dates(
-    changelog_text: str, check_day: date | None = None
-) -> list[str]:
+def check_released_order_and_dates(changelog_text: str, check_day: date | None = None) -> list[str]:
     """Rule 2: released sections run newest-first by version; no section's date is
     later than the section above it or later than the check day."""
     violations = []
@@ -74,9 +72,8 @@ def check_released_order_and_dates(
 
     for i, sec in enumerate(sections):
         # Version ordering: each section's version must be >= the one below it
-        if (
-            i + 1 < len(sections)
-            and _version_key(sec["version"]) < _version_key(sections[i + 1]["version"])
+        if i + 1 < len(sections) and _version_key(sec["version"]) < _version_key(
+            sections[i + 1]["version"]
         ):
             below = sections[i + 1]
             violations.append(
@@ -121,8 +118,7 @@ def check_unreleased_first_and_subheadings(changelog_text: str) -> list[str]:
     first = headings[0]
     if first.group(1) != "Unreleased":
         violations.append(
-            f"First section is {first.group(0)!r}, "
-            f"but '## [Unreleased]' must be the first section"
+            f"First section is {first.group(0)!r}, but '## [Unreleased]' must be the first section"
         )
         return violations
 
@@ -155,9 +151,7 @@ def check_released_headings_dated(changelog_text: str) -> list[str]:
     violations = []
     for sec in _parse_released_sections(changelog_text):
         if sec["date_str"] is None or sec["date"] is None:
-            violations.append(
-                f"Section heading {sec['heading']!r} is not dated with YYYY-MM-DD"
-            )
+            violations.append(f"Section heading {sec['heading']!r} is not dated with YYYY-MM-DD")
     return violations
 
 
@@ -174,12 +168,8 @@ def test_rule_pyproject_version_matches_newest_released():
     mutated = content.replace("## [1.3.3]", "## [1.4.0]", 1)
     violations = check_pyproject_version(mutated, pyver)
     assert len(violations) == 1
-    assert pyver in violations[0], (
-        f"message must name pyproject version {pyver!r}: {violations[0]}"
-    )
-    assert "1.4.0" in violations[0], (
-        f"message must name the section version: {violations[0]}"
-    )
+    assert pyver in violations[0], f"message must name pyproject version {pyver!r}: {violations[0]}"
+    assert "1.4.0" in violations[0], f"message must name the section version: {violations[0]}"
 
 
 def test_rule_released_sections_newest_first_and_dates_ordered():
@@ -245,9 +235,7 @@ def test_rule_unreleased_first_with_subheadings_in_order():
     violations = check_unreleased_first_and_subheadings(mutated)
     missing = [v for v in violations if "missing" in v]
     assert missing, f"expected a missing-subheading violation: {violations}"
-    assert "### Removed" in missing[0], (
-        f"message must name the missing subheading: {missing[0]}"
-    )
+    assert "### Removed" in missing[0], f"message must name the missing subheading: {missing[0]}"
 
     # Mutation: subheadings out of order in [Unreleased]
     mutated = content.replace(
@@ -258,9 +246,7 @@ def test_rule_unreleased_first_with_subheadings_in_order():
     violations = check_unreleased_first_and_subheadings(mutated)
     order = [v for v in violations if "not in order" in v]
     assert order, f"expected an order violation: {violations}"
-    assert "### Fixed" in order[0], (
-        f"message must name the out-of-order subheading: {order[0]}"
-    )
+    assert "### Fixed" in order[0], f"message must name the out-of-order subheading: {order[0]}"
 
 
 def test_rule_released_headings_dated():
@@ -274,14 +260,10 @@ def test_rule_released_headings_dated():
     mutated = content.replace("## [1.3.3] - 2026-10-19", "## [1.3.3]", 1)
     violations = check_released_headings_dated(mutated)
     assert violations, "expected a violation for undated heading"
-    assert "1.3.3" in violations[0], (
-        f"message must name the offending heading: {violations[0]}"
-    )
+    assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
 
     # Mutation: wrong date format
     mutated = content.replace("## [1.3.3] - 2026-10-19", "## [1.3.3] - 10/19/2026", 1)
     violations = check_released_headings_dated(mutated)
     assert violations, "expected a violation for non-ISO date"
-    assert "1.3.3" in violations[0], (
-        f"message must name the offending heading: {violations[0]}"
-    )
+    assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
