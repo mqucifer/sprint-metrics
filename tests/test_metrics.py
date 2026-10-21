@@ -16,6 +16,7 @@ from sprint_metrics.metrics import (
     calculate_failure_breakdown,
     calculate_first_attempt_rate,
     calculate_throughput,
+    calculate_top_failure_causes,
     calculate_wip_violations,
 )
 
@@ -203,6 +204,89 @@ def test_calculate_failure_breakdown_empty_when_all_first_attempt():
         {"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-07"},
     ]
     assert calculate_failure_breakdown(cards) == []
+
+
+def test_failure_breakdown_counts_returns_not_stories():
+    """AC1: a card whose failures list holds three returns (VERIFY/Review x2,
+    SCHEMA/QA x1) produces one item per (class, role) return group, counting
+    returns not stories."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "SCHEMA", "failure_role": "QA"},
+            ],
+        },
+    ]
+    result = calculate_failure_breakdown(cards)
+    assert result == [("VERIFY", "Review", 2), ("SCHEMA", "QA", 1)]
+
+
+def test_top_failure_causes_separate_entries_same_class_different_role():
+    """AC4: two returns sharing class VERIFY but with different roles (Developer,
+    Reviewer) yield two separate entries in top_failure_causes, each naming both
+    class and role; a legacy card with only failure_class and no role keeps the
+    class alone (empty role)."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failures": [
+                {"failure_class": "VERIFY", "failure_role": "Developer"},
+                {"failure_class": "VERIFY", "failure_role": "Reviewer"},
+            ],
+        },
+    ]
+    result = calculate_top_failure_causes(cards)
+    assert ("VERIFY", "Developer", 1) in result
+    assert ("VERIFY", "Reviewer", 1) in result
+    assert len(result) == 2
+    # 'VERIFY' alone is not a key: each entry names both class and role
+    for _cls, role, _count in result:
+        assert role != ""
+
+
+def test_top_failure_causes_tie_break_alphabetical():
+    """AC5: returns whose (class, role) groups tie in count are ordered
+    alphabetically in top_failure_causes (by class then role), while the full
+    failure_breakdown preserves first-encounter order (stable sort)."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "ZULU", "failure_role": "QA"},
+                {"failure_class": "ALPHA", "failure_role": "Review"},
+            ],
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "ALPHA", "failure_role": "Review"},
+                {"failure_class": "ZULU", "failure_role": "QA"},
+            ],
+        },
+    ]
+    # Both groups have count 2. Top-3 ties broken alphabetically: ALPHA before ZULU.
+    top = calculate_top_failure_causes(cards)
+    assert top == [("ALPHA", "Review", 2), ("ZULU", "QA", 2)]
+
+    # Full breakdown: count descending, ties in first-encounter order (stable).
+    # ZULU was first encountered in card 1, so it comes first.
+    breakdown = calculate_failure_breakdown(cards)
+    assert breakdown == [("ZULU", "QA", 2), ("ALPHA", "Review", 2)]
 
 
 def test_calculate_first_attempt_rate_half():

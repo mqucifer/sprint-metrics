@@ -1152,6 +1152,36 @@ def test_sprint_range_table_empty_sprint_shows_zero_and_dash(tmp_path, capsys):
     assert "\u2014" in row_02
 
 
+def test_sprint_range_table_names_role_for_same_class_different_role(tmp_path, capsys):
+    """AC12: a sprint whose returns are VERIFY by Review (once) and VERIFY by QA
+    (once) shows both 'Review' and 'QA' in the 'Top failure causes' cell, making
+    the two groups distinguishable rather than collapsing into 'VERIFY (1),
+    VERIFY (1)'."""
+    sprints = {
+        "2024-01": [
+            {
+                "created": "2024-01-01",
+                "started": "2024-01-03",
+                "completed": "2024-01-07",
+                "attempts": 2,
+                "failures": [
+                    {"failure_class": "VERIFY", "failure_role": "Review"},
+                    {"failure_class": "VERIFY", "failure_role": "QA"},
+                ],
+            },
+        ],
+    }
+    path = tmp_path / "sprints.json"
+    path.write_text(json.dumps(sprints))
+    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    row_01 = [line for line in captured.out.splitlines() if line.startswith("| 2024-01")][0]
+    assert "Review" in row_01
+    assert "QA" in row_01
+
+
 def test_sprint_range_table_new_columns_have_no_flag_without_thresholds(tmp_path, capsys):
     """AC3: without --thresholds, the new First-attempt and Top failure causes cells
     contain no \u26a0\ufe0f marker."""
