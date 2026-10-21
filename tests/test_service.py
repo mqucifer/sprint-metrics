@@ -7680,3 +7680,83 @@ def test_post_returned_event_error_body_shape():
         assert isinstance(body["error"], str)
     finally:
         conn.close()
+
+
+@requires_db
+def test_post_seven_event_types_accepted_unknown_rejected():
+    """AC6: Each of the seven existing event types is accepted with 200;
+    an unknown type is rejected with 400 and an 'unknown event type' error."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'sev\\_%'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        seven_types = [
+            "started",
+            "blocked",
+            "unblocked",
+            "finished",
+            "escalated",
+            "attempt_failed",
+            "superseded",
+        ]
+        for i, event_type in enumerate(seven_types):
+            event = _make_event(
+                card_id=f"sev_{i}",
+                event_type=event_type,
+                timestamp="2024-01-03T10:00:00Z",
+            )
+            status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+            assert status == 200, f"expected 200 for {event_type}, got {status}"
+
+        unknown_event = _make_event(
+            card_id="sev_unknown",
+            event_type="unknown_type",
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", unknown_event)
+        assert status == 400
+        assert "error" in body
+        assert "unknown event type" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_event_session_blocked_missing_empty_string():
+    """AC4: POST /events with type 'returned', reason 'session blocked' and missing=""
+    returns 400 with an error naming the missing field; nothing is stored."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ret4b'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "2",
+            "card_id": "ret4b",
+            "type": "returned",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "sprint": "2026-10",
+            "card": {"created": "2026-10-01"},
+            "reason": "session blocked",
+            "missing": "",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert "missing" in body["error"]
+
+        rows = conn.execute(
+            "SELECT COUNT(*) FROM sprint_metrics.board_events "
+            "WHERE card_id = 'ret4b' AND type = 'returned'"
+        ).fetchone()
+        assert rows[0] == 0
+    finally:
+        conn.close()
