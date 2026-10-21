@@ -1030,6 +1030,46 @@ def test_service_md_documents_superseded_event():
     )
 
 
+def test_service_md_sprint_range_descriptions_state_per_return_semantics():
+    """AC5: the hand-written /sprint and /range endpoint descriptions in
+    docs/service.md state that failure_breakdown and top_failure_causes count
+    returns — one entry per return, by (failure class, returning role) — not
+    one entry per failed story."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+
+    sprint_section = before[before.index("GET /sprint"):]
+    range_start = before.index("GET /range")
+    range_section = before[range_start: range_start + 500]
+
+    assert "failure_breakdown" in sprint_section, (
+        "hand-written /sprint description does not mention failure_breakdown"
+    )
+    assert "top_failure_causes" in sprint_section, (
+        "hand-written /sprint description does not mention top_failure_causes"
+    )
+    assert "one entry per return" in sprint_section, (
+        "hand-written /sprint description does not state per-return semantics"
+    )
+    assert "failure class, returning role" in sprint_section, (
+        "hand-written /sprint description does not name the (class, role) key"
+    )
+
+    assert "failure_breakdown" in range_section, (
+        "hand-written /range description does not mention failure_breakdown"
+    )
+    assert "top_failure_causes" in range_section, (
+        "hand-written /range description does not mention top_failure_causes"
+    )
+    assert "one entry per return" in range_section, (
+        "hand-written /range description does not state per-return semantics"
+    )
+    assert "failure class, returning role" in range_section, (
+        "hand-written /range description does not name the (class, role) key"
+    )
+
+
 def test_service_md_handwritten_section_survives_docs_gen(tmp_path):
     """AC2: running generate_file on docs/service.md leaves the hand-written
     content before BEGIN:service byte-identical, confirming it resides outside

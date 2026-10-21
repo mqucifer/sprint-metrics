@@ -57,6 +57,10 @@ Example cost payload on a finished event's card:
 
 The service exposes the following HTTP endpoints: POST /sprints for sprint registration, POST /events for event intake, GET /sprint for single-sprint queries, GET /range for multi-sprint queries, GET /trend for time-series queries, GET /metrics for Prometheus scraping, GET /schema/event for the event schema, and GET /health for liveness checks.
 
+GET /sprint returns metrics for a single sprint. Its failure_breakdown and top_failure_causes count returns — one entry per return, by (failure class, returning role) — not one entry per failed story. Sprints with no events return all-null values.
+
+GET /range returns metrics for a range of sprints in chronological order. Each entry includes the prior-sprint delta. Its failure_breakdown and top_failure_causes count returns — one entry per return, by (failure class, returning role) — not one entry per failed story. Sprints with no events return all-null values.
+
 GET /trend answers the question 'what was this metric in each of these sprints?' by returning a value for every sprint label in the requested calendar range, defaulting to the metric's zero value when no events exist for that sprint. The range is specified by explicit start and end labels consistent with /range: `GET /trend?metric=throughput&start=2024-01&end=2024-04`.
 
 ### Error responses
