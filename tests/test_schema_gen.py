@@ -80,7 +80,10 @@ def test_event_intake_schema_type_enum_and_required(tmp_path):
         "type": ["array", "null"],
         "items": {"type": "integer"},
     }
-    assert data["properties"]["reason"] == {"type": "string", "enum": ["session blocked", "contract ruling"]}
+    assert data["properties"]["reason"] == {
+        "type": "string",
+        "enum": ["session blocked", "contract ruling"],
+    }
     assert data["properties"]["missing"] == {"type": "string"}
 
 
