@@ -536,6 +536,109 @@ def test_sprint_range_schema_includes_new_fields_in_prior_and_delta(capsys):
         assert delta_props[key]["type"] == ["integer", "null"]
 
 
+def test_sprint_range_schema_declares_cost_values_as_optional():
+    """AC7: the range schema declares story_costs and cost as optional properties on each
+    sprint entry, and the six flat cost names as optional (integer/null) properties on
+    prior and delta; none of them appear in the entry's required array."""
+    from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
+
+    sprint_schema = SPRINT_RANGE_SCHEMA["properties"]["sprints"]["additionalProperties"]
+    assert "story_costs" in sprint_schema["properties"]
+    assert "cost" in sprint_schema["properties"]
+    assert "story_costs" not in sprint_schema["required"]
+    assert "cost" not in sprint_schema["required"]
+    cost_names = (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+    )
+    prior_props = sprint_schema["properties"]["prior"]["properties"]
+    delta_props = sprint_schema["properties"]["delta"]["properties"]
+    for name in cost_names:
+        assert prior_props[name] == {"type": ["integer", "null"]}
+        assert delta_props[name] == {"type": ["integer", "null"]}
+
+
+def _range_entry(**extra):
+    """A minimal valid per-sprint range entry; override via extra keyword arguments."""
+    base = {
+        "cycle_time_days": 5,
+        "lead_time_days": 8,
+        "throughput": 3,
+        "points_delivered": 10,
+        "wip_violations": 0,
+        "blocked_aging_days": 0,
+        "escalation_rate_percent": 0,
+        "escalation_count": 0,
+        "first_attempt_rate_percent": 100,
+        "first_attempt_numerator": 3,
+        "first_attempt_denominator": 3,
+        "superseded_count": 0,
+        "superseded_points": 0,
+        "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
+        "failure_breakdown": [],
+        "top_failure_causes": {},
+        "flags": {},
+        "cycle_time_minutes": None,
+        "lead_time_minutes": None,
+    }
+    base.update(extra)
+    return base
+
+
+def test_sprint_range_schema_accepts_range_entry_with_cost():
+    """AC7: a range entry carrying story_costs, cost, and the six flat cost names on its
+    prior and delta validates against SPRINT_RANGE_SCHEMA."""
+    from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
+
+    costed_story = {
+        "card_id": "p1",
+        "model_minutes": 18,
+        "input_tokens": 2500,
+        "cached_input_percent": 40,
+        "output_tokens": 600,
+        "reasoning_output_percent": 17,
+    }
+    cost = {
+        "middle": {"model_minutes": 31, "input_tokens": 4000, "output_tokens": 1200},
+        "total": {"model_minutes": 92, "input_tokens": 14500, "output_tokens": 5600},
+    }
+    prior_cost = {
+        "model_minutes_middle": 31,
+        "model_minutes_total": 92,
+        "input_tokens_middle": 4000,
+        "input_tokens_total": 14500,
+        "output_tokens_middle": 1200,
+        "output_tokens_total": 5600,
+    }
+    delta_cost = {
+        "model_minutes_middle": 43,
+        "model_minutes_total": 58,
+        "input_tokens_middle": 4000,
+        "input_tokens_total": 2300,
+        "output_tokens_middle": 1650,
+        "output_tokens_total": 500,
+    }
+    response = {
+        "api_version": "1",
+        "sprints": {
+            "2026-09": _range_entry(
+                story_costs=[costed_story], cost=cost, prior=None, delta=None
+            ),
+            "2026-10": _range_entry(
+                story_costs=[costed_story],
+                cost=cost,
+                prior={**{"cycle_time_days": 5}, **prior_cost},
+                delta={**{"cycle_time_days": 0}, **delta_cost},
+            ),
+        },
+    }
+    jsonschema.validate(response, SPRINT_RANGE_SCHEMA)
+
+
 def test_schema_json_includes_superseded_fields(capsys):
     """AC4: --schema --json required array includes superseded_count, superseded_points,
     superseded_breakdown; properties define them with types [integer,null],
