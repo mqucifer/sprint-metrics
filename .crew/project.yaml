@@ -1,29 +1,32 @@
 # The project's onboarding record (#111). Intent is the Sponsor's, written
 # through `crew onboard`. Design is the project's Architect's, and learned
 # is the crew's; both are proposed by pull request.
-version: 2
+version: 3
 intent:
   scope:
-    purpose: Report delivery metrics for one or more sprints on the crew's own board,
-      so the crew can use the data to improve its own code.
-    in_scope:
-    - A sprint-metrics CLI that reads sprint cards and optional WIP limits from JSON.
-    - Computes cycle time, lead time, throughput, WIP-limit violations, blocked-card
-      aging, and escalation rate.
-    - Outputs a table by default, or JSON, markdown, or Prometheus text exposition
-      format.
-    - Serves the Prometheus metrics at /metrics in scrape mode.
-    - A service, run from the released container image, that accepts board events
-      over HTTP, keeps their history in Postgres under its own schema on a shared
-      server, and answers sprint, range and trend queries from that history.
-    - The service's logs and traces, sent as OpenTelemetry over OTLP.
-    - Packaging and deployment of the tool so the crew can invoke it.
+    # Who it serves, not what it does (mqucifer/project-print ADR 0003, crew ADR
+    # 0035). What it does today is the design's `built`, as history.
+    purpose: Work out how the crew's delivery went, for each sprint and across many
+      sprints, for the Sponsor. A service the crew feeds and reads back; nobody uses
+      it directly.
+    serves:
+    - who: The Sponsor, reading the sprint overview on the crew-presentation site
+      needs:
+      - What stories, epics and Goals got done.
+      - How long each step took, as working time.
+      - DORA's four measures, to call out what matters.
+    - who: The Sponsor, comparing sprints
+      needs:
+      - How the crew changes across many sprints, not one sprint against the last.
     out_of_scope:
     - 'Reporting on anything beyond the projects the Sponsor has asked the crew to
       contribute to: today, one or more repositories in this GitHub organization''s
       crew project. Expanding past this organization and project is not planned.'
-    - An MCP server, for now. The crew calls the tool directly, through its command
-      line or, once it runs as one, its service API.
+    - Being used directly by a person. The crew sends it events and reads its answers
+      back.
+    - The day's replay and a story's life cycle. They come from the crew's own event
+      record, carried in delivery-history.
+    - An MCP server, for now.
   release:
     # Private by the Sponsor's choice (2026-10-06): "It's for me so far." The
     # release check skips reading it instead of asking for it to be made public.
@@ -135,3 +138,18 @@ design:
   - docs/thresholds.md
   - docs/scrape.md
   - docs/service.md
+  # History, not scope (crew ADR 0035): the record's former in_scope. What serves
+  # none of the readers above is to be retired by a Goal (project-print ADR 0003).
+  built:
+  - A sprint-metrics CLI that reads sprint cards and optional WIP limits from JSON.
+  - Computes cycle time, lead time, throughput, WIP-limit violations, blocked-card
+    aging, and escalation rate.
+  - Outputs a table by default, or JSON, markdown, or Prometheus text exposition format.
+  - Serves the Prometheus metrics at /metrics in scrape mode.
+  - A service, run from the released container image, that accepts board events over
+    HTTP, keeps their history in Postgres under its own schema on a shared server, and
+    answers sprint, range and trend queries from that history.
+  - GET /trend, one measure across sprints, is unused today. It's to be made good, not
+    retired, since comparing sprints is what this project is for.
+  - The service's logs and traces, sent as OpenTelemetry over OTLP.
+  - Packaging and deployment of the tool so the crew can invoke it.
