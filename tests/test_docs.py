@@ -1332,3 +1332,184 @@ def test_adr_0003_status_superseded_by_0011():
     assert "Releases were cut by hand" in text
     assert "A release is a pull request with the version bump" in text
     assert "The release is reviewed like any change" in text
+
+
+def test_metrics_md_names_all_cost_measures():
+    """AC1: the generated metrics table names every cost measure and the
+    computation-details section states model minutes as the display unit."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    ):
+        assert name in section, f"missing cost measure {name!r} in metrics table"
+    assert "Model minutes (middle)" in section
+    assert "Model minutes (total)" in section
+    # Computation-details states model minutes as display unit
+    detail_start = text.index("## Computation details")
+    detail = text[detail_start:]
+    model_cost_start = detail.index("### Model cost")
+    model_cost_section = detail[model_cost_start:]
+    assert "display unit" in model_cost_section.lower() or "whole minutes" in model_cost_section.lower()
+    assert "model_seconds" in model_cost_section
+    assert "model_minutes" in model_cost_section
+
+
+def test_metrics_md_explains_cost_aggregation_semantics():
+    """AC2: computation-details explains story cost as summed total across roles,
+    middle as median of per-story values, total as sum, and percents from
+    the sprint's combined token totals rather than per story."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    detail_start = text.index("## Computation details")
+    detail = text[detail_start:]
+    model_cost_start = detail.index("### Model cost")
+    # Find the next section heading (## or ###) after the Model cost heading line
+    next_heading = detail.index("\n##", model_cost_start + 1)
+    model_cost_section = detail[model_cost_start:next_heading]
+    # Story cost is summed total across every role's model calls
+    assert "summed total across every role" in model_cost_section or "summed total" in model_cost_section
+    # Middle is the median of per-story values
+    assert "median" in model_cost_section.lower()
+    # Total is the sum
+    assert "sum" in model_cost_section.lower()
+    # Percents from sprint's combined token totals
+    assert "combined" in model_cost_section.lower() or "sprint's" in model_cost_section
+
+
+def test_service_md_documents_cost_payload_fields():
+    """AC3: the event-intake section documents the finished event's cost payload
+    with all five fields, each a non-negative integer, sent together or not at all."""
+    text = (DOCS_DIR / "service.md").read_text()
+    before = text.split("BEGIN:service")[0]
+    # All five fields are named
+    for field in (
+        "model_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    ):
+        assert field in before, f"missing cost field {field!r} in event-intake section"
+    # States sent together or not at all
+    assert "together or not at all" in before or "all-or-nothing" in before
+    # States non-negative integer
+    assert "non-negative" in before or "minimum 0" in before
+
+
+def test_service_md_trend_row_lists_cost_metrics():
+    """AC4: the generated endpoints table in docs/service.md lists the eight cost
+    metric names among the valid /trend metrics."""
+    text = (DOCS_DIR / "service.md").read_text()
+    section = _extract_marked_section(text, "service")
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    ):
+        assert name in section, f"missing cost metric {name!r} in /trend row"
+
+
+def test_formats_md_names_story_costs_and_cost():
+    """AC4: docs/formats.md's top-level field list names story_costs and cost as
+    optional response properties, and the generated schema block shows them."""
+    text = (DOCS_DIR / "formats.md").read_text()
+    # Top-level field list names them
+    before = text.split("BEGIN:formats")[0]
+    assert "story_costs" in before
+    assert "cost" in before
+    # Generated schema block shows them
+    section = _extract_marked_section(text, "formats")
+    assert '"story_costs"' in section
+    assert '"cost"' in section
+
+
+def test_cards_and_usage_md_have_no_cost_content():
+    """AC5: docs/cards.md and docs/usage.md are unchanged — cost is service-only,
+    so the CLI's documented card input takes no cost field and the CLI documents
+    no cost measure."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    usage_text = (DOCS_DIR / "usage.md").read_text()
+    for cost_name in (
+        "model_minutes",
+        "input_tokens",
+        "output_tokens",
+        "cached_input_percent",
+        "reasoning_output_percent",
+        "model_seconds",
+        "cached_input_tokens",
+        "reasoning_output_tokens",
+    ):
+        assert cost_name not in cards_text, f"docs/cards.md mentions {cost_name!r}"
+        assert cost_name not in usage_text, f"docs/usage.md mentions {cost_name!r}"
+
+
+def test_metrics_md_cost_names_match_service_metrics():
+    """AC6: the cost measure names in the generated metrics table match the names
+    in ALL_METRICS and _METRIC_COLUMNS exactly."""
+    from sprint_metrics.metrics import ALL_METRICS
+    from sprint_metrics.report import _METRIC_COLUMNS
+
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    cost_metrics = {
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    }
+    # All cost metrics are in ALL_METRICS
+    assert cost_metrics.issubset(ALL_METRICS)
+    # All cost metrics have a display name in _METRIC_COLUMNS
+    for name in cost_metrics:
+        assert name in _METRIC_COLUMNS
+        # The display name appears in the generated table
+        display = _METRIC_COLUMNS[name]
+        assert display in section, f"display name {display!r} not in metrics table"
+    # Prometheus names follow the sprint_{key} pattern
+    for name in cost_metrics:
+        prom = f"sprint_{name}"
+        assert prom in section, f"Prometheus name {prom!r} not in metrics table"
+
+
+def test_service_md_cost_example_is_complete():
+    """AC7: the event-intake section has a complete cost-payload example with all
+    five fields and non-negative integer values, in a copy-ready JSON block."""
+    import json as json_mod
+
+    text = (DOCS_DIR / "service.md").read_text()
+    before = text.split("BEGIN:service")[0]
+    # Find the JSON block after the cost payload documentation
+    cost_doc_idx = before.index("A `finished` event may carry a cost payload")
+    after_cost_doc = before[cost_doc_idx:]
+    # Find the ```json block
+    json_start = after_cost_doc.index("```json")
+    json_end = after_cost_doc.index("```", json_start + 7)
+    json_block = after_cost_doc[json_start + 7 : json_end]
+    example = json_mod.loads(json_block)
+    # All five fields are present with non-negative integer values
+    for field in (
+        "model_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    ):
+        assert field in example, f"cost example missing field {field!r}"
+        assert isinstance(example[field], int)
+        assert example[field] >= 0, f"cost example field {field!r} is negative"
