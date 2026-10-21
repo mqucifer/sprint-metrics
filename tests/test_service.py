@@ -1920,7 +1920,7 @@ def test_schema_event_get_returns_200_json_schema():
 @requires_db
 def test_schema_event_card_and_type_constraints():
     """AC2: schema's properties include a card object whose required includes 'created',
-    and the schema constrains type to the seven accepted values."""
+    and the schema constrains type to the eight accepted values."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1941,6 +1941,7 @@ def test_schema_event_card_and_type_constraints():
             "escalated",
             "attempt_failed",
             "superseded",
+            "returned",
         }
     finally:
         conn.close()
@@ -2040,6 +2041,28 @@ def test_schema_event_card_created_properties():
         created = card["properties"]["created"]
         assert created["type"] == "string"
         assert created["format"] == "date"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_schema_event_declares_returned_reason_and_missing():
+    """AC7: The served /schema/event declares properties.reason (string, limited to
+    the two fixed names) and properties.missing (string) as event properties."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/schema/event")
+        assert status == 200
+        assert body["properties"]["reason"] == {
+            "type": "string",
+            "enum": ["session blocked", "contract ruling"],
+        }
+        assert body["properties"]["missing"] == {"type": "string"}
     finally:
         conn.close()
 
