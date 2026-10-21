@@ -265,9 +265,11 @@ def test_rule_unreleased_first_with_subheadings_in_order():
     # Mutation: subheadings out of order in [Unreleased]
     start, end = _unreleased_body_span(content)
     body = content[start:end]
-    mutated = content[:start] + body.replace(
-        "### Changed\n\n### Fixed", "### Fixed\n\n### Changed", 1
-    ) + content[end:]
+    mutated = (
+        content[:start]
+        + body.replace("### Changed\n\n### Fixed", "### Fixed\n\n### Changed", 1)
+        + content[end:]
+    )
     violations = check_unreleased_first_and_subheadings(mutated)
     order = [v for v in violations if "not in order" in v]
     assert order, f"expected an order violation: {violations}"
