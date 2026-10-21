@@ -436,27 +436,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             sprints, labels, sprint_escalations=sprint_escs
                         )
                         result = json.loads(body)
-                        for i, label in enumerate(labels):
-                            if label not in has_events:
-                                result["sprints"][label] = _null_range_entry()
-                                continue
-                            entry = result["sprints"][label]
-                            story_costs, cost = _compute_cost_summary(sprints[label])
-                            entry["story_costs"] = story_costs
-                            entry["cost"] = cost
-                            if i > 0 and labels[i - 1] not in has_events:
-                                entry["prior"] = None
-                                entry["delta"] = None
-                            elif i > 0:
-                                prior_cost = _compute_cost_summary(sprints[labels[i - 1]])[1]
-                                prior_flat = _cost_flat(prior_cost)
-                                current_flat = _cost_flat(cost)
-                                for name in _COST_FLAT_NAMES:
-                                    entry["prior"][name] = prior_flat[name]
-                                    cur, pri = current_flat[name], prior_flat[name]
-                                    entry["delta"][name] = (
-                                        cur - pri if cur is not None and pri is not None else None
-                                    )
+                        _attach_range_cost(result, sprints, labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -902,6 +882,43 @@ def _null_range_entry() -> dict:
         "story_costs": [],
         "cost": None,
     }
+
+
+def _attach_range_cost(
+    result: dict,
+    sprints: dict[str, list],
+    labels: list[str],
+    has_events: set[str],
+) -> None:
+    """Attach cost to each range entry: ``story_costs`` and ``cost`` on the entry, and
+    the six flat cost names on its prior and delta.
+
+    An entry for a sprint with no events becomes the null entry (story_costs [], cost
+    None, prior/delta None). The flat names in prior and delta are null where the
+    corresponding sprint has no costed stories, so a cost delta is never computed
+    against a missing cost.
+    """
+    for i, label in enumerate(labels):
+        if label not in has_events:
+            result["sprints"][label] = _null_range_entry()
+            continue
+        entry = result["sprints"][label]
+        story_costs, cost = _compute_cost_summary(sprints[label])
+        entry["story_costs"] = story_costs
+        entry["cost"] = cost
+        if i > 0 and labels[i - 1] not in has_events:
+            entry["prior"] = None
+            entry["delta"] = None
+        elif i > 0:
+            prior_cost = _compute_cost_summary(sprints[labels[i - 1]])[1]
+            prior_flat = _cost_flat(prior_cost)
+            current_flat = _cost_flat(cost)
+            for name in _COST_FLAT_NAMES:
+                entry["prior"][name] = prior_flat[name]
+                cur, pri = current_flat[name], prior_flat[name]
+                entry["delta"][name] = (
+                    cur - pri if cur is not None and pri is not None else None
+                )
 
 
 def _validate_cost_fields(card: dict) -> str | None:
