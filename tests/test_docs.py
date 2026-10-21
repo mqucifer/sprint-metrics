@@ -324,6 +324,36 @@ def test_worked_example_throughput_and_cycle_time_are_correct(tmp_path, capsys):
         assert cells[1] == f"{expected_cycle} days"
 
 
+def test_cards_md_json_example_includes_failures_field():
+    """AC6: the JSON example in docs/cards.md's input-format section contains a card
+    carrying both an 'attempts' value and a 'failures' array whose entries are objects
+    each holding 'failure_class' and 'failure_role'."""
+    text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(text)
+    cards_with_failures = [
+        c for c in cards if "attempts" in c and "failures" in c
+    ]
+    assert cards_with_failures, "no card in docs/cards.md example carries both 'attempts' and 'failures'"
+    card = cards_with_failures[0]
+    assert isinstance(card["failures"], list)
+    for entry in card["failures"]:
+        assert "failure_class" in entry
+        assert "failure_role" in entry
+
+
+def test_metrics_md_first_attempt_rate_states_review_qa_semantics():
+    """AC8: docs/metrics.md's 'First attempt rate' subsection states that an attempt
+    is a hand of the story to review or QA and that the crew's own checks before
+    review do not count as attempts."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section_start = text.index("### First attempt rate")
+    section_end = text.index("###", section_start + 1)
+    section = text[section_start:section_end]
+    assert "hand of the story to review or QA" in section
+    assert "crew's own checks" in section
+    assert "do not count as attempts" in section
+
+
 def test_metrics_contains_all_six_display_names():
     """AC (migrated): docs/metrics.md contains all six original metric display names."""
     text = (DOCS_DIR / "metrics.md").read_text()

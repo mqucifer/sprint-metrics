@@ -16,7 +16,8 @@ BEGIN:input-format
 | `started_at` | No | ISO-8601 datetime | When work started on the card (sub-day precision) |
 | `completed_at` | No | ISO-8601 datetime | When the card was completed (sub-day precision) |
 | `blocked_since` | No | ISO-8601 date | When the card was blocked |
-| `attempts` | No | integer | Number of attempts (default: 1) |
+| `attempts` | No | integer | Number of hands to review or QA (default: 1) |
+| `failures` | No | array of objects | One entry per return by review or QA; each entry has `failure_class` and `failure_role` |
 | `failure_class` | No | string | Classification of the failure |
 | `failure_role` | No | string | Role responsible for the failure |
 
@@ -26,7 +27,14 @@ BEGIN:input-format
     "created": "2024-01-03",
     "started": "2024-01-05",
     "completed": "2024-01-10",
-    "blocked_since": "2024-01-06"
+    "blocked_since": "2024-01-06",
+    "attempts": 2,
+    "failures": [
+      {
+        "failure_class": "VERIFY",
+        "failure_role": "Review"
+      }
+    ]
   },
   {
     "created": "2024-01-04"
