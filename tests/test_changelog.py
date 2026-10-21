@@ -1,502 +1,287 @@
 """Tests for the CHANGELOG.md file at the repository root."""
 
 import re
+import tomllib
+from datetime import date
 from pathlib import Path
 
 CHANGELOG = Path(__file__).parent.parent / "CHANGELOG.md"
+PYPROJECT = Path(__file__).parent.parent / "pyproject.toml"
+
+_HEADING_RE = re.compile(r"^## \[([^\]]+)\](.*)$", re.MULTILINE)
+_DATE_RE = re.compile(r" - (\d{4}-\d{2}-\d{2})$")
+_SUBHEADINGS = ["### Added", "### Changed", "### Fixed", "### Removed"]
 
 
-def test_changelog_exists_with_correct_title_and_unreleased_section():
-    """AC1: CHANGELOG.md exists, its first non-empty line is '# Changelog', and it
-    contains the line '## [Unreleased]'."""
-    assert CHANGELOG.exists(), "CHANGELOG.md does not exist at the repository root"
-    lines = CHANGELOG.read_text().splitlines()
-    first_non_empty = next(line for line in lines if line.strip())
-    assert first_non_empty == "# Changelog", (
-        f"first non-empty line is {first_non_empty!r}, expected '# Changelog'"
-    )
-    assert "## [Unreleased]" in lines, "CHANGELOG.md does not contain '## [Unreleased]'"
+def _parse_released_sections(content: str) -> list[dict]:
+    """Return released (non-Unreleased) sections in file order.
 
-
-def test_unreleased_section_contains_standard_subheadings_in_order():
-    """AC2: the text between '## [Unreleased]' and the next '## [' heading (or EOF)
-    contains '### Added', '### Changed', '### Fixed', and '### Removed' in that order."""
-    lines = CHANGELOG.read_text().splitlines()
-    start = next(i for i, line in enumerate(lines) if line == "## [Unreleased]")
-    end = len(lines)
-    for i in range(start + 1, len(lines)):
-        if lines[i].startswith("## ["):
-            end = i
-            break
-    section = "\n".join(lines[start + 1 : end])
-    headings = ["### Added", "### Changed", "### Fixed", "### Removed"]
-    positions = []
-    for heading in headings:
-        assert heading in section, f"Unreleased section missing {heading!r}"
-        positions.append(section.index(heading))
-    assert positions == sorted(positions), f"Unreleased sub-headings are not in order: {headings}"
-
-
-def test_unreleased_is_first_versioned_heading_and_no_version_before_it():
-    """AC3: the first line matching '## [' followed by text and ']' is
-    '## [Unreleased]', and no line matching '## [' followed by a version number
-    (digits and dots) appears before it."""
-    lines = CHANGELOG.read_text().splitlines()
-    pattern = re.compile(r"^## \[.+\]$")
-    version_pattern = re.compile(r"^## \[\d+(\.\d+)*\]$")
-    matched_lines = [line for line in lines if pattern.match(line)]
-    assert matched_lines, "no lines matching '## [...]' found in CHANGELOG.md"
-    assert matched_lines[0] == "## [Unreleased]", (
-        f"first versioned heading is {matched_lines[0]!r}, expected '## [Unreleased]'"
-    )
-    unreleased_idx = lines.index("## [Unreleased]")
-    for line in lines[:unreleased_idx]:
-        assert not version_pattern.match(line), (
-            f"version-numbered heading {line!r} appears before '## [Unreleased]'"
+    Each dict has keys: heading, version, date_str, date.
+    """
+    sections = []
+    for m in _HEADING_RE.finditer(content):
+        version = m.group(1)
+        if version == "Unreleased":
+            continue
+        rest = m.group(2)
+        dm = _DATE_RE.search(rest)
+        date_str = dm.group(1) if dm else None
+        d = None
+        if date_str:
+            try:
+                d = date.fromisoformat(date_str)
+            except ValueError:
+                d = None
+        sections.append(
+            {"heading": m.group(0), "version": version, "date_str": date_str, "date": d}
         )
+    return sections
 
 
-def test_changelog_1_0_0_section_has_date_entry_and_unreleased_above():
-    """AC2: [1.0.0] has a date suffix, the release entry under Added, and [Unreleased] above it."""
-    import re
-    from pathlib import Path
-
-    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    content = changelog.read_text()
-
-    # [1.0.0] heading with date suffix in the form '## [1.0.0] - YYYY-MM-DD'
-    match = re.search(r"^## \[1\.0\.0\] - \d{4}-\d{2}-\d{2}$", content, re.MULTILINE)
-    assert match, "Missing '## [1.0.0] - YYYY-MM-DD' heading"
-
-    # [Unreleased] section appears above [1.0.0]
-    unreleased_match = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
-    assert unreleased_match, "Missing '## [Unreleased]'"
-    assert unreleased_match.start() < match.start()
-
-    # The release entry appears under ### Added in the [1.0.0] section
-    after_100 = content[match.end() :]
-    next_heading = re.search(r"^## ", after_100, re.MULTILINE)
-    section = after_100[: next_heading.start()] if next_heading else after_100
-
-    added_section = re.search(
-        r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL
-    )
-    assert added_section, "No ### Added subsection in [1.0.0]"
-    entry = added_section.group(1)
-    assert "Sprint-metrics CLI: cycle time, lead time, throughput" in entry
-    assert "WIP-limit violations" in entry
-    assert "blocked-card aging" in entry
-    assert "first-attempt rate" in entry
-    assert "failure breakdown" in entry
+def _version_key(v: str) -> tuple:
+    return tuple(int(p) for p in v.split("."))
 
 
-def test_changelog_1_0_1_section_dated_with_entry_and_unreleased_above():
-    """AC2: [1.0.1] has a date suffix, [Unreleased] above it contains standard
-    subheadings, and [1.0.0] below remains with its date and entry."""
-    import re
-    from pathlib import Path
+def check_pyproject_version(changelog_text: str, pyproject_version: str) -> list[str]:
+    """Rule 1: the version in pyproject.toml equals the newest released section's version."""
+    violations = []
+    sections = _parse_released_sections(changelog_text)
+    if not sections:
+        violations.append(
+            "No released sections found in CHANGELOG.md; "
+            "pyproject.toml version must equal the newest released section's version"
+        )
+        return violations
+    newest = sections[0]
+    if newest["version"] != pyproject_version:
+        violations.append(
+            f"pyproject.toml version {pyproject_version!r} must equal the newest released "
+            f"section's version, but the newest released section is "
+            f"{newest['heading']!r} with version {newest['version']!r}"
+        )
+    return violations
 
-    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    content = changelog.read_text()
 
-    # [1.0.1] heading with date suffix in the form '## [1.0.1] - YYYY-MM-DD'
-    match = re.search(r"^## \[1\.0\.1\] - \d{4}-\d{2}-\d{2}$", content, re.MULTILINE)
-    assert match, "Missing '## [1.0.1] - YYYY-MM-DD' heading"
+def check_released_order_and_dates(
+    changelog_text: str, check_day: date | None = None
+) -> list[str]:
+    """Rule 2: released sections run newest-first by version; no section's date is
+    later than the section above it or later than the check day."""
+    violations = []
+    sections = _parse_released_sections(changelog_text)
+    if check_day is None:
+        check_day = date.today()
 
-    # [Unreleased] section appears above [1.0.1]
-    unreleased_match = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
-    assert unreleased_match, "Missing '## [Unreleased]'"
-    assert unreleased_match.start() < match.start()
+    for i, sec in enumerate(sections):
+        # Version ordering: each section's version must be >= the one below it
+        if (
+            i + 1 < len(sections)
+            and _version_key(sec["version"]) < _version_key(sections[i + 1]["version"])
+        ):
+            below = sections[i + 1]
+            violations.append(
+                f"Sections must run newest-first by version: "
+                f"{sec['heading']!r} (version {sec['version']!r}) "
+                f"is above {below['heading']!r} (version {below['version']!r})"
+            )
+        # Date ordering: this section's date must not be later than the one above
+        if (
+            i > 0
+            and sec["date"] is not None
+            and sections[i - 1]["date"] is not None
+            and sec["date"] > sections[i - 1]["date"]
+        ):
+            above = sections[i - 1]
+            violations.append(
+                f"Section {sec['heading']!r} (date {sec['date_str']!r}) "
+                f"is dated later than the section above it, "
+                f"{above['heading']!r} (date {above['date_str']!r}); "
+                f"no section's date may be later than the section above it"
+            )
+        # Future date check
+        if sec["date"] is not None and sec["date"] > check_day:
+            violations.append(
+                f"Section {sec['heading']!r} is dated {sec['date_str']!r}, "
+                f"which is later than the check day {check_day.isoformat()!r}; "
+                f"no released section may be dated later than the check day"
+            )
 
-    # [Unreleased] section contains the four standard subheadings in order
-    after_unreleased = content[unreleased_match.end() :]
-    next_heading = re.search(r"^## \[", after_unreleased, re.MULTILINE)
-    unreleased_section = (
-        after_unreleased[: next_heading.start()] if next_heading else after_unreleased
-    )
-    headings = ["### Added", "### Changed", "### Fixed", "### Removed"]
+    return violations
+
+
+def check_unreleased_first_and_subheadings(changelog_text: str) -> list[str]:
+    """Rule 3: '## [Unreleased]' is the first section, with Added, Changed, Fixed,
+    Removed subheadings in that order."""
+    violations = []
+    headings = list(_HEADING_RE.finditer(changelog_text))
+    if not headings:
+        violations.append("No '## [...]' headings found in CHANGELOG.md")
+        return violations
+
+    first = headings[0]
+    if first.group(1) != "Unreleased":
+        violations.append(
+            f"First section is {first.group(0)!r}, "
+            f"but '## [Unreleased]' must be the first section"
+        )
+        return violations
+
+    end = headings[1].start() if len(headings) > 1 else len(changelog_text)
+    body = changelog_text[first.end() : end]
+
     positions = []
-    for heading in headings:
-        assert heading in unreleased_section, f"[Unreleased] section missing {heading!r}"
-        positions.append(unreleased_section.index(heading))
-    assert positions == sorted(positions), "[Unreleased] sub-headings are not in order"
+    for heading in _SUBHEADINGS:
+        pos = body.find(heading)
+        if pos == -1:
+            violations.append(f"[Unreleased] section is missing {heading!r}")
+        else:
+            positions.append(pos)
 
-    # [1.0.0] section below [1.0.1] remains with its date
-    match_100 = re.search(r"^## \[1\.0\.0\] - 2025-07-13$", content, re.MULTILINE)
-    assert match_100, "Missing '## [1.0.0] - 2025-07-13' heading"
-    assert match_100.start() > match.start(), "[1.0.0] should appear below [1.0.1]"
-
-
-def test_changelog_1_1_0_section_has_stateful_service_entry():
-    """AC5: the [1.1.0] section has exactly four subheadings in order; the first
-    non-blank line after '### Added' is a bullet containing the five required
-    substrings; and zero bullet lines under Changed, Fixed, and Removed."""
-    import re
-    from pathlib import Path
-
-    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    lines = changelog.read_text().splitlines()
-
-    start = None
-    for i, line in enumerate(lines):
-        if re.match(r"^## \[1\.1\.0\] - \d{4}-\d{2}-\d{2}$", line):
-            start = i
-            break
-    assert start is not None, "Missing '## [1.1.0] - YYYY-MM-DD' heading"
-
-    end = len(lines)
-    for i in range(start + 1, len(lines)):
-        if lines[i].startswith("## "):
-            end = i
-            break
-
-    section_lines = lines[start + 1 : end]
-
-    subheadings = ["### Added", "### Changed", "### Fixed", "### Removed"]
-    found_headings = [line for line in section_lines if line.startswith("### ")]
-    assert found_headings == subheadings, (
-        f"Subheadings are {found_headings}, expected {subheadings}"
-    )
-
-    added_idx = section_lines.index("### Added")
-    next_idx = added_idx + 1
-    while next_idx < len(section_lines) and section_lines[next_idx].strip() == "":
-        next_idx += 1
-    assert next_idx < len(section_lines), "No content after ### Added"
-    first_line = section_lines[next_idx]
-    assert first_line.startswith("- "), (
-        f"Line after ### Added is {first_line!r}, expected to start with '- '"
-    )
-    for substring in [
-        "board events over HTTP",
-        "Postgres",
-        "Prometheus /metrics",
-        "health-check",
-        "schema",
-    ]:
-        assert substring in first_line, f"Line after ### Added missing {substring!r}"
-
-    for heading in ["### Changed", "### Fixed", "### Removed"]:
-        heading_idx = section_lines.index(heading)
-        for j in range(heading_idx + 1, len(section_lines)):
-            line = section_lines[j]
-            if line.startswith("### ") or line.startswith("## "):
+    if len(positions) == len(_SUBHEADINGS) and positions != sorted(positions):
+        for i in range(len(positions) - 1):
+            if positions[i] > positions[i + 1]:
+                violations.append(
+                    f"[Unreleased] subheadings are not in order: "
+                    f"{_SUBHEADINGS[i + 1]!r} appears before "
+                    f"{_SUBHEADINGS[i]!r}"
+                )
                 break
-            assert not line.startswith("- "), f"Bullet line {line!r} found under {heading!r}"
+
+    return violations
 
 
-def test_changelog_1_1_0_date_is_valid_and_after_1_0_2():
-    """AC6: the date in the [1.1.0] heading is a valid ISO date strictly after
-    2025-07-15 (the [1.0.2] release date)."""
-    import re
-    from datetime import date
-    from pathlib import Path
+def check_released_headings_dated(changelog_text: str) -> list[str]:
+    """Rule 4: every released section's heading is dated YYYY-MM-DD."""
+    violations = []
+    for sec in _parse_released_sections(changelog_text):
+        if sec["date_str"] is None or sec["date"] is None:
+            violations.append(
+                f"Section heading {sec['heading']!r} is not dated with YYYY-MM-DD"
+            )
+    return violations
 
-    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    content = changelog.read_text()
 
-    match = re.search(r"^## \[1\.1\.0\] - (\d{4}-\d{2}-\d{2})$", content, re.MULTILINE)
-    assert match, "Missing '## [1.1.0] - YYYY-MM-DD' heading"
+def test_rule_pyproject_version_matches_newest_released():
+    """AC1: pyproject.toml version equals the newest released section's version."""
+    content = CHANGELOG.read_text()
+    with open(PYPROJECT, "rb") as f:
+        pyver = tomllib.load(f)["project"]["version"]
 
-    parsed = date.fromisoformat(match.group(1))
-    assert parsed > date(2025, 7, 15), (
-        f"[1.1.0] date {match.group(1)} is not after [1.0.2] date 2025-07-15"
+    # The real changelog passes
+    assert check_pyproject_version(content, pyver) == []
+
+    # Mutation: newest section's version differs from pyproject
+    mutated = content.replace("## [1.3.3]", "## [1.4.0]", 1)
+    violations = check_pyproject_version(mutated, pyver)
+    assert len(violations) == 1
+    assert pyver in violations[0], (
+        f"message must name pyproject version {pyver!r}: {violations[0]}"
+    )
+    assert "1.4.0" in violations[0], (
+        f"message must name the section version: {violations[0]}"
     )
 
 
-def test_changelog_1_2_0_section_content():
-    """AC2: the [1.2.0] - 2026-10-10 section has the required entries under
-    Added (ten bullets) and Changed (two bullets)."""
-    import re
-    from pathlib import Path
+def test_rule_released_sections_newest_first_and_dates_ordered():
+    """AC2/AC3: released sections run newest-first by version; no date is later
+    than the section above it or later than the check day."""
+    content = CHANGELOG.read_text()
+    check_day = date(2026, 10, 20)
 
-    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    content = changelog.read_text()
+    # The real changelog passes
+    assert check_released_order_and_dates(content, check_day) == []
 
-    match = re.search(r"^## \[1\.2\.0\] - 2026-10-10$", content, re.MULTILINE)
-    assert match, "Missing '## [1.2.0] - 2026-10-10' heading"
+    # Mutation: a higher version below a lower one (version order violation)
+    mutated = content.replace("## [1.3.1]", "## [1.3.4]", 1)
+    violations = check_released_order_and_dates(mutated, check_day)
+    version_violations = [v for v in violations if "newest-first" in v]
+    assert version_violations, f"expected a version-order violation: {violations}"
+    msg = version_violations[0]
+    assert "1.3.2" in msg, f"message must name the upper section's version: {msg}"
+    assert "1.3.4" in msg, f"message must name the lower section's version: {msg}"
 
-    # Positioned between [Unreleased] and [1.1.0]
-    unreleased = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
-    assert unreleased and unreleased.start() < match.start()
-    v110 = re.search(r"^## \[1\.1\.0\] - \d{4}-\d{2}-\d{2}$", content, re.MULTILINE)
-    assert v110 and v110.start() > match.start()
+    # Mutation: a section's date later than the section above it (date order violation)
+    mutated = content.replace("## [1.3.2] - 2026-10-19", "## [1.3.2] - 2026-10-20", 1)
+    violations = check_released_order_and_dates(mutated, check_day)
+    date_violations = [v for v in violations if "later than the section above" in v]
+    assert date_violations, f"expected a date-order violation: {violations}"
+    msg = date_violations[0]
+    assert "1.3.2" in msg, f"message must name the offending section: {msg}"
+    assert "2026-10-20" in msg, f"message must name the offending date: {msg}"
 
-    after = content[match.end() :]
-    next_version = re.search(r"^## \[", after, re.MULTILINE)
-    section = after[: next_version.start()] if next_version else after
-
-    # Added subsection: ten bullets, each required topic present
-    added_match = re.search(r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert added_match, "No ### Added subsection in [1.2.0]"
-    added = added_match.group(1)
-    added_bullets = [line for line in added.splitlines() if line.startswith("- ")]
-    assert len(added_bullets) == 10, (
-        f"Expected 10 Added entries in [1.2.0], got {len(added_bullets)}"
-    )
-
-    added_checks = [
-        "/trend",
-        "OpenTelemetry",
-        "OTEL_",
-        "trace span",
-        "structured log",
-        "schemas/",
-        "attempt failed",
-        "Free-form sprint names",
-        "Points delivered",
-        "first-attempt counts",
-        "escalation count",
-        "failure-breakdown",
-        "503",
-        "POST /sprints",
-        "Automatic recovery",
-    ]
-    for phrase in added_checks:
-        assert phrase in added, f"[1.2.0] Added missing {phrase!r}"
-
-    # Changed subsection: two bullets, each required topic present
-    changed_match = re.search(
-        r"^### Changed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL
-    )
-    assert changed_match, "No ### Changed subsection in [1.2.0]"
-    changed = changed_match.group(1)
-    changed_bullets = [line for line in changed.splitlines() if line.startswith("- ")]
-    assert len(changed_bullets) == 2, (
-        f"Expected 2 Changed entries in [1.2.0], got {len(changed_bullets)}"
-    )
-
-    changed_checks = [
-        "start date",
-        "Null metrics",
-        "schemas allowing null",
-    ]
-    for phrase in changed_checks:
-        assert phrase in changed, f"[1.2.0] Changed missing {phrase!r}"
+    # Mutation: a future-dated section (check-day violation)
+    mutated = content.replace("## [1.3.3] - 2026-10-19", "## [1.3.3] - 2099-01-01", 1)
+    violations = check_released_order_and_dates(mutated, check_day)
+    future_violations = [v for v in violations if "check day" in v]
+    assert future_violations, f"expected a future-date violation: {violations}"
+    msg = future_violations[0]
+    assert "1.3.3" in msg, f"message must name the offending section: {msg}"
+    assert "2099-01-01" in msg, f"message must name the offending date: {msg}"
 
 
-def test_changelog_1_3_0_section_content():
-    """AC2: the [1.3.0] - 2026-10-13 section sits directly below [Unreleased], with
-    six Added bullets, one Changed bullet, and three Fixed bullets."""
-    import re
-    from pathlib import Path
-
-    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
-    content = changelog.read_text()
-
-    match = re.search(r"^## \[1\.3\.0\] - 2026-10-13$", content, re.MULTILINE)
-    assert match, "Missing '## [1.3.0] - 2026-10-13' heading"
-
-    # Positioned directly between [Unreleased] and [1.2.0]
-    unreleased = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
-    assert unreleased and unreleased.start() < match.start()
-    v120 = re.search(r"^## \[1\.2\.0\] - 2026-10-10$", content, re.MULTILINE)
-    assert v120 and match.start() < v120.start()
-
-    after = content[match.end() :]
-    next_version = re.search(r"^## \[", after, re.MULTILINE)
-    section = after[: next_version.start()] if next_version else after
-
-    added_match = re.search(r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert added_match, "No ### Added subsection in [1.3.0]"
-    added = added_match.group(1)
-    added_bullets = [line for line in added.splitlines() if line.startswith("- ")]
-    assert len(added_bullets) == 6, f"Expected 6 Added entries in [1.3.0], got {len(added_bullets)}"
-    for phrase in [
-        "superseded",
-        "replaced_by",
-        "Superseded column",
-        "Prometheus",
-        "cycle_time_minutes",
-        "lead_time_minutes",
-        "card_created_at",
-    ]:
-        assert phrase in added, f"[1.3.0] Added missing {phrase!r}"
-
-    changed_match = re.search(
-        r"^### Changed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL
-    )
-    assert changed_match, "No ### Changed subsection in [1.3.0]"
-    changed = changed_match.group(1)
-    changed_bullets = [line for line in changed.splitlines() if line.startswith("- ")]
-    assert len(changed_bullets) == 1, (
-        f"Expected 1 Changed entry in [1.3.0], got {len(changed_bullets)}"
-    )
-    assert "in-progress" in changed, "[1.3.0] Changed missing 'in-progress'"
-    assert "blocked" in changed, "[1.3.0] Changed missing 'blocked'"
-
-    fixed_match = re.search(r"^### Fixed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert fixed_match, "No ### Fixed subsection in [1.3.0]"
-    fixed = fixed_match.group(1)
-    fixed_bullets = [line for line in fixed.splitlines() if line.startswith("- ")]
-    assert len(fixed_bullets) == 3, f"Expected 3 Fixed entries in [1.3.0], got {len(fixed_bullets)}"
-    for phrase in ["/sprint", "space", "escalation rate", "0 to 100", "/range"]:
-        assert phrase in fixed, f"[1.3.0] Fixed missing {phrase!r}"
-
-
-def test_pyproject_version_is_1_3_3():
-    """AC1: pyproject.toml version field reads 1.3.3 with other fields unchanged."""
-    import tomllib
-    from pathlib import Path
-
-    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    with open(pyproject, "rb") as f:
-        data = tomllib.load(f)
-    project = data["project"]
-    assert project["version"] == "1.3.3"
-    assert project["name"] == "sprint-metrics"
-    assert project["description"] == "Delivery metrics for the crew's own board."
-    assert project["requires-python"] == ">=3.12,<3.13"
-    assert project["dependencies"] == [
-        "psycopg>=3.1",
-        "opentelemetry-sdk>=1.24",
-        "opentelemetry-exporter-otlp>=1.24",
-    ]
-
-
-def test_changelog_1_3_2_section_position_and_structure():
-    """AC5: '## [1.3.2]' appears exactly once, sits directly above '## [1.3.1] - 2026-10-13',
-    and beneath it exactly four subheadings appear in order: Added, Changed, Fixed, Removed."""
+def test_rule_unreleased_first_with_subheadings_in_order():
+    """AC4: [Unreleased] is the first section with Added, Changed, Fixed,
+    Removed subheadings in that order."""
     content = CHANGELOG.read_text()
 
-    # Appears exactly once
-    matches = list(re.finditer(r"^## \[1\.3\.2\]", content, re.MULTILINE))
-    assert len(matches) == 1, f"'## [1.3.2]' appears {len(matches)} times, expected 1"
-    match = matches[0]
+    # The real changelog passes
+    assert check_unreleased_first_and_subheadings(content) == []
 
-    # Sits directly above '## [1.3.1] - 2026-10-13'
-    v131 = re.search(r"^## \[1\.3\.1\] - 2026-10-13$", content, re.MULTILINE)
-    assert v131, "Missing '## [1.3.1] - 2026-10-13' heading"
-    # No other '## [' heading between [1.3.2] and [1.3.1]
-    between = content[match.end() : v131.start()]
-    assert not re.search(r"^## \[", between, re.MULTILINE), (
-        f"Another '## [' heading found between [1.3.2] and [1.3.1]: {between!r}"
+    # Mutation: a released section before [Unreleased]
+    mutated = content.replace(
+        "## [Unreleased]",
+        "## [1.3.3] - 2026-10-19\n\n### Added\n\n### Changed\n\n### Fixed\n"
+        "\n### Removed\n\n## [Unreleased]",
+        1,
+    )
+    violations = check_unreleased_first_and_subheadings(mutated)
+    assert violations, "expected a violation when [Unreleased] is not first"
+    assert "Unreleased" in violations[0], (
+        f"message must name the offending heading: {violations[0]}"
     )
 
-    # Four subheadings in order
-    section_end = v131.start()
-    section = content[match.end() : section_end]
-    headings = ["### Added", "### Changed", "### Fixed", "### Removed"]
-    positions = []
-    for heading in headings:
-        assert heading in section, f"[1.3.2] section missing {heading!r}"
-        positions.append(section.index(heading))
-    assert positions == sorted(positions), f"[1.3.2] sub-headings not in order: {headings}"
-
-
-def test_changelog_1_3_2_fixed_section_has_single_entry():
-    """AC6: the [1.3.2] section's '### Fixed' subsection has exactly one entry
-    naming both fixes: escalation rate no longer capped at 100, and /metrics
-    now reports the stored per-sprint escalation rate."""
-    content = CHANGELOG.read_text()
-
-    match = re.search(r"^## \[1\.3\.2\] - 2026-10-19$", content, re.MULTILINE)
-    assert match, "Missing '## [1.3.2] - 2026-10-19' heading"
-
-    after = content[match.end() :]
-    next_version = re.search(r"^## \[", after, re.MULTILINE)
-    section = after[: next_version.start()] if next_version else after
-
-    fixed_match = re.search(r"^### Fixed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert fixed_match, "No ### Fixed subsection in [1.3.2]"
-    fixed = fixed_match.group(1)
-    bullets = [line for line in fixed.splitlines() if line.startswith("- ")]
-    assert len(bullets) == 1, f"Expected 1 Fixed entry in [1.3.2], got {len(bullets)}: {bullets}"
-    entry = bullets[0]
-    assert "no longer capped at 100" in entry, (
-        f"[1.3.2] Fixed missing 'no longer capped at 100': {entry!r}"
+    # Mutation: a missing subheading in [Unreleased]
+    mutated = content.replace("### Removed\n\n## [1.3.3]", "## [1.3.3]", 1)
+    violations = check_unreleased_first_and_subheadings(mutated)
+    missing = [v for v in violations if "missing" in v]
+    assert missing, f"expected a missing-subheading violation: {violations}"
+    assert "### Removed" in missing[0], (
+        f"message must name the missing subheading: {missing[0]}"
     )
-    assert "/metrics" in entry, f"[1.3.2] Fixed missing '/metrics': {entry!r}"
-    assert "stored per-sprint escalation rate" in entry, (
-        f"[1.3.2] Fixed missing 'stored per-sprint escalation rate': {entry!r}"
+
+    # Mutation: subheadings out of order in [Unreleased]
+    mutated = content.replace(
+        "### Changed\n\n### Fixed\n\n### Removed\n\n## [1.3.3]",
+        "### Fixed\n\n### Changed\n\n### Removed\n\n## [1.3.3]",
+        1,
+    )
+    violations = check_unreleased_first_and_subheadings(mutated)
+    order = [v for v in violations if "not in order" in v]
+    assert order, f"expected an order violation: {violations}"
+    assert "### Fixed" in order[0], (
+        f"message must name the out-of-order subheading: {order[0]}"
     )
 
 
-def test_changelog_1_3_2_added_changed_removed_have_no_entries():
-    """AC2: the [1.3.2] section's Added, Changed, and Removed subsections carry no entries."""
+def test_rule_released_headings_dated():
+    """AC5: every released section's heading is dated YYYY-MM-DD."""
     content = CHANGELOG.read_text()
 
-    match = re.search(r"^## \[1\.3\.2\] - 2026-10-19$", content, re.MULTILINE)
-    assert match, "Missing '## [1.3.2] - 2026-10-19' heading"
+    # The real changelog passes
+    assert check_released_headings_dated(content) == []
 
-    after = content[match.end() :]
-    next_version = re.search(r"^## \[", after, re.MULTILINE)
-    section = after[: next_version.start()] if next_version else after
-
-    for subheading in ["Added", "Changed", "Removed"]:
-        sub_match = re.search(
-            rf"^### {subheading}\s*\n(.*?)(?=^### |\Z)",
-            section,
-            re.MULTILINE | re.DOTALL,
-        )
-        assert sub_match, f"No content region after '### {subheading}' in [1.3.2]"
-        sub_content = sub_match.group(1).strip()
-        bullets = [line for line in sub_content.splitlines() if line.startswith("- ")]
-        assert not bullets, f"[1.3.2] ### {subheading} has entries: {bullets}; expected none"
-
-
-def test_changelog_1_3_1_section_content():
-    """AC3: the [1.3.1] - 2026-10-13 section sits below [1.3.2],
-    with one Added bullet (docs entry) and one Fixed bullet (superseded counting)."""
-    content = CHANGELOG.read_text()
-
-    match = re.search(r"^## \[1\.3\.1\] - 2026-10-13$", content, re.MULTILINE)
-    assert match, "Missing '## [1.3.1] - 2026-10-13' heading"
-
-    # Positioned directly between [Unreleased] and [1.3.0]
-    unreleased = re.search(r"^## \[Unreleased\]$", content, re.MULTILINE)
-    assert unreleased and unreleased.start() < match.start()
-    v130 = re.search(r"^## \[1\.3\.0\] - 2026-10-13$", content, re.MULTILINE)
-    assert v130 and match.start() < v130.start()
-
-    after = content[match.end() :]
-    next_version = re.search(r"^## \[", after, re.MULTILINE)
-    section = after[: next_version.start()] if next_version else after
-
-    # Added: one bullet for the docs entry
-    added_match = re.search(r"^### Added\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert added_match, "No ### Added subsection in [1.3.1]"
-    added = added_match.group(1)
-    added_bullets = [line for line in added.splitlines() if line.startswith("- ")]
-    assert len(added_bullets) == 1, f"Expected 1 Added entry in [1.3.1], got {len(added_bullets)}"
-    assert "docs/metrics.md" in added, "[1.3.1] Added missing 'docs/metrics.md'"
-    assert "docs/cards.md" in added, "[1.3.1] Added missing 'docs/cards.md'"
-    assert "docs/formats.md" in added, "[1.3.1] Added missing 'docs/formats.md'"
-    assert "cycle_time_minutes" in added, "[1.3.1] Added missing 'cycle_time_minutes'"
-    assert "lead_time_minutes" in added, "[1.3.1] Added missing 'lead_time_minutes'"
-
-    # Fixed: one bullet for the superseded counting
-    fixed_match = re.search(r"^### Fixed\s*\n(.*?)(?=^### |\Z)", section, re.MULTILINE | re.DOTALL)
-    assert fixed_match, "No ### Fixed subsection in [1.3.1]"
-    fixed = fixed_match.group(1)
-    fixed_bullets = [line for line in fixed.splitlines() if line.startswith("- ")]
-    assert len(fixed_bullets) == 1, f"Expected 1 Fixed entry in [1.3.1], got {len(fixed_bullets)}"
-    assert "superseded" in fixed, "[1.3.1] Fixed missing 'superseded'"
-    assert "superseded_count" in fixed, "[1.3.1] Fixed missing 'superseded_count'"
-    assert "superseded_points" in fixed, "[1.3.1] Fixed missing 'superseded_points'"
-    assert "superseded_breakdown" in fixed, "[1.3.1] Fixed missing 'superseded_breakdown'"
-
-
-def test_changelog_unreleased_has_no_entries():
-    """AC3: [Unreleased] keeps its Added, Changed, Fixed, Removed subheadings
-    but has no bullets beneath any of them."""
-    content = CHANGELOG.read_text()
-    match = re.search(
-        r"^## \[Unreleased\]\s*\n(.*?)(?=^## \[|\Z)", content, re.MULTILINE | re.DOTALL
+    # Mutation: remove a date from a section heading
+    mutated = content.replace("## [1.3.3] - 2026-10-19", "## [1.3.3]", 1)
+    violations = check_released_headings_dated(mutated)
+    assert violations, "expected a violation for undated heading"
+    assert "1.3.3" in violations[0], (
+        f"message must name the offending heading: {violations[0]}"
     )
-    assert match, "Missing '## [Unreleased]'"
-    unreleased = match.group(1)
 
-    for heading in ["### Added", "### Changed", "### Fixed", "### Removed"]:
-        assert heading in unreleased, f"Unreleased section missing {heading!r}"
-
-    for subheading in ["Added", "Changed", "Fixed", "Removed"]:
-        sub_match = re.search(
-            rf"^### {subheading}\s*\n(.*?)(?=^### |\Z)",
-            unreleased,
-            re.MULTILINE | re.DOTALL,
-        )
-        assert sub_match, f"No content region after '### {subheading}'"
-        sub_content = sub_match.group(1).strip()
-        bullets = [line for line in sub_content.splitlines() if line.startswith("- ")]
-        assert not bullets, f"[Unreleased] ### {subheading} has entries: {bullets}; expected none"
+    # Mutation: wrong date format
+    mutated = content.replace("## [1.3.3] - 2026-10-19", "## [1.3.3] - 10/19/2026", 1)
+    violations = check_released_headings_dated(mutated)
+    assert violations, "expected a violation for non-ISO date"
+    assert "1.3.3" in violations[0], (
+        f"message must name the offending heading: {violations[0]}"
+    )
