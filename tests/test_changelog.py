@@ -178,8 +178,8 @@ def test_rule_released_sections_newest_first_and_dates_ordered():
     content = CHANGELOG.read_text()
     check_day = date(2026, 10, 20)
 
-    # The real changelog passes
-    assert check_released_order_and_dates(content, check_day) == []
+    # The real changelog passes (using today's date so a future release doesn't trigger a spurious violation)
+    assert check_released_order_and_dates(content) == []
 
     # Mutation: a higher version below a lower one (version order violation)
     mutated = content.replace("## [1.3.1]", "## [1.3.4]", 1)
