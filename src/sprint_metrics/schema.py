@@ -115,7 +115,7 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
             "properties": {
                 **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
                 "first_attempt_rate_percent": {"type": ["integer", "null"]},
-                "top_failure_causes": {"type": ["object", "null"]},
+                "top_failure_causes": {"type": ["array", "object", "null"]},
                 "superseded_breakdown": {"type": ["object", "null"]},
                 "cycle_time_minutes": {"type": ["integer", "null"]},
                 "lead_time_minutes": {"type": ["integer", "null"]},
@@ -160,7 +160,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     **{key: {"type": ["integer", "null"]} for key in METRIC_KEYS},
                     "first_attempt_rate_percent": {"type": ["integer", "null"]},
                     "failure_breakdown": {"type": ["array", "null"]},
-                    "top_failure_causes": {"type": ["object", "null"]},
+                    "top_failure_causes": {"type": ["array", "object", "null"]},
                     "superseded_breakdown": {"type": ["object", "null"]},
                     "flags": {"type": ["object", "null"]},
                     "cycle_time_minutes": {"type": ["integer", "null"]},

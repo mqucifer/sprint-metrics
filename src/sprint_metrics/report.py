@@ -639,7 +639,9 @@ def format_json_report(
     report: dict[str, object] = {
         "api_version": API_VERSION,
         **metric_values,
-        "top_failure_causes": top_causes,
+        "top_failure_causes": [
+            {"class": cls, "role": role, "count": count} for cls, role, count in top_causes
+        ],
         "flags": filtered_flags,
     }
     if as_of is not None:
@@ -669,7 +671,10 @@ def format_json_report(
             "blocked_aging_days": prior_blocked,
             "escalation_rate_percent": prior_escalation,
             "first_attempt_rate_percent": prior_first_attempt,
-            "top_failure_causes": prior_top_causes,
+            "top_failure_causes": [
+                {"class": cls, "role": role, "count": count}
+                for cls, role, count in prior_top_causes
+            ],
             "superseded_count": prior_superseded_count,
             "superseded_points": prior_superseded_points,
             "superseded_breakdown": prior_superseded_breakdown,
@@ -1018,7 +1023,7 @@ _DEFINITIONS: dict[str, str] = {
     "first_attempt_rate_percent": "Percentage of completed cards that passed on the first attempt",
     "first_attempt_numerator": "Count of completed cards whose attempts equals 1",
     "first_attempt_denominator": "Total count of completed cards",
-    "failure_breakdown": "Most frequent failure classes among completed cards with attempts greater than 1",
+    "failure_breakdown": "Returns from review or QA, grouped by (failure class, returning role), most frequent first",
     "superseded_count": "Number of superseded stories in the sprint",
     "superseded_points": "Sum of points on superseded stories",
     "superseded_breakdown": "Per-reason count of superseded stories (sponsor, story_problem)",

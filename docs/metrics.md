@@ -12,7 +12,7 @@ BEGIN:metrics
 | Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_cycle_time_minutes` |
 | Escalation count | `escalation_count` | Return the number of escalated events in the sprint. | `sprint_escalation_count` |
 | Escalation rate | `escalation_rate_percent` | Return the escalation rate as a whole-number percentage of escalations over completed cards; 0 when no cards are completed. | `sprint_escalation_rate_percent` |
-| Top causes | `failure_breakdown` | Return the failure causes grouped by (class, role), sorted by count descending. | `sprint_failure_count` |
+| Top causes | `failure_breakdown` | Return the returns from review or QA, grouped by (failure class, returning role), sorted by count descending. | `sprint_failure_count` |
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. | `sprint_first_attempt_denominator` |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. | `sprint_first_attempt_numerator` |
 | First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt. | `sprint_first_attempt_rate_percent` |
@@ -38,16 +38,16 @@ reports 0.
 
 ### Failure breakdown
 
-The failure breakdown includes only completed cards with `attempts` greater
-than 1. Cards are grouped by their failure class and failure role, and the
-groups are sorted by count descending. The result is an empty list when no
-completed card has attempts greater than 1.
+The failure breakdown counts returns, not failed stories: one entry per
+return by review or QA, grouped by (failure class, returning role), sorted
+by count descending. The result is an empty list when no completed story has
+a return.
 
 ### Top failure causes
 
-Top failure causes is the top 3 failure classes by count, with ties broken
-alphabetically. The result is an empty object when no completed card has a
-non-null failure class.
+Top failure causes is the top 3 returns keyed by (failure class, returning
+role), count descending, ties broken alphabetically. The result is an empty
+list when no return was recorded.
 
 ### Superseded metrics
 

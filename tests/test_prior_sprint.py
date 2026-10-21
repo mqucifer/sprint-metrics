@@ -178,7 +178,7 @@ def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
         "blocked_aging_days": 0,
         "escalation_rate_percent": 0,
         "first_attempt_rate_percent": 100,
-        "top_failure_causes": {},
+        "top_failure_causes": [],
         "superseded_count": 0,
         "superseded_points": 0,
         "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
@@ -339,9 +339,9 @@ def test_prior_sprint_json_top_level_first_attempt_and_top_causes(tmp_path, caps
     assert exit_code == 0
     data = json.loads(captured.out)
     assert data["first_attempt_rate_percent"] == 80
-    assert data["top_failure_causes"] == {"requirement": 1}
+    assert data["top_failure_causes"] == [{"class": "requirement", "role": "", "count": 1}]
     assert data["prior"]["first_attempt_rate_percent"] == 67
-    assert data["prior"]["top_failure_causes"] == {"bug": 1}
+    assert data["prior"]["top_failure_causes"] == [{"class": "bug", "role": "", "count": 1}]
     assert data["delta"]["first_attempt_rate_percent"] == 13
 
 

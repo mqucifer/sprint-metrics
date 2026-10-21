@@ -4954,7 +4954,7 @@ def test_range_failure_breakdown_and_top_failure_causes_coexist():
         assert status == 200
         entry = body["sprints"]["2026-10"]
         assert entry["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
-        assert entry["top_failure_causes"] == {"VERIFY": 1}
+        assert entry["top_failure_causes"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
         assert len(entry["failure_breakdown"]) == 1
     finally:
         conn.close()

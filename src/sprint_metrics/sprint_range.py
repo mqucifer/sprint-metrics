@@ -285,7 +285,10 @@ def format_sprint_range_json(
                 {"class": cls, "role": role, "count": count}
                 for cls, role, count in calculate_failure_breakdown(cards)
             ],
-            "top_failure_causes": calculate_top_failure_causes(cards),
+            "top_failure_causes": [
+                {"class": cls, "role": role, "count": count}
+                for cls, role, count in calculate_top_failure_causes(cards)
+            ],
             "flags": flags,
             "prior": prior,
             "delta": delta,
@@ -348,7 +351,12 @@ def format_sprint_range_markdown(
             lines.append(f"- **First-attempt rate**: {calculate_first_attempt_rate(cards)}%")
             top_causes = calculate_top_failure_causes(cards)
             if top_causes:
-                parts = [f"{cause} ({count})" for cause, count in top_causes.items()]
+                parts = []
+                for cls, role, count in top_causes:
+                    if role:
+                        parts.append(f"{cls} ({role}) ({count})")
+                    else:
+                        parts.append(f"{cls} ({count})")
                 lines.append(f"- **Top failure causes**: {', '.join(parts)}")
             else:
                 lines.append("- **Top failure causes**: \u2014")
@@ -358,8 +366,13 @@ def format_sprint_range_markdown(
 
 
 def _format_top_causes(breakdown: list[tuple[str, str, int]]) -> str:
-    """Format the top 3 failure causes as 'class (N), class (N)' or '\u2014' when empty."""
+    """Format the top 3 failure causes as 'class (role) (N), …' or '—' when empty."""
     if not breakdown:
         return "\u2014"
-    parts = [f"{cls} ({count})" for cls, _role, count in breakdown[:3]]
+    parts = []
+    for cls, role, count in breakdown[:3]:
+        if role:
+            parts.append(f"{cls} ({role}) ({count})")
+        else:
+            parts.append(f"{cls} ({count})")
     return ", ".join(parts)

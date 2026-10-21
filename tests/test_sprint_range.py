@@ -1214,9 +1214,11 @@ def test_sprint_range_json_first_attempt_rate_and_top_failure_causes(tmp_path, c
     assert exit_code == 0
     data = json.loads(captured.out)
     assert data["sprints"]["2024-01"]["first_attempt_rate_percent"] == 67
-    assert data["sprints"]["2024-01"]["top_failure_causes"] == {"bug": 1}
+    assert data["sprints"]["2024-01"]["top_failure_causes"] == [
+        {"class": "bug", "role": "", "count": 1}
+    ]
     assert data["sprints"]["2024-02"]["first_attempt_rate_percent"] == 100
-    assert data["sprints"]["2024-02"]["top_failure_causes"] == {}
+    assert data["sprints"]["2024-02"]["top_failure_causes"] == []
 
 
 def test_sprint_range_json_prior_and_delta_first_attempt_rate(tmp_path, capsys):
@@ -1267,7 +1269,9 @@ def test_sprint_range_json_single_sprint_first_attempt_and_failure(tmp_path, cap
     assert exit_code == 0
     data = json.loads(captured.out)
     assert data["sprints"]["2024-01"]["first_attempt_rate_percent"] == 0
-    assert data["sprints"]["2024-01"]["top_failure_causes"] == {"integration": 1}
+    assert data["sprints"]["2024-01"]["top_failure_causes"] == [
+        {"class": "integration", "role": "", "count": 1}
+    ]
     assert data["sprints"]["2024-01"]["prior"] is None
     assert data["sprints"]["2024-01"]["delta"] is None
 

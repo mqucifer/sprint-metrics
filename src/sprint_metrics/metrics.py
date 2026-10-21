@@ -186,45 +186,59 @@ def calculate_first_attempt_rate(cards: Iterable[Card | Mapping[str, object]]) -
     return round(100 * first_attempt / len(completed))
 
 
+def _count_returns(cards: Iterable[Card | Mapping[str, object]]) -> dict[tuple[str, str], int]:
+    """Count returns by (class, role) from completed cards.
+
+    A card contributes if it has a non-empty failures list (one entry per
+    return), or in the legacy case if it has attempts greater than 1 (one
+    entry for the card's failure_class and failure_role).
+    """
+    completed = [card for card in _as_cards(cards) if card.is_completed]
+    counts: dict[tuple[str, str], int] = {}
+    for card in completed:
+        if card.failures is not None and len(card.failures) > 0:
+            for fc, fr in card.failures:
+                key = (fc, fr)
+                counts[key] = counts.get(key, 0) + 1
+        elif card.attempts > 1:
+            key = (card.failure_class or "", card.failure_role or "")
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def calculate_failure_breakdown(
     cards: Iterable[Card | Mapping[str, object]],
 ) -> list[tuple[str, str, int]]:
-    """Return the failure causes grouped by (class, role), sorted by count descending.
+    """Return the returns from review or QA, grouped by (failure class, returning role), sorted by count descending.
 
-    Only completed cards with ``attempts > 1`` contribute to the breakdown.
-    Ties in count preserve first-encounter order (stable sort). When no completed
-    card has attempts greater than 1 the result is an empty list.
+    Only completed cards with returns contribute to the breakdown. A card
+    contributes if it has a non-empty failures list, or (in the legacy case)
+    if it has attempts greater than 1. Each return in the failures list
+    contributes one (class, role) entry. Ties in count preserve first-encounter
+    order (stable sort). When no completed card has a return the result is an
+    empty list.
     """
-    completed = [card for card in _as_cards(cards) if card.is_completed and card.attempts > 1]
-    if not completed:
-        return []
-    counts: dict[tuple[str, str], int] = {}
-    for card in completed:
-        key = (card.failure_class or "", card.failure_role or "")
-        counts[key] = counts.get(key, 0) + 1
+    counts = _count_returns(cards)
     return [
         (cls, role, count)
         for (cls, role), count in sorted(counts.items(), key=lambda item: -item[1])
     ]
 
 
-def calculate_top_failure_causes(cards: Iterable[Card | Mapping[str, object]]) -> dict[str, int]:
-    """Return the top 3 failure causes among completed cards, as a dict mapping cause to count.
+def calculate_top_failure_causes(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> list[tuple[str, str, int]]:
+    """Return the top 3 returns keyed by (failure class, returning role), count descending, ties alphabetical.
 
-    Only completed cards with a non-None failure_class contribute. Ties in count are
-    broken alphabetically. Returns an empty dict when no completed card has a failure_class.
+    Only completed cards with returns contribute. Ties in count are broken
+    alphabetically by class then role. Returns an empty list when no completed
+    card has a return.
     """
-    completed = [
-        card for card in _as_cards(cards) if card.is_completed and card.failure_class is not None
-    ]
-    if not completed:
-        return {}
-    counts: dict[str, int] = {}
-    for card in completed:
-        key = card.failure_class
-        counts[key] = counts.get(key, 0) + 1
-    sorted_items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    return dict(sorted_items[:3])
+    counts = _count_returns(cards)
+    if not counts:
+        return []
+    sorted_items = sorted(counts.items(), key=lambda item: (-item[1], item[0][0], item[0][1]))
+    return [(cls, role, count) for (cls, role), count in sorted_items[:3]]
 
 
 def wip_violation_details(

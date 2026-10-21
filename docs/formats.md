@@ -11,7 +11,7 @@ The JSON response top level carries:
 - `superseded_breakdown` — object with `"sponsor"` and `"story_problem"` integer keys, the per-reason count
 
 Superseded stories are excluded from throughput and in-flight counts.
-- `top_failure_causes` — an object mapping failure cause names to their counts
+- `top_failure_causes` — an array of objects, each with `class`, `role`, and `count`, the top 3 returns
 - `flags` — an object of booleans indicating which default thresholds were breached
 - `failure_breakdown` — an array of objects, each with `class`, `role`, and `count`
 - `sprint_date` (optional) — present when `--sprint-date` is supplied
@@ -360,6 +360,7 @@ BEGIN:formats
         },
         "top_failure_causes": {
           "type": [
+            "array",
             "object",
             "null"
           ]
@@ -492,13 +493,14 @@ END:formats
 
 ## Worked examples
 
-The examples below all use the same input to show what each output format produces. The input contains one completed card (created 2024-01-01, started 2024-01-03, completed 2024-01-07) and one in-flight card (created 2024-01-04).
+The examples below all use the same input to show what each output format produces. The input contains one completed card (created 2024-01-01, started 2024-01-03, completed 2024-01-07, with one return: VERIFY by Review) and one in-flight card (created 2024-01-04).
 
 **Input** (`cards.json`):
 
 ```json
 [
-  {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"},
+  {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07",
+   "failures": [{"failure_class": "VERIFY", "failure_role": "Review"}]},
   {"created": "2024-01-04"}
 ]
 ```
@@ -512,7 +514,7 @@ sprint-metrics cards.json
 ```
 | Sprint | Cycle time | Lead time | Throughput | Superseded | WIP violations | Blocked aging | Escalation rate | First attempt | Top causes |
 |--------|------------|-----------|------------|------------|----------------|---------------|-----------------|---------------|------------|
-| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | — |
+| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% | 100% | 1× VERIFY (Review) |
 ```
 
 ### JSON
@@ -522,7 +524,7 @@ sprint-metrics cards.json --json
 ```
 
 ```json
-{"api_version": "1", "cycle_time_days": 4, "lead_time_days": 6, "throughput": 1, "points_delivered": 0, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "escalation_count": 0, "first_attempt_rate_percent": 100, "first_attempt_numerator": 1, "first_attempt_denominator": 1, "failure_breakdown": [], "top_failure_causes": {}, "superseded_count": 0, "superseded_points": 0, "superseded_breakdown": {"sponsor": 0, "story_problem": 0}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": false, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": false}}
+{"api_version": "1", "cycle_time_days": 4, "lead_time_days": 6, "throughput": 1, "points_delivered": 0, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "escalation_count": 0, "first_attempt_rate_percent": 100, "first_attempt_numerator": 1, "first_attempt_denominator": 1, "failure_breakdown": [{"class": "VERIFY", "role": "Review", "count": 1}], "top_failure_causes": [{"class": "VERIFY", "role": "Review", "count": 1}], "superseded_count": 0, "superseded_points": 0, "superseded_breakdown": {"sponsor": 0, "story_problem": 0}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": false, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": false}}
 ```
 
 ### Markdown
@@ -557,6 +559,9 @@ Status: All clear
 - **Escalation rate**: 0%
 - **First-attempt rate**: 100%
 
+Top failure causes
+- 1× VERIFY (Review)
+
 ## Definitions
 
 - Cycle time: Mean days from when a card started work to when it completed
@@ -567,7 +572,7 @@ Status: All clear
 - Blocked aging: Maximum number of days any card has been blocked
 - Escalation rate: Escalations as a percentage of completed cards
 - First-attempt rate: Percentage of completed cards that passed on the first attempt
-- Top causes: Most frequent failure classes among completed cards with attempts greater than 1
+- Top causes: Returns from review or QA, grouped by (failure class, returning role), most frequent first
 
 ## Card Detail
 
@@ -593,6 +598,7 @@ sprint_wip_violations 0
 sprint_blocked_aging_days 0
 sprint_escalation_rate_percent 0
 sprint_first_attempt_rate_percent 100
+sprint_failure_count{class="VERIFY",role="Review"} 1
 ```
 
 ### Error: invalid input
@@ -628,7 +634,7 @@ sprint-metrics cards.json --json
 ```
 
 ```json
-{"api_version": "1", "cycle_time_days": 0, "lead_time_days": 0, "throughput": 0, "points_delivered": 0, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "escalation_count": 0, "first_attempt_rate_percent": 0, "first_attempt_numerator": 0, "first_attempt_denominator": 0, "failure_breakdown": [], "top_failure_causes": {}, "superseded_count": 0, "superseded_points": 0, "superseded_breakdown": {"sponsor": 0, "story_problem": 0}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": true, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": true}}
+{"api_version": "1", "cycle_time_days": 0, "lead_time_days": 0, "throughput": 0, "points_delivered": 0, "wip_violations": 0, "blocked_aging_days": 0, "escalation_rate_percent": 0, "escalation_count": 0, "first_attempt_rate_percent": 0, "first_attempt_numerator": 0, "first_attempt_denominator": 0, "failure_breakdown": [], "top_failure_causes": [], "superseded_count": 0, "superseded_points": 0, "superseded_breakdown": {"sponsor": 0, "story_problem": 0}, "flags": {"cycle_time_days": false, "lead_time_days": false, "throughput": true, "wip_violations": false, "blocked_aging_days": false, "escalation_rate_percent": false, "first_attempt_rate_percent": true}}
 ```
 
 ## --metrics (metric filtering)
@@ -652,7 +658,7 @@ sprint-metrics cards.json --json --metrics throughput,cycle_time_days
 ```
 
 ```json
-{"api_version": "1", "cycle_time_days": 4, "throughput": 1, "top_failure_causes": {}, "flags": {"cycle_time_days": false, "throughput": false}}
+{"api_version": "1", "cycle_time_days": 4, "throughput": 1, "top_failure_causes": [], "flags": {"cycle_time_days": false, "throughput": false}}
 ```
 
 ### Table
