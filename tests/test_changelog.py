@@ -177,7 +177,9 @@ def test_rule_pyproject_version_matches_newest_released():
     violations = check_pyproject_version(mutated, pyver)
     assert len(violations) == 1
     assert pyver in violations[0], f"message must name pyproject version {pyver!r}: {violations[0]}"
-    assert bumped_version in violations[0], f"message must name the section version: {violations[0]}"
+    assert bumped_version in violations[0], (
+        f"message must name the section version: {violations[0]}"
+    )
 
 
 def test_rule_released_sections_newest_first_and_dates_ordered():
