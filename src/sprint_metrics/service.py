@@ -764,13 +764,18 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "GET",
         "/sprint",
-        "Return metrics for a single sprint. Sprints with no events return all-null values.",
+        "Return metrics for a single sprint. "
+        "failure_breakdown and top_failure_causes count returns — "
+        "one entry per return, by (failure class, returning role). "
+        "Sprints with no events return all-null values.",
     ),
     (
         "GET",
         "/range",
         "Return metrics for a range of sprints in chronological order. "
         "Each entry includes the prior-sprint delta. "
+        "failure_breakdown and top_failure_causes count returns, "
+        "one per return, by (failure class, returning role). "
         "Sprints with no events return all-null values.",
     ),
     (

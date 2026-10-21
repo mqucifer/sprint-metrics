@@ -221,9 +221,13 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
 def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card | None:
     """Reconstruct a Card from its stored events.
 
-    The card's attempts count is derived from the number of 'attempt_failed'
-    rows in its history (1 + count) when any exist; otherwise it falls back
-    to the attempts column on the 'finished' row (default 1).
+    The card's attempts count takes the crew-sent attempts from the 'finished'
+    row when that column is non-NULL; otherwise it falls back to 1 plus the
+    number of 'attempt_failed' rows; otherwise it defaults to 1.
+    The failures list is built from the (failure_class, failure_role) of each
+    'attempt_failed' row; the 'finished' row's failure fields populate
+    Card.failure_class/failure_role for display but do not add an entry to
+    the failures list.
     Points are read from the 'finished' row, or from the 'superseded' row when
     there is no 'finished' row. A 'superseded' row sets the card's superseded
     flag and superseded_because from the row's because column.
@@ -259,6 +263,8 @@ def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card |
     blocked_events: list[date] = []
     unblocked_events: list[date] = []
     attempt_failed_count = 0
+    finished_attempts: int | None = None
+    failures: list[tuple[str, str]] = []
 
     for row in events:
         (
@@ -288,8 +294,7 @@ def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card |
         elif event_type == "finished":
             completed = event_date
             completed_at = event_time
-            if ev_attempts is not None:
-                attempts = ev_attempts
+            finished_attempts = ev_attempts
             failure_class = ev_failure_class
             failure_role = ev_failure_role
             points = ev_points
@@ -309,8 +314,11 @@ def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card |
             unblocked_events.append(event_date)
         elif event_type == "attempt_failed":
             attempt_failed_count += 1
+            failures.append((ev_failure_class or "", ev_failure_role or ""))
 
-    if attempt_failed_count > 0:
+    if finished_attempts is not None:
+        attempts = finished_attempts
+    elif attempt_failed_count > 0:
         attempts = 1 + attempt_failed_count
 
     blocked_since: date | None = None
@@ -343,6 +351,7 @@ def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card |
         output_tokens=output_tokens,
         reasoning_output_tokens=reasoning_output_tokens,
         card_id=card_id,
+        failures=failures or None,
     )
 
 

@@ -4049,9 +4049,11 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
 
 @requires_db
 def test_sprint_failure_breakdown_with_multiple_attempts():
-    """UX5: after started + six attempt_failed + finished (attempts 7),
+    """AC3+UX6: after started + six attempt_failed + finished (attempts 7),
     GET /sprint returns first_attempt_rate_percent=0, throughput=1, and
-    failure_breakdown with exactly one element."""
+    failure_breakdown with one entry per return (VERIFY 3, SCHEMA 2, TEST 1,
+    all Developer) in count-descending order. top_failure_causes holds
+    exactly three entries, one per (class, role) return pair."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -4101,7 +4103,234 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
         assert status == 200
         assert body["first_attempt_rate_percent"] == 0
         assert body["throughput"] == 1
-        assert body["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
+        assert body["failure_breakdown"] == [
+            {"class": "VERIFY", "role": "Developer", "count": 3},
+            {"class": "SCHEMA", "role": "Developer", "count": 2},
+            {"class": "TEST", "role": "Developer", "count": 1},
+        ]
+        assert body["top_failure_causes"] == [
+            {"class": "VERIFY", "role": "Developer", "count": 3},
+            {"class": "SCHEMA", "role": "Developer", "count": 2},
+            {"class": "TEST", "role": "Developer", "count": 1},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_first_attempt_rate_driven_by_crew_attempts():
+    """AC1: a card with started + two attempt_failed + finished (attempts 1)
+    yields first_attempt_rate_percent 100 — the rate is driven by the
+    crew-sent attempts on the finished row, not by 1 + count."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_crew_attempts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac1_crew_attempts",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ac1_crew_attempts",
+                "type": "attempt_failed",
+                "timestamp": f"2024-01-12T{10 + i}:00:00Z",
+                "sprint": "Sprint 18",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2024-01-10"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ac1_crew_attempts",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+            attempts=1,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_rate_percent"] == 100
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_first_attempt_rate_fallback_when_no_crew_attempts():
+    """AC2: a card whose finished event carries no attempts field and whose
+    history holds two attempt_failed rows yields first_attempt_rate_percent 0
+    — the attempts count falls back to 1 + count (3)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_no_attempts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac2_no_attempts",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ac2_no_attempts",
+                "type": "attempt_failed",
+                "timestamp": f"2024-01-12T{10 + i}:00:00Z",
+                "sprint": "Sprint 18",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2024-01-10"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ac2_no_attempts",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_rate_percent"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_first_attempt_numerator_denominator_crew_attempts():
+    """UX7: a card with started + two attempt_failed + finished (attempts 1)
+    yields first_attempt_numerator 1 and first_attempt_denominator 1, so the
+    raw counts agree with the 100% rate and the crew-sent attempts count."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ux7_counts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ux7_counts",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ux7_counts",
+                "type": "attempt_failed",
+                "timestamp": f"2024-01-12T{10 + i}:00:00Z",
+                "sprint": "Sprint 18",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2024-01-10"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ux7_counts",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+            attempts=1,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_numerator"] == 1
+        assert body["first_attempt_denominator"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_first_attempt_rate_crew_attempts():
+    """UX8: a sprint with a card (started + two attempt_failed + finished
+    attempts 1) included in a range yields first_attempt_rate_percent 100 —
+    the crew's handout count drives the rate on the range surface as well."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ux8_range'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ux8_range",
+            event_type="started",
+            timestamp="2026-10-07T10:00:00Z",
+            sprint="2026-10",
+            created="2026-10-07",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ux8_range",
+                "type": "attempt_failed",
+                "timestamp": f"2026-10-07T{10 + i}:00:00Z",
+                "sprint": "2026-10",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2026-10-07"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ux8_range",
+            event_type="finished",
+            timestamp="2026-10-10T10:00:00Z",
+            sprint="2026-10",
+            created="2026-10-07",
+            attempts=1,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
+        assert status == 200
+        entry = body["sprints"]["2026-10"]
+        assert entry["first_attempt_rate_percent"] == 100
     finally:
         conn.close()
 
