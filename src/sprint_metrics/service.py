@@ -630,7 +630,74 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
 
 def _sprint_json(cards, escalations: int = 0) -> str:
     """Compute sprint metrics from stored cards and return the JSON report string."""
-    return format_json_report(cards, escalations=escalations)
+    report = json.loads(format_json_report(cards, escalations=escalations))
+    story_costs, cost = _compute_cost_summary(cards)
+    report["story_costs"] = story_costs
+    report["cost"] = cost
+    return json.dumps(report)
+
+
+def _compute_cost_summary(cards) -> tuple[list[dict], dict | None]:
+    """Compute the per-story cost list and the sprint's cost middle and total.
+
+    A card carries cost data when its model_seconds is not None; the per-story
+    cost is the total already stored on the card (the sum across roles). The two
+    percents on every story_costs item are the sprint's combined shares, not the
+    story's own. ``cost`` is the median (middle) and sum (total) of the three
+    measures over the costed stories. Returns ``([], None)`` when no card carries
+    cost data.
+    """
+    costed = [card for card in cards if card.model_seconds is not None]
+    if not costed:
+        return [], None
+    total_input = sum(card.input_tokens for card in costed)
+    total_cached = sum(card.cached_input_tokens for card in costed)
+    total_output = sum(card.output_tokens for card in costed)
+    total_reasoning = sum(card.reasoning_output_tokens for card in costed)
+    cached_input_percent = round(100 * total_cached / total_input) if total_input > 0 else 0
+    reasoning_output_percent = (
+        round(100 * total_reasoning / total_output) if total_output > 0 else 0
+    )
+    story_costs = [
+        {
+            "card_id": card.card_id,
+            "model_minutes": round(card.model_seconds / 60),
+            "input_tokens": card.input_tokens,
+            "cached_input_percent": cached_input_percent,
+            "output_tokens": card.output_tokens,
+            "reasoning_output_percent": reasoning_output_percent,
+        }
+        for card in costed
+    ]
+    per_story_minutes = [item["model_minutes"] for item in story_costs]
+    per_story_input = [item["input_tokens"] for item in story_costs]
+    per_story_output = [item["output_tokens"] for item in story_costs]
+    cost = {
+        "middle": {
+            "model_minutes": _median(per_story_minutes),
+            "input_tokens": _median(per_story_input),
+            "output_tokens": _median(per_story_output),
+        },
+        "total": {
+            "model_minutes": sum(per_story_minutes),
+            "input_tokens": sum(per_story_input),
+            "output_tokens": sum(per_story_output),
+        },
+    }
+    return story_costs, cost
+
+
+def _median(values: list[int]) -> int:
+    """The median of a list of whole numbers.
+
+    For an odd count this is the middle value; for an even count it is the
+    average of the two middle values, rounded (Python's round-half-to-even).
+    """
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return round((ordered[mid - 1] + ordered[mid]) / 2)
 
 
 def _metrics_text(sprints: dict[str, list], escalations: dict[str, int] | None = None) -> str:
@@ -760,6 +827,8 @@ def _null_sprint_response() -> dict:
         "superseded_points": None,
         "superseded_breakdown": None,
         "flags": None,
+        "story_costs": [],
+        "cost": None,
     }
 
 

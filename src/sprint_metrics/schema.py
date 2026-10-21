@@ -64,6 +64,52 @@ SINGLE_SPRINT_SCHEMA: dict[str, object] = {
         "sprint_date": {"type": "string"},
         "cycle_time_minutes": {"type": ["integer", "null"]},
         "lead_time_minutes": {"type": ["integer", "null"]},
+        "story_costs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "card_id": {"type": "string"},
+                    "model_minutes": {"type": "integer"},
+                    "input_tokens": {"type": "integer"},
+                    "cached_input_percent": {"type": "integer"},
+                    "output_tokens": {"type": "integer"},
+                    "reasoning_output_percent": {"type": "integer"},
+                },
+                "required": [
+                    "card_id",
+                    "model_minutes",
+                    "input_tokens",
+                    "cached_input_percent",
+                    "output_tokens",
+                    "reasoning_output_percent",
+                ],
+            },
+        },
+        "cost": {
+            "type": ["object", "null"],
+            "properties": {
+                "middle": {
+                    "type": "object",
+                    "properties": {
+                        "model_minutes": {"type": "integer"},
+                        "input_tokens": {"type": "integer"},
+                        "output_tokens": {"type": "integer"},
+                    },
+                    "required": ["model_minutes", "input_tokens", "output_tokens"],
+                },
+                "total": {
+                    "type": "object",
+                    "properties": {
+                        "model_minutes": {"type": "integer"},
+                        "input_tokens": {"type": "integer"},
+                        "output_tokens": {"type": "integer"},
+                    },
+                    "required": ["model_minutes", "input_tokens", "output_tokens"],
+                },
+            },
+            "required": ["middle", "total"],
+        },
         "prior": {
             "type": "object",
             "properties": {
