@@ -33,10 +33,13 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     replaced_by JSONB,
     PRIMARY KEY (card_id, type, event_time),
     CONSTRAINT board_events_type_check CHECK (
-        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
     ),
     CONSTRAINT board_events_because_check CHECK (
         because IS NULL OR because IN ('sponsor', 'story_problem')
+    ),
+    CONSTRAINT board_events_reason_check CHECK (
+        reason IS NULL OR reason IN ('session blocked', 'contract ruling')
     )
 );
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS attempt_number INT;
@@ -50,9 +53,15 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS input_tokens BI
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS cached_input_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS reasoning_output_tokens BIGINT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS reason TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS missing TEXT;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
-    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
+);
+ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_reason_check;
+ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_reason_check CHECK (
+    reason IS NULL OR reason IN ('session blocked', 'contract ruling')
 );
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_because_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_because_check CHECK (
@@ -92,6 +101,7 @@ def insert_event(conn: Connection, event: dict) -> None:
     is_finished = event_type == "finished"
     is_attempt_failed = event_type == "attempt_failed"
     is_superseded = event_type == "superseded"
+    is_returned = event_type == "returned"
 
     if is_finished:
         ev_failure_class = card.get("failure_class")
@@ -112,6 +122,9 @@ def insert_event(conn: Connection, event: dict) -> None:
         json.dumps(event["replaced_by"]) if is_superseded and "replaced_by" in event else None
     )
 
+    ev_reason = event.get("reason") if is_returned else None
+    ev_missing = event.get("missing") if is_returned else None
+
     card_created_at = _parse_datetime(card.get("created_at"), "created_at")
 
     ev_model_seconds = card.get("model_seconds") if is_finished else None
@@ -126,8 +139,9 @@ def insert_event(conn: Connection, event: dict) -> None:
             (card_id, type, event_time, sprint, card_created,
              attempts, failure_class, failure_role, attempt_number, points,
              because, epic, replaced_by, card_created_at,
-             model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens,
+             reason, missing)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO UPDATE SET
             attempts = COALESCE(board_events.attempts, EXCLUDED.attempts),
             failure_class = COALESCE(board_events.failure_class, EXCLUDED.failure_class),
@@ -142,7 +156,9 @@ def insert_event(conn: Connection, event: dict) -> None:
             input_tokens = COALESCE(board_events.input_tokens, EXCLUDED.input_tokens),
             cached_input_tokens = COALESCE(board_events.cached_input_tokens, EXCLUDED.cached_input_tokens),
             output_tokens = COALESCE(board_events.output_tokens, EXCLUDED.output_tokens),
-            reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens)
+            reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens),
+            reason = COALESCE(board_events.reason, EXCLUDED.reason),
+            missing = COALESCE(board_events.missing, EXCLUDED.missing)
         """,
         (
             event["card_id"],
@@ -164,6 +180,8 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_cached_input_tokens,
             ev_output_tokens,
             ev_reasoning_output_tokens,
+            ev_reason,
+            ev_missing,
         ),
     )
     conn.commit()

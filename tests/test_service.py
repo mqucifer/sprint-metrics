@@ -1693,8 +1693,8 @@ def test_schema_event_top_level_structure():
 
 @requires_db
 def test_schema_event_type_enum_exact():
-    """AC3+UX4: properties.type.enum is an array of exactly seven strings in order:
-    started, blocked, unblocked, finished, escalated, attempt_failed, superseded."""
+    """AC3+UX4: properties.type.enum is an array of exactly eight strings in order:
+    started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1712,6 +1712,7 @@ def test_schema_event_type_enum_exact():
             "escalated",
             "attempt_failed",
             "superseded",
+            "returned",
         ]
     finally:
         conn.close()

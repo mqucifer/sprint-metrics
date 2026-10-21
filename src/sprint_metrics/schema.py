@@ -163,6 +163,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "escalated",
                 "attempt_failed",
                 "superseded",
+                "returned",
             ],
         },
         "timestamp": {"type": "string", "format": "date-time"},
@@ -190,6 +191,8 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "because": {"type": "string", "enum": ["sponsor", "story_problem"]},
         "epic": {"type": "string"},
         "replaced_by": {"type": ["array", "null"], "items": {"type": "integer"}},
+        "reason": {"type": "string", "enum": ["session blocked", "contract ruling"]},
+        "missing": {"type": "string"},
     },
 }
 
