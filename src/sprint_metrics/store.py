@@ -45,6 +45,11 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS because TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS epic TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS replaced_by JSONB;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS card_created_at TIMESTAMPTZ;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_seconds INT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS input_tokens BIGINT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS cached_input_tokens BIGINT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS reasoning_output_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
     type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
@@ -109,13 +114,20 @@ def insert_event(conn: Connection, event: dict) -> None:
 
     card_created_at = _parse_datetime(card.get("created_at"), "created_at")
 
+    ev_model_seconds = card.get("model_seconds") if is_finished else None
+    ev_input_tokens = card.get("input_tokens") if is_finished else None
+    ev_cached_input_tokens = card.get("cached_input_tokens") if is_finished else None
+    ev_output_tokens = card.get("output_tokens") if is_finished else None
+    ev_reasoning_output_tokens = card.get("reasoning_output_tokens") if is_finished else None
+
     conn.execute(
         """
         INSERT INTO sprint_metrics.board_events
             (card_id, type, event_time, sprint, card_created,
              attempts, failure_class, failure_role, attempt_number, points,
-             because, epic, replaced_by, card_created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             because, epic, replaced_by, card_created_at,
+             model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO UPDATE SET
             attempts = COALESCE(board_events.attempts, EXCLUDED.attempts),
             failure_class = COALESCE(board_events.failure_class, EXCLUDED.failure_class),
@@ -125,7 +137,12 @@ def insert_event(conn: Connection, event: dict) -> None:
             because = COALESCE(board_events.because, EXCLUDED.because),
             epic = COALESCE(board_events.epic, EXCLUDED.epic),
             replaced_by = COALESCE(board_events.replaced_by, EXCLUDED.replaced_by),
-            card_created_at = COALESCE(board_events.card_created_at, EXCLUDED.card_created_at)
+            card_created_at = COALESCE(board_events.card_created_at, EXCLUDED.card_created_at),
+            model_seconds = COALESCE(board_events.model_seconds, EXCLUDED.model_seconds),
+            input_tokens = COALESCE(board_events.input_tokens, EXCLUDED.input_tokens),
+            cached_input_tokens = COALESCE(board_events.cached_input_tokens, EXCLUDED.cached_input_tokens),
+            output_tokens = COALESCE(board_events.output_tokens, EXCLUDED.output_tokens),
+            reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens)
         """,
         (
             event["card_id"],
@@ -142,6 +159,11 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_epic,
             ev_replaced_by,
             card_created_at,
+            ev_model_seconds,
+            ev_input_tokens,
+            ev_cached_input_tokens,
+            ev_output_tokens,
+            ev_reasoning_output_tokens,
         ),
     )
     conn.commit()
@@ -180,7 +202,8 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
         events = conn.execute(
             """
             SELECT type, event_time, card_created, card_created_at, attempts,
-                   failure_class, failure_role, points, because
+                   failure_class, failure_role, points, because,
+                   model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens
             FROM sprint_metrics.board_events
             WHERE card_id = %s
             ORDER BY event_time
@@ -207,6 +230,9 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     The card_created_at column (TIMESTAMPTZ) is read from the first non-NULL row
     and assigned to the Card's created_at field. The full event_time (TIMESTAMPTZ)
     is assigned to started_at and completed_at.
+    The five cost columns (model_seconds, input_tokens, cached_input_tokens,
+    output_tokens, reasoning_output_tokens) are read from the 'finished' row
+    and assigned to the Card's cost fields.
     """
     if not events:
         return None
@@ -223,22 +249,23 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     points: int | None = None
     superseded = False
     superseded_because: str | None = None
+    model_seconds: int | None = None
+    input_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    output_tokens: int | None = None
+    reasoning_output_tokens: int | None = None
 
     blocked_events: list[date] = []
     unblocked_events: list[date] = []
     attempt_failed_count = 0
 
-    for (
-        event_type,
-        event_time,
-        card_created,
-        card_created_at,
-        ev_attempts,
-        ev_failure_class,
-        ev_failure_role,
-        ev_points,
-        ev_because,
-    ) in events:
+    for row in events:
+        event_type, event_time, card_created, card_created_at, ev_attempts, ev_failure_class, ev_failure_role, ev_points, ev_because = row[:9]
+        ev_model_seconds = row[9] if len(row) > 9 else None
+        ev_input_tokens = row[10] if len(row) > 10 else None
+        ev_cached_input_tokens = row[11] if len(row) > 11 else None
+        ev_output_tokens = row[12] if len(row) > 12 else None
+        ev_reasoning_output_tokens = row[13] if len(row) > 13 else None
         event_date = event_time.date() if hasattr(event_time, "date") else event_time
         if created is None and card_created is not None:
             created = card_created
@@ -255,6 +282,11 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
             failure_class = ev_failure_class
             failure_role = ev_failure_role
             points = ev_points
+            model_seconds = ev_model_seconds
+            input_tokens = ev_input_tokens
+            cached_input_tokens = ev_cached_input_tokens
+            output_tokens = ev_output_tokens
+            reasoning_output_tokens = ev_reasoning_output_tokens
         elif event_type == "superseded":
             superseded = True
             superseded_because = ev_because
@@ -294,6 +326,11 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         created_at=created_at,
         started_at=started_at,
         completed_at=completed_at,
+        model_seconds=model_seconds,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        reasoning_output_tokens=reasoning_output_tokens,
     )
 
 

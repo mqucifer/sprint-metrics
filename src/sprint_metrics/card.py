@@ -29,6 +29,11 @@ class Card:
     created_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    model_seconds: int | None = None
+    input_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    output_tokens: int | None = None
+    reasoning_output_tokens: int | None = None
 
     @property
     def is_completed(self) -> bool:
