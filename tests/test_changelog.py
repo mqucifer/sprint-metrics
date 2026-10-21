@@ -164,12 +164,20 @@ def test_rule_pyproject_version_matches_newest_released():
     # The real changelog passes
     assert check_pyproject_version(content, pyver) == []
 
-    # Mutation: newest section's version differs from pyproject
-    mutated = content.replace("## [1.3.3]", "## [1.4.0]", 1)
+    # Mutation: change the newest released section's version to a different one
+    newest = _parse_released_sections(content)[0]
+    parts = newest["version"].split(".")
+    parts[-1] = str(int(parts[-1]) + 1)
+    bumped_version = ".".join(parts)
+    mutated = content.replace(
+        newest["heading"],
+        newest["heading"].replace(newest["version"], bumped_version, 1),
+        1,
+    )
     violations = check_pyproject_version(mutated, pyver)
     assert len(violations) == 1
     assert pyver in violations[0], f"message must name pyproject version {pyver!r}: {violations[0]}"
-    assert "1.4.0" in violations[0], f"message must name the section version: {violations[0]}"
+    assert bumped_version in violations[0], f"message must name the section version: {violations[0]}"
 
 
 def test_rule_released_sections_newest_first_and_dates_ordered():
