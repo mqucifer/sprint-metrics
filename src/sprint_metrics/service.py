@@ -916,9 +916,7 @@ def _attach_range_cost(
             for name in _COST_FLAT_NAMES:
                 entry["prior"][name] = prior_flat[name]
                 cur, pri = current_flat[name], prior_flat[name]
-                entry["delta"][name] = (
-                    cur - pri if cur is not None and pri is not None else None
-                )
+                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 
 
 def _validate_cost_fields(card: dict) -> str | None:

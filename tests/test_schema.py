@@ -625,9 +625,7 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
     response = {
         "api_version": "1",
         "sprints": {
-            "2026-09": _range_entry(
-                story_costs=[costed_story], cost=cost, prior=None, delta=None
-            ),
+            "2026-09": _range_entry(story_costs=[costed_story], cost=cost, prior=None, delta=None),
             "2026-10": _range_entry(
                 story_costs=[costed_story],
                 cost=cost,
