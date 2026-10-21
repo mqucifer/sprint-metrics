@@ -261,6 +261,13 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 400
                             return
 
+                    if event_type == "finished":
+                        error = _validate_cost_fields(card)
+                        if error:
+                            self._send_json(400, {"error": error})
+                            status = 400
+                            return
+
                     if event_type == "superseded":
                         error = _validate_superseded_event(event)
                         if error:
@@ -765,6 +772,33 @@ def _null_range_entry() -> dict:
         "prior": None,
         "delta": None,
     }
+
+
+def _validate_cost_fields(card: dict) -> str | None:
+    """Validate all-or-nothing cost fields on a finished event's card payload.
+
+    Returns an error string on failure, None on success or when no cost key is present.
+    """
+    cost_keys = (
+        "model_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    )
+    present = [k for k in cost_keys if k in card]
+    if not present:
+        return None
+    missing = [k for k in cost_keys if k not in card]
+    if missing:
+        return f"partial cost payload on finished event: missing {', '.join(missing)}"
+    for key in cost_keys:
+        value = card[key]
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"invalid cost payload on finished event: {key} must be a non-negative integer"
+        if value < 0:
+            return f"invalid cost payload on finished event: {key} must be a non-negative integer"
+    return None
 
 
 def _validate_superseded_event(event: dict) -> str | None:

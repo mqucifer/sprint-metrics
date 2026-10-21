@@ -6924,3 +6924,229 @@ def test_service_escalation_rate_200_on_sprint_range_and_trend():
         assert body["values"][0] == {"sprint": "2024-01", "value": 200}
     finally:
         conn.close()
+
+
+@requires_db
+def test_finite_event_with_full_cost_payload_accepted():
+    """AC1: POST a finished event with all five cost fields returns 200."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-a'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # First, post a started event so the card exists
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(card_id="cost-a", event_type="started", sprint="2024-01"),
+        )
+        # Now post a finished event with all five cost fields
+        event = _make_event(
+            card_id="cost-a",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_partial_cost_payload_rejected():
+    """AC2: POST a finished event with only some cost fields returns 400,
+    and the error identifies the cost payload as the problem."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-b'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-b",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cost" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_negative_cost_field_rejected():
+    """AC3a: POST a finished event with a negative cost field returns 400."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-c'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-c",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+            cached_input_tokens=-5,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cost" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_non_integer_cost_field_rejected():
+    """AC3b: POST a finished event with a non-integer cost field returns 400."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-d'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-d",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500.5,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cost" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_finite_event_without_cost_fields_accepted():
+    """AC4: POST a finished event with no cost fields returns 200, unchanged."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-e'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-e",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_schema_event_cost_properties_declared():
+    """AC5: GET /schema/event's card object declares the five cost fields
+    as integer properties with minimum 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/schema/event")
+        assert status == 200
+        card_props = body["properties"]["card"]["properties"]
+        for field in (
+            "model_seconds",
+            "input_tokens",
+            "cached_input_tokens",
+            "output_tokens",
+            "reasoning_output_tokens",
+        ):
+            assert field in card_props
+            assert card_props[field]["type"] == "integer"
+            assert card_props[field]["minimum"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_partial_cost_error_names_missing_fields():
+    """UX7: The 400 response body's error message names the missing cost
+    fields by their schema names."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-ux'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-ux",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cached_input_tokens" in body["error"]
+        assert "output_tokens" in body["error"]
+        assert "reasoning_output_tokens" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_schema_event_card_required_unchanged():
+    """UX8: The card object's required array is still exactly ['created']."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/schema/event")
+        assert status == 200
+        card = body["properties"]["card"]
+        assert card["required"] == ["created"]
+    finally:
+        conn.close()
