@@ -784,7 +784,11 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "first_attempt_rate_percent, points_delivered, "
         "first_attempt_numerator, first_attempt_denominator, "
         "escalation_count, superseded_count, superseded_points, "
-        "superseded_breakdown, cycle_time_minutes, lead_time_minutes. "
+        "superseded_breakdown, cycle_time_minutes, lead_time_minutes, "
+        "model_minutes_middle, model_minutes_total, "
+        "input_tokens_middle, input_tokens_total, "
+        "output_tokens_middle, output_tokens_total, "
+        "cached_input_percent, reasoning_output_percent. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null.",
