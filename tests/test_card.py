@@ -369,7 +369,9 @@ def test_parse_card_failures_error_states_expected_shape():
     """AC7: the error message states the shape it expects — an array of objects,
     each carrying string 'failure_class' and 'failure_role'."""
     raw = {"created": "2024-01-01", "failures": "not-an-array"}
-    with pytest.raises(ValueError, match=r"failures.*array of objects.*failure_class.*failure_role"):
+    with pytest.raises(
+        ValueError, match=r"failures.*array of objects.*failure_class.*failure_role"
+    ):
         parse_card(raw)
 
 

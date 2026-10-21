@@ -330,10 +330,10 @@ def test_cards_md_json_example_includes_failures_field():
     each holding 'failure_class' and 'failure_role'."""
     text = (DOCS_DIR / "cards.md").read_text()
     cards = _extract_json_block(text)
-    cards_with_failures = [
-        c for c in cards if "attempts" in c and "failures" in c
-    ]
-    assert cards_with_failures, "no card in docs/cards.md example carries both 'attempts' and 'failures'"
+    cards_with_failures = [c for c in cards if "attempts" in c and "failures" in c]
+    assert cards_with_failures, (
+        "no card in docs/cards.md example carries both 'attempts' and 'failures'"
+    )
     card = cards_with_failures[0]
     assert isinstance(card["failures"], list)
     for entry in card["failures"]:
