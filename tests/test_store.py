@@ -261,3 +261,173 @@ def test_upsert_fills_null_card_created_at_on_resend(conn):
     ).fetchall()
     assert len(rows) == 1
     assert rows[0][0] == datetime(2024, 1, 1, 8, 30, 0, tzinfo=UTC)
+
+
+def test_board_events_has_cost_columns(conn):
+    """AC1: init_db creates the five cost columns with correct types."""
+    rows = conn.execute(
+        """
+        SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_schema = 'sprint_metrics' AND table_name = 'board_events'
+        AND column_name IN ('model_seconds', 'input_tokens', 'cached_input_tokens',
+                            'output_tokens', 'reasoning_output_tokens')
+        ORDER BY column_name
+        """
+    ).fetchall()
+    column_map = {r[0]: r[1] for r in rows}
+    assert len(column_map) == 5
+    assert column_map["model_seconds"] == "integer"
+    assert column_map["input_tokens"] == "bigint"
+    assert column_map["cached_input_tokens"] == "bigint"
+    assert column_map["output_tokens"] == "bigint"
+    assert column_map["reasoning_output_tokens"] == "bigint"
+
+
+def test_finished_row_stores_cost_values(conn):
+    """AC2: a 'finished' row with cost fields stores all five values."""
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('cost_fin', 'cost_start')"
+    )
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "cost_fin",
+            "type": "finished",
+            "timestamp": "2024-01-10T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {
+                "created": "2024-01-01",
+                "model_seconds": 3500,
+                "input_tokens": 4000,
+                "cached_input_tokens": 1400,
+                "output_tokens": 900,
+                "reasoning_output_tokens": 300,
+            },
+        },
+    )
+    rows = conn.execute(
+        "SELECT model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens "
+        "FROM sprint_metrics.board_events "
+        "WHERE card_id = 'cost_fin' AND type = 'finished'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0] == (3500, 4000, 1400, 900, 300)
+
+
+def test_non_finished_row_has_null_cost(conn):
+    """AC2: rows for every other event type have all five cost columns NULL."""
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('cost_fin2', 'cost_start2')"
+    )
+    conn.commit()
+    for event_type in (
+        "started",
+        "blocked",
+        "unblocked",
+        "escalated",
+        "attempt_failed",
+        "superseded",
+    ):
+        insert_event(
+            conn,
+            {
+                "card_id": "cost_start2",
+                "type": event_type,
+                "timestamp": "2024-01-05T10:00:00Z",
+                "sprint": "2024-01",
+                "card": {"created": "2024-01-01"},
+            },
+        )
+    rows = conn.execute(
+        "SELECT model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens "
+        "FROM sprint_metrics.board_events WHERE card_id = 'cost_start2'"
+    ).fetchall()
+    assert len(rows) == 6
+    for row in rows:
+        assert row == (None, None, None, None, None)
+
+
+def test_resend_cost_fills_null(conn):
+    """AC4: re-sending a 'finished' event with cost fills NULL cost columns."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost_fill'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "cost_fill",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {"created": "2024-01-01"},
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "cost_fill",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {
+                "created": "2024-01-01",
+                "model_seconds": 1200,
+                "input_tokens": 5000,
+                "cached_input_tokens": 2000,
+                "output_tokens": 1000,
+                "reasoning_output_tokens": 500,
+            },
+        },
+    )
+    rows = conn.execute(
+        "SELECT model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens "
+        "FROM sprint_metrics.board_events WHERE card_id = 'cost_fill' AND type = 'finished'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0] == (1200, 5000, 2000, 1000, 500)
+
+
+def test_resend_cost_keeps_existing(conn):
+    """AC4: re-sending a 'finished' event with different cost does not overwrite stored values."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost_keep'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "cost_keep",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {
+                "created": "2024-01-01",
+                "model_seconds": 3500,
+                "input_tokens": 4000,
+                "cached_input_tokens": 1400,
+                "output_tokens": 900,
+                "reasoning_output_tokens": 300,
+            },
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "cost_keep",
+            "type": "finished",
+            "timestamp": "2024-01-07T15:00:00Z",
+            "sprint": "2024-01",
+            "card": {
+                "created": "2024-01-01",
+                "model_seconds": 9999,
+                "input_tokens": 9999,
+                "cached_input_tokens": 9999,
+                "output_tokens": 9999,
+                "reasoning_output_tokens": 9999,
+            },
+        },
+    )
+    rows = conn.execute(
+        "SELECT model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens "
+        "FROM sprint_metrics.board_events WHERE card_id = 'cost_keep' AND type = 'finished'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0] == (3500, 4000, 1400, 900, 300)
