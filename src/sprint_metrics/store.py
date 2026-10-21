@@ -37,9 +37,6 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     ),
     CONSTRAINT board_events_because_check CHECK (
         because IS NULL OR because IN ('sponsor', 'story_problem')
-    ),
-    CONSTRAINT board_events_reason_check CHECK (
-        reason IS NULL OR reason IN ('session blocked', 'contract ruling')
     )
 );
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS attempt_number INT;
