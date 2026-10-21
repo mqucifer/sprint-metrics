@@ -558,28 +558,28 @@ def test_sprint_response_story_costs_single_costed_story():
                     created="2024-01-01",
                 ),
             )
-            finished_card = {"created": "2024-01-01"}
             if cid == "cost-a":
-                finished_card.update(
-                    {
-                        "model_seconds": 3500,
-                        "input_tokens": 4000,
-                        "cached_input_tokens": 1400,
-                        "output_tokens": 900,
-                        "reasoning_output_tokens": 300,
-                    }
-                )
-            _post_events(
-                f"http://127.0.0.1:{port}/events",
-                _make_event(
+                finished = _make_event(
                     card_id=cid,
                     event_type="finished",
                     timestamp="2024-01-07T15:00:00Z",
                     sprint="2024-01",
                     created="2024-01-01",
-                    card=finished_card,
-                ),
-            )
+                    model_seconds=3500,
+                    input_tokens=4000,
+                    cached_input_tokens=1400,
+                    output_tokens=900,
+                    reasoning_output_tokens=300,
+                )
+            else:
+                finished = _make_event(
+                    card_id=cid,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                )
+            _post_events(f"http://127.0.0.1:{port}/events", finished)
 
         status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
         assert status == 200
@@ -643,7 +643,7 @@ def test_sprint_response_story_costs_sprint_percents_and_middle():
                     timestamp="2024-02-07T15:00:00Z",
                     sprint="2024-02",
                     created="2024-02-01",
-                    card={"created": "2024-02-01", **payload},
+                    **payload,
                 ),
             )
 
