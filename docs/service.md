@@ -33,6 +33,26 @@ Re-sending an event the service already holds (the same `card_id`, `type`, and `
 
 The intake format carries an `api_version` field. The current version is "1". The JSON Schema for the event body is available at GET /schema/event.
 
+A `finished` event may carry a cost payload on its card object. The cost payload has five fields, each a non-negative integer, and the fields are sent together or not at all — a partial payload is rejected:
+
+- `model_seconds` — total model time across every role's calls for this story
+- `input_tokens` — total input tokens consumed
+- `cached_input_tokens` — input tokens served from cache
+- `output_tokens` — total output tokens produced
+- `reasoning_output_tokens` — output tokens spent on reasoning
+
+Example cost payload on a finished event's card:
+
+```json
+{
+  "model_seconds": 3480,
+  "input_tokens": 4000,
+  "cached_input_tokens": 1800,
+  "output_tokens": 900,
+  "reasoning_output_tokens": 207
+}
+```
+
 ## Endpoints
 
 The service exposes the following HTTP endpoints: POST /sprints for sprint registration, POST /events for event intake, GET /sprint for single-sprint queries, GET /range for multi-sprint queries, GET /trend for time-series queries, GET /metrics for Prometheus scraping, GET /schema/event for the event schema, and GET /health for liveness checks.
@@ -56,7 +76,7 @@ Long-lived HTTP service that accepts board events and answers sprint, range, and
 | POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded). The service validates the card's created date and event type. |
 | GET | /sprint | Return metrics for a single sprint. Sprints with no events return all-null values. |
 | GET | /range | Return metrics for a range of sprints in chronological order. Each entry includes the prior-sprint delta. Sprints with no events return all-null values. |
-| GET | /trend | Return a single metric across a sprint range. Returns a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs (the values array). Valid metrics: cycle_time_days, lead_time_days, throughput, wip_violations, blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count, superseded_count, superseded_points, superseded_breakdown, cycle_time_minutes, lead_time_minutes. Minute-based metrics (cycle_time_minutes, lead_time_minutes) return JSON integer values in minutes (rounded); sprints with no events return JSON null. |
+| GET | /trend | Return a single metric across a sprint range. Returns a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs (the values array). Valid metrics: cycle_time_days, lead_time_days, throughput, wip_violations, blocked_aging_days, escalation_rate_percent, first_attempt_rate_percent, points_delivered, first_attempt_numerator, first_attempt_denominator, escalation_count, superseded_count, superseded_points, superseded_breakdown, cycle_time_minutes, lead_time_minutes, model_minutes_middle, model_minutes_total, input_tokens_middle, input_tokens_total, output_tokens_middle, output_tokens_total, cached_input_percent, reasoning_output_percent. Minute-based metrics (cycle_time_minutes, lead_time_minutes) return JSON integer values in minutes (rounded); sprints with no events return JSON null. |
 | GET | /metrics | Return Prometheus text exposition format, one line per metric per sprint. Emits lines only for sprints that have at least one finished event. |
 | GET | /schema/event | Return the JSON Schema for the event intake body. |
 | GET | /health | Health check. Returns 200 with {"status": "ok"} when the database is reachable, 503 otherwise. |

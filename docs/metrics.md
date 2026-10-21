@@ -8,6 +8,7 @@ BEGIN:metrics
 | Display name | Metric key | Description | Prometheus name |
 |---|---|---|---|
 | Blocked aging | `blocked_aging_days` | Return the maximum number of days any card has been blocked in the sprint. | `sprint_blocked_aging_days` |
+| Cached input percent | `cached_input_percent` | Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost. | `sprint_cached_input_percent` |
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_cycle_time_days` |
 | Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_cycle_time_minutes` |
 | Escalation count | `escalation_count` | Return the number of escalated events in the sprint. | `sprint_escalation_count` |
@@ -16,9 +17,16 @@ BEGIN:metrics
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. | `sprint_first_attempt_denominator` |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. | `sprint_first_attempt_numerator` |
 | First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt. | `sprint_first_attempt_rate_percent` |
+| Input tokens (middle) | `input_tokens_middle` | Return the median input tokens across costed stories, or None when no story carries cost. | `sprint_input_tokens_middle` |
+| Input tokens (total) | `input_tokens_total` | Return the total input tokens across costed stories, or None when no story carries cost. | `sprint_input_tokens_total` |
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_lead_time_days` |
 | Lead time (min) | `lead_time_minutes` | Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_lead_time_minutes` |
+| Model minutes (middle) | `model_minutes_middle` | Return the median whole model minutes across costed stories, or None when no story carries cost. | `sprint_model_minutes_middle` |
+| Model minutes (total) | `model_minutes_total` | Return the total whole model minutes across costed stories, or None when no story carries cost. | `sprint_model_minutes_total` |
+| Output tokens (middle) | `output_tokens_middle` | Return the median output tokens across costed stories, or None when no story carries cost. | `sprint_output_tokens_middle` |
+| Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, or None when no story carries cost. | `sprint_output_tokens_total` |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards. | `sprint_points_delivered` |
+| Reasoning output percent | `reasoning_output_percent` | Return the sprint's reasoning share of output tokens as a whole percent, or None when no story carries cost. | `sprint_reasoning_output_percent` |
 | Superseded breakdown | `superseded_breakdown` | Return the per-reason breakdown of superseded cards, keyed by 'sponsor' and 'story_problem' with their counts. Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_by_reason` |
 | Superseded count | `superseded_count` | Return the number of cards marked superseded in the sprint. Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_stories` |
 | Superseded points | `superseded_points` | Return the sum of the points value on superseded cards (0 when a superseded card carries no points value). Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_points` |
@@ -74,6 +82,39 @@ timestamp, expressed in whole minutes and rounded to the nearest integer.
 `lead_time_minutes` is the mean of (completed_at − created_at) over all
 completed cards that carry both a `created_at` and a `completed_at`
 timestamp, expressed in whole minutes and rounded to the nearest integer.
+
+### Model cost
+
+The crew's event-sending automation attaches a cost payload to each
+`finished` event it sends. The payload carries five fields, each a
+non-negative integer:
+
+- `model_seconds` — total model time across every role's calls for this story
+- `input_tokens` — total input tokens consumed
+- `cached_input_tokens` — input tokens served from cache
+- `output_tokens` — total output tokens produced
+- `reasoning_output_tokens` — output tokens spent on reasoning
+
+All five fields are sent together or not at all; a partial payload is
+rejected at intake.
+
+The report's display unit for model cost is whole minutes. The crew sends
+model seconds on the event; the report shows `round(model_seconds / 60)`
+as `model_minutes`.
+
+A story's cost is the summed total across every role's model calls for that
+story. The sprint's cost summary reports two aggregates per measure
+(`model_minutes`, `input_tokens`, `output_tokens`):
+
+- **middle** — the median of the per-story values across all costed stories
+- **total** — the sum across the costed stories
+
+The two percents, `cached_input_percent` and `reasoning_output_percent`,
+are computed from the sprint's combined token totals, not per story:
+`cached_input_percent` is the sprint's cached-input share of all input
+tokens, and `reasoning_output_percent` is the sprint's reasoning share of
+all output tokens. Both percents are identical on every story in the
+`story_costs` list.
 
 ## Boundary conditions
 

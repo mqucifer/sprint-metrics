@@ -183,6 +183,171 @@ def test_median_odd_even_and_single():
     assert _median([1, 2, 3, 4]) == round((2 + 3) / 2)
 
 
+def _stub_range_result(labels):
+    """Mimic format_sprint_range_json's per-sprint entries: prior/delta dicts after the first."""
+    result = {"sprints": {}}
+    for i, label in enumerate(labels):
+        entry = {"cycle_time_days": 0, "throughput": 0, "flags": {}}
+        if i == 0:
+            entry["prior"] = None
+            entry["delta"] = None
+        else:
+            entry["prior"] = {"cycle_time_days": 0}
+            entry["delta"] = {"cycle_time_days": 0}
+        result["sprints"][label] = entry
+    return result
+
+
+def test_metrics_text_carries_eight_cost_lines():
+    """AC5: _metrics_text emits one line each for the eight cost metrics per sprint,
+    labelled by sprint, carrying that sprint's values."""
+    from sprint_metrics.service import _metrics_text
+
+    sprints = {
+        "2026-10": [
+            _cost_card("a", 3480, 4000, 1800, 900, 200),
+            _cost_card("b", 5400, 12000, 5840, 4800, 1200),
+        ],
+    }
+    text = _metrics_text(sprints)
+    label = 'sprint="2026-10"'
+    assert f"sprint_model_minutes_middle{{{label}}} 74" in text
+    assert f"sprint_model_minutes_total{{{label}}} 148" in text
+    assert f"sprint_input_tokens_middle{{{label}}} 8000" in text
+    assert f"sprint_input_tokens_total{{{label}}} 16000" in text
+    assert f"sprint_output_tokens_middle{{{label}}} 2850" in text
+    assert f"sprint_output_tokens_total{{{label}}} 5700" in text
+    assert f"sprint_cached_input_percent{{{label}}} 48" in text
+    assert f"sprint_reasoning_output_percent{{{label}}} 25" in text
+
+
+def test_metrics_text_cost_lines_zero_when_no_costed_stories():
+    """AC5: a sprint with events but no costed stories reports 0 for all eight cost metrics."""
+    from sprint_metrics.service import _metrics_text
+
+    sprints = {"2026-10": [Card(created=date(2024, 1, 1), card_id="a")]}
+    text = _metrics_text(sprints)
+    label = 'sprint="2026-10"'
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    ):
+        assert f"sprint_{name}{{{label}}} 0" in text
+
+
+def test_attach_range_cost_entry_carries_cost_and_prior_delta():
+    """AC1/AC9: each range entry carries story_costs and cost matching /sprint, and the
+    second entry's prior and delta carry the six flat cost names (current minus prior)."""
+    from sprint_metrics.service import _attach_range_cost, _compute_cost_summary, _cost_flat
+
+    prior_cards = [
+        _cost_card("p1", 1080, 2500, 1000, 600, 100),
+        _cost_card("p2", 1860, 4000, 1600, 1200, 200),
+        _cost_card("p3", 2580, 8000, 3200, 3800, 400),
+    ]
+    current_cards = [
+        _cost_card("c1", 3480, 4000, 1800, 900, 200),
+        _cost_card("c2", 5400, 12000, 5840, 4800, 1200),
+    ]
+    sprints = {"2026-09": prior_cards, "2026-10": current_cards}
+    labels = ["2026-09", "2026-10"]
+    has_events = {"2026-09", "2026-10"}
+    result = _stub_range_result(labels)
+    _attach_range_cost(result, sprints, labels, has_events)
+
+    e09 = result["sprints"]["2026-09"]
+    assert e09["prior"] is None
+    assert e09["delta"] is None
+    sc09, cost09 = _compute_cost_summary(prior_cards)
+    assert e09["story_costs"] == sc09
+    assert e09["cost"] == cost09
+    assert e09["cost"]["middle"]["model_minutes"] == 31
+    assert e09["cost"]["total"]["model_minutes"] == 92
+    assert e09["cost"]["middle"]["input_tokens"] == 4000
+    assert e09["cost"]["total"]["input_tokens"] == 14500
+    assert e09["cost"]["middle"]["output_tokens"] == 1200
+    assert e09["cost"]["total"]["output_tokens"] == 5600
+
+    e10 = result["sprints"]["2026-10"]
+    sc10, cost10 = _compute_cost_summary(current_cards)
+    assert e10["story_costs"] == sc10
+    assert e10["cost"] == cost10
+    prior_flat = _cost_flat(cost09)
+    cur_flat = _cost_flat(cost10)
+    for name in prior_flat:
+        assert e10["prior"][name] == prior_flat[name]
+        assert e10["delta"][name] == (
+            cur_flat[name] - prior_flat[name]
+            if cur_flat[name] is not None and prior_flat[name] is not None
+            else None
+        )
+    assert e10["prior"]["model_minutes_middle"] == 31
+    assert e10["prior"]["model_minutes_total"] == 92
+    assert e10["prior"]["input_tokens_middle"] == 4000
+    assert e10["prior"]["input_tokens_total"] == 14500
+    assert e10["prior"]["output_tokens_middle"] == 1200
+    assert e10["prior"]["output_tokens_total"] == 5600
+
+
+def test_attach_range_cost_prior_no_costed_stories_nulls_cost():
+    """AC2: the preceding sprint has events but no costed stories, so its non-null prior
+    object carries null for the six cost values and the delta carries null for each."""
+    from sprint_metrics.service import _attach_range_cost
+
+    prior_cards = [Card(created=date(2024, 1, 1), card_id="p")]
+    current_cards = [
+        _cost_card("c1", 3480, 4000, 1800, 900, 200),
+        _cost_card("c2", 5400, 12000, 5840, 4800, 1200),
+    ]
+    sprints = {"2024-01": prior_cards, "2024-02": current_cards}
+    labels = ["2024-01", "2024-02"]
+    has_events = {"2024-01", "2024-02"}
+    result = _stub_range_result(labels)
+    _attach_range_cost(result, sprints, labels, has_events)
+
+    e02 = result["sprints"]["2024-02"]
+    assert e02["prior"] is not None
+    assert e02["delta"] is not None
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+    ):
+        assert e02["prior"][name] is None
+        assert e02["delta"][name] is None
+
+
+def test_attach_range_cost_null_entry_for_no_events():
+    """AC3: a range entry for a sprint with no events is the all-null entry, with
+    story_costs an empty array and cost null, alongside the entry's other null metrics."""
+    from sprint_metrics.service import _attach_range_cost
+
+    current_cards = [_cost_card("c1", 3480, 4000, 1800, 900, 200)]
+    sprints = {"2024-01": [], "2024-02": current_cards}
+    labels = ["2024-01", "2024-02"]
+    has_events = {"2024-02"}
+    result = _stub_range_result(labels)
+    _attach_range_cost(result, sprints, labels, has_events)
+
+    e01 = result["sprints"]["2024-01"]
+    assert e01["story_costs"] == []
+    assert e01["cost"] is None
+    assert e01["prior"] is None
+    assert e01["delta"] is None
+    e02 = result["sprints"]["2024-02"]
+    assert e02["prior"] is None
+    assert e02["delta"] is None
+
+
 @requires_db
 def test_post_valid_event_returns_200_no_error():
     """AC1: POST /events with a valid started event returns 200 and body has no 'error' key."""

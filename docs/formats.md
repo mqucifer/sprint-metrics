@@ -14,6 +14,8 @@ Superseded stories are excluded from throughput and in-flight counts.
 - `top_failure_causes` — an array of objects, each with `class`, `role`, and `count`, the top 3 returns
 - `flags` — an object of booleans indicating which default thresholds were breached
 - `failure_breakdown` — an array of objects, each with `class`, `role`, and `count`
+- `story_costs` (optional) — an array of per-story cost objects, each with `card_id`, `model_minutes`, `input_tokens`, `cached_input_percent`, `output_tokens`, and `reasoning_output_percent`; present when at least one story carries a cost payload
+- `cost` (optional) — an object with `middle` and `total`, each carrying `model_minutes`, `input_tokens`, and `output_tokens`; present when at least one story carries a cost payload
 - `sprint_date` (optional) — present when `--sprint-date` is supplied
 
 ## API versioning

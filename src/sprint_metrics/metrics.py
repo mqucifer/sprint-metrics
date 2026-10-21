@@ -169,6 +169,14 @@ ALL_METRICS: frozenset[str] = frozenset(
         "superseded_breakdown",
         "cycle_time_minutes",
         "lead_time_minutes",
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
     }
 )
 
@@ -341,6 +349,22 @@ def metric_value(
         return calculate_cycle_time_minutes(cards)
     if metric == "lead_time_minutes":
         return calculate_lead_time_minutes(cards)
+    if metric == "model_minutes_middle":
+        return calculate_model_minutes_middle(cards)
+    if metric == "model_minutes_total":
+        return calculate_model_minutes_total(cards)
+    if metric == "input_tokens_middle":
+        return calculate_input_tokens_middle(cards)
+    if metric == "input_tokens_total":
+        return calculate_input_tokens_total(cards)
+    if metric == "output_tokens_middle":
+        return calculate_output_tokens_middle(cards)
+    if metric == "output_tokens_total":
+        return calculate_output_tokens_total(cards)
+    if metric == "cached_input_percent":
+        return calculate_cached_input_percent(cards)
+    if metric == "reasoning_output_percent":
+        return calculate_reasoning_output_percent(cards)
     breakdown = calculate_failure_breakdown(cards)
     return sum(count for _, _, count in breakdown)
 
@@ -436,3 +460,114 @@ def calculate_lead_time_minutes(cards: Iterable[Card | Mapping[str, object]]) ->
     if not values:
         return None
     return round(sum(values) / len(values))
+
+
+def _median(values: list[int]) -> int:
+    """The median of a list of whole numbers.
+
+    For an odd count this is the middle value; for an even count it is the
+    average of the two middle values, rounded (Python's round-half-to-even).
+    """
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return round((ordered[mid - 1] + ordered[mid]) / 2)
+
+
+def _costed_cards(cards: Iterable[Card | Mapping[str, object]]) -> list[Card]:
+    """The cards carrying cost data (``model_seconds`` not ``None``), as Card objects."""
+    return [card for card in _as_cards(cards) if card.model_seconds is not None]
+
+
+def calculate_model_minutes_middle(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the median whole model minutes across costed stories, or None when no story carries cost.
+
+    A story's model minutes is its stored model_seconds rounded to whole minutes.
+    """
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    return _median([round(card.model_seconds / 60) for card in costed])
+
+
+def calculate_model_minutes_total(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the total whole model minutes across costed stories, or None when no story carries cost."""
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    return sum(round(card.model_seconds / 60) for card in costed)
+
+
+def calculate_input_tokens_middle(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the median input tokens across costed stories, or None when no story carries cost."""
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    return _median([card.input_tokens for card in costed])
+
+
+def calculate_input_tokens_total(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the total input tokens across costed stories, or None when no story carries cost."""
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    return sum(card.input_tokens for card in costed)
+
+
+def calculate_output_tokens_middle(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the median output tokens across costed stories, or None when no story carries cost."""
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    return _median([card.output_tokens for card in costed])
+
+
+def calculate_output_tokens_total(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the total output tokens across costed stories, or None when no story carries cost."""
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    return sum(card.output_tokens for card in costed)
+
+
+def calculate_cached_input_percent(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost.
+
+    The percent is the sprint's combined share, identical on every story.
+    """
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    total_input = sum(card.input_tokens for card in costed)
+    total_cached = sum(card.cached_input_tokens for card in costed)
+    return round(100 * total_cached / total_input) if total_input > 0 else 0
+
+
+def calculate_reasoning_output_percent(
+    cards: Iterable[Card | Mapping[str, object]],
+) -> int | None:
+    """Return the sprint's reasoning share of output tokens as a whole percent, or None when no story carries cost.
+
+    The percent is the sprint's combined share, identical on every story.
+    """
+    costed = _costed_cards(cards)
+    if not costed:
+        return None
+    total_output = sum(card.output_tokens for card in costed)
+    total_reasoning = sum(card.reasoning_output_tokens for card in costed)
+    return round(100 * total_reasoning / total_output) if total_output > 0 else 0

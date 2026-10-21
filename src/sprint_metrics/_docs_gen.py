@@ -48,6 +48,14 @@ def _generate_metrics_content() -> str:
         "first_attempt_rate_percent": "calculate_first_attempt_rate",
         "failure_breakdown": "calculate_failure_breakdown",
         "points_delivered": "calculate_points_delivered",
+        "model_minutes_middle": "calculate_model_minutes_middle",
+        "model_minutes_total": "calculate_model_minutes_total",
+        "input_tokens_middle": "calculate_input_tokens_middle",
+        "input_tokens_total": "calculate_input_tokens_total",
+        "output_tokens_middle": "calculate_output_tokens_middle",
+        "output_tokens_total": "calculate_output_tokens_total",
+        "cached_input_percent": "calculate_cached_input_percent",
+        "reasoning_output_percent": "calculate_reasoning_output_percent",
     }
 
     # Metrics whose description is not the first line of a single calculate
