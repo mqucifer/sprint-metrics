@@ -7151,3 +7151,229 @@ def test_schema_event_card_required_unchanged():
         assert card["required"] == ["created"]
     finally:
         conn.close()
+
+
+@requires_db
+def test_post_returned_event_stores_reason_and_missing():
+    """AC1: POST /events with type 'returned', api_version '2', reason 'session blocked',
+    missing 'docs/spec.md' returns 200 and stores the row with both values."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ret1'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "2",
+            "card_id": "ret1",
+            "type": "returned",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "sprint": "2026-10",
+            "card": {"created": "2026-10-01"},
+            "reason": "session blocked",
+            "missing": "docs/spec.md",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT reason, missing FROM sprint_metrics.board_events "
+            "WHERE card_id = 'ret1' AND type = 'returned'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "session blocked"
+        assert rows[0][1] == "docs/spec.md"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_event_contract_ruling_no_missing():
+    """AC2: POST /events with type 'returned', reason 'contract ruling' and no missing
+    returns 200 and stores the row with reason and NULL missing."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ret2'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "2",
+            "card_id": "ret2",
+            "type": "returned",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "sprint": "2026-10",
+            "card": {"created": "2026-10-01"},
+            "reason": "contract ruling",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT reason, missing FROM sprint_metrics.board_events "
+            "WHERE card_id = 'ret2' AND type = 'returned'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "contract ruling"
+        assert rows[0][1] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_event_invalid_reason_rejected():
+    """AC3: POST /events with type 'returned' and reason 'scope creep' returns 400
+    with an error naming the rejected reason; nothing is stored. A direct DB insert
+    with that reason also fails (CHECK constraint)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ret3'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "2",
+            "card_id": "ret3",
+            "type": "returned",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "sprint": "2026-10",
+            "card": {"created": "2026-10-01"},
+            "reason": "scope creep",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert "scope creep" in body["error"]
+
+        rows = conn.execute(
+            "SELECT COUNT(*) FROM sprint_metrics.board_events "
+            "WHERE card_id = 'ret3' AND type = 'returned'"
+        ).fetchone()
+        assert rows[0] == 0
+
+        # Verify the DB CHECK constraint rejects the value too
+        try:
+            conn.execute(
+                "INSERT INTO sprint_metrics.board_events "
+                "(card_id, type, event_time, sprint, card_created, reason) "
+                "VALUES ('ret3_db', 'returned', '2026-10-07T00:00:00Z', '2026-10', '2026-10-01', 'scope creep')"
+            )
+            conn.commit()
+            raise AssertionError("DB CHECK did not reject reason='scope creep'")
+        except Exception:
+            conn.rollback()
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_event_session_blocked_without_missing():
+    """AC4: POST /events with type 'returned', reason 'session blocked' but no missing
+    field returns 400 with an error naming the missing field; nothing is stored."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ret4'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "2",
+            "card_id": "ret4",
+            "type": "returned",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "sprint": "2026-10",
+            "card": {"created": "2026-10-01"},
+            "reason": "session blocked",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert "missing" in body["error"]
+
+        rows = conn.execute(
+            "SELECT COUNT(*) FROM sprint_metrics.board_events "
+            "WHERE card_id = 'ret4' AND type = 'returned'"
+        ).fetchone()
+        assert rows[0] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_event_duplicate_upserts():
+    """AC5: Posting the same valid returned event twice results in exactly one row."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ret5'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "2",
+            "card_id": "ret5",
+            "type": "returned",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "sprint": "2026-10",
+            "card": {"created": "2026-10-01"},
+            "reason": "contract ruling",
+        }
+        status1, _ = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status1 == 200
+        status2, _ = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status2 == 200
+
+        rows = conn.execute(
+            "SELECT COUNT(*) FROM sprint_metrics.board_events "
+            "WHERE card_id = 'ret5' AND type = 'returned' AND event_time = '2026-10-07T13:14:07Z'"
+        ).fetchone()
+        assert rows[0] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_event_error_body_shape():
+    """AC9: A 400 response for a rejected returned event has exactly one key 'error'
+    whose value is a string, matching the shape used for unknown event types."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ret9'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "2",
+            "card_id": "ret9",
+            "type": "returned",
+            "timestamp": "2026-10-07T13:14:07Z",
+            "sprint": "2026-10",
+            "card": {"created": "2026-10-01"},
+            "reason": "scope creep",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert isinstance(body, dict)
+        assert list(body.keys()) == ["error"]
+        assert isinstance(body["error"], str)
+    finally:
+        conn.close()
