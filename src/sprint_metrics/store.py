@@ -211,14 +211,14 @@ def query_sprint(conn: Connection, label: str) -> list[Card]:
             (card_id,),
         ).fetchall()
 
-        card = _reconstruct_card(events)
+        card = _reconstruct_card(events, card_id)
         if card is not None:
             cards.append(card)
 
     return cards
 
 
-def _reconstruct_card(events: list[tuple]) -> Card | None:
+def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card | None:
     """Reconstruct a Card from its stored events.
 
     The card's attempts count is derived from the number of 'attempt_failed'
@@ -232,7 +232,8 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     is assigned to started_at and completed_at.
     The five cost columns (model_seconds, input_tokens, cached_input_tokens,
     output_tokens, reasoning_output_tokens) are read from the 'finished' row
-    and assigned to the Card's cost fields.
+    and assigned to the Card's cost fields. The card_id is assigned to the
+    Card's card_id field.
     """
     if not events:
         return None
@@ -341,6 +342,7 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
         cached_input_tokens=cached_input_tokens,
         output_tokens=output_tokens,
         reasoning_output_tokens=reasoning_output_tokens,
+        card_id=card_id,
     )
 
 

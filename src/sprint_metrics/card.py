@@ -34,6 +34,7 @@ class Card:
     cached_input_tokens: int | None = None
     output_tokens: int | None = None
     reasoning_output_tokens: int | None = None
+    card_id: str | None = None
     failures: list[tuple[str, str]] | None = None
 
     @property
