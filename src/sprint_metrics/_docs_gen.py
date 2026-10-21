@@ -150,6 +150,9 @@ def _generate_input_format_content() -> str:
                     "started": "2024-01-05",
                     "completed": "2024-01-10",
                     "blocked_since": "2024-01-06",
+                },
+                {
+                    "created": "2024-01-04",
                     "attempts": 2,
                     "failures": [
                         {
@@ -158,7 +161,6 @@ def _generate_input_format_content() -> str:
                         }
                     ],
                 },
-                {"created": "2024-01-04"},
             ],
             indent=2,
         ),

@@ -27,7 +27,10 @@ BEGIN:input-format
     "created": "2024-01-03",
     "started": "2024-01-05",
     "completed": "2024-01-10",
-    "blocked_since": "2024-01-06",
+    "blocked_since": "2024-01-06"
+  },
+  {
+    "created": "2024-01-04",
     "attempts": 2,
     "failures": [
       {
@@ -35,9 +38,6 @@ BEGIN:input-format
         "failure_role": "Review"
       }
     ]
-  },
-  {
-    "created": "2024-01-04"
   }
 ]
 ```
