@@ -1039,9 +1039,9 @@ def test_service_md_sprint_range_descriptions_state_per_return_semantics():
     text = path.read_text()
     before = text.split("BEGIN:service")[0]
 
-    sprint_section = before[before.index("GET /sprint"):]
+    sprint_section = before[before.index("GET /sprint") :]
     range_start = before.index("GET /range")
-    range_section = before[range_start: range_start + 500]
+    range_section = before[range_start : range_start + 500]
 
     assert "failure_breakdown" in sprint_section, (
         "hand-written /sprint description does not mention failure_breakdown"
