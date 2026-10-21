@@ -598,8 +598,10 @@ def test_formats_worked_example_json_output(tmp_path, capsys):
 
 def test_formats_worked_example_markdown_output(tmp_path, capsys):
     """AC4: the same cards JSON with --markdown exits 0 and stdout contains the
-    expected structural elements: heading, report date, sprint section, and
-    summary section with Completed/In progress/Blocked lines."""
+    expected structural elements: heading, report date, sprint section,
+    summary section with Completed/In progress/Blocked lines, and the
+    Definitions section's 'Top causes' line stating returns grouped by
+    (failure class, returning role)."""
     cards = _extract_formats_cards()
     path = tmp_path / "cards.json"
     path.write_text(json.dumps(cards))

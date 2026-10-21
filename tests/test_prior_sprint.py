@@ -309,8 +309,10 @@ def test_prior_sprint_json_top_level_first_attempt_and_top_causes(tmp_path, caps
     """AC1: 2024-01 has 3 completed cards (2 first-attempt, 1 with attempts=2
     failure_class='bug') and 2024-02 has 5 completed cards (4 first-attempt, 1 with
     attempts=2 failure_class='requirement'). --prior-sprint 2024-01 --json exits 0,
-    top-level first_attempt_rate_percent is 80, top_failure_causes is {'requirement': 1},
-    prior first_attempt_rate_percent is 67, prior top_failure_causes is {'bug': 1},
+    top-level first_attempt_rate_percent is 80, top_failure_causes is
+    [{'class': 'requirement', 'role': '', 'count': 1}],
+    prior first_attempt_rate_percent is 67, prior top_failure_causes is
+    [{'class': 'bug', 'role': '', 'count': 1}],
     and delta first_attempt_rate_percent is 13."""
     first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     bug_card = {

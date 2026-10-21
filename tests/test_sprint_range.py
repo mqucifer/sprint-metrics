@@ -1195,8 +1195,9 @@ def test_sprint_range_json_first_attempt_rate_and_top_failure_causes(tmp_path, c
     """AC1: sprint 2024-01 has 3 completed cards (2 first-attempt, 1 with attempts=2,
     failure_class='bug') and sprint 2024-02 has 5 completed cards (all first-attempt).
     --sprint-range 2024-01..2024-02 --json exits 0, 2024-01 shows
-    first_attempt_rate_percent 67 and top_failure_causes {'bug': 1}, and 2024-02 shows
-    first_attempt_rate_percent 100 and top_failure_causes {}."""
+    first_attempt_rate_percent 67 and top_failure_causes
+    [{'class': 'bug', 'role': '', 'count': 1}], and 2024-02 shows
+    first_attempt_rate_percent 100 and top_failure_causes []."""
     first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     failed = {
         "created": "2024-01-01",
