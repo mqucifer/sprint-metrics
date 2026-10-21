@@ -6,11 +6,12 @@ import json
 import os
 import urllib.error
 import urllib.request
-from datetime import UTC
+from datetime import UTC, date
 
 import pytest
 
-from sprint_metrics.service import _start_service, run
+from sprint_metrics.card import Card
+from sprint_metrics.service import _compute_cost_summary, _median, _start_service, run
 from sprint_metrics.store import init_db
 
 SPRINT_METRICS_DB = os.environ.get("SPRINT_METRICS_DB")
@@ -57,6 +58,129 @@ def _get_json(url: str) -> tuple[int, dict]:
             return resp.status, json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read().decode())
+
+
+def _cost_card(
+    card_id: str,
+    model_seconds: int,
+    input_tokens: int,
+    cached_input_tokens: int,
+    output_tokens: int,
+    reasoning_output_tokens: int,
+) -> Card:
+    """A finished card carrying a full cost payload."""
+    return Card(
+        created=date(2024, 1, 1),
+        model_seconds=model_seconds,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        reasoning_output_tokens=reasoning_output_tokens,
+        card_id=card_id,
+    )
+
+
+def test_compute_cost_summary_single_story_six_keys_and_rounded_minutes():
+    """AC1: one costed story's item has exactly the six keys, card_id, and
+    model_minutes is model_seconds expressed in whole minutes (rounded)."""
+    card = _cost_card("cost-a", 3500, 4000, 1400, 900, 300)
+    story_costs, cost = _compute_cost_summary([card])
+    assert len(story_costs) == 1
+    item = story_costs[0]
+    assert set(item.keys()) == {
+        "card_id",
+        "model_minutes",
+        "input_tokens",
+        "cached_input_percent",
+        "output_tokens",
+        "reasoning_output_percent",
+    }
+    assert item["card_id"] == "cost-a"
+    assert item["model_minutes"] == 58
+    assert item["input_tokens"] == 4000
+    assert item["output_tokens"] == 900
+    assert cost["total"]["model_minutes"] == 58
+
+
+def test_compute_cost_summary_percents_are_the_sprints_not_the_stories():
+    """AC2: every item carries the sprint's combined cached/reasoning shares, not
+    each story's own share (story A's own 50% / story B's 30% are both reported
+    as the sprint's 35% / 26%)."""
+    a = _cost_card("a", 60, 1000, 500, 800, 400)
+    b = _cost_card("b", 60, 3000, 900, 3200, 640)
+    story_costs, _ = _compute_cost_summary([a, b])
+    for item in story_costs:
+        assert item["cached_input_percent"] == 35
+        assert item["reasoning_output_percent"] == 26
+
+
+def test_compute_cost_summary_middle_is_median_and_total_is_sum():
+    """AC3: cost.middle is the median and cost.total is the sum of the per-story
+    values for each measure."""
+    c1 = _cost_card("c1", 120, 300, 0, 100, 0)
+    c2 = _cost_card("c2", 300, 900, 0, 200, 0)
+    c3 = _cost_card("c3", 540, 600, 0, 400, 0)
+    _, cost = _compute_cost_summary([c1, c2, c3])
+    assert cost["middle"]["model_minutes"] == 5
+    assert cost["total"]["model_minutes"] == 16
+    assert cost["middle"]["input_tokens"] == 600
+    assert cost["total"]["input_tokens"] == 1800
+    assert cost["middle"]["output_tokens"] == 200
+    assert cost["total"]["output_tokens"] == 700
+
+
+def test_compute_cost_summary_cost_object_holds_only_the_three_measures():
+    """AC9: cost.middle and cost.total each carry exactly model_minutes,
+    input_tokens and output_tokens; the two percents ride only on story_costs
+    items and never appear inside cost."""
+    c1 = _cost_card("c1", 120, 300, 0, 100, 0)
+    c2 = _cost_card("c2", 300, 900, 0, 200, 0)
+    c3 = _cost_card("c3", 540, 600, 0, 400, 0)
+    _, cost = _compute_cost_summary([c1, c2, c3])
+    measure_keys = {"model_minutes", "input_tokens", "output_tokens"}
+    assert set(cost["middle"].keys()) == measure_keys
+    assert set(cost["total"].keys()) == measure_keys
+    assert "cached_input_percent" not in cost
+    assert "reasoning_output_percent" not in cost
+    assert cost["middle"] == {"model_minutes": 5, "input_tokens": 600, "output_tokens": 200}
+    assert cost["total"] == {"model_minutes": 16, "input_tokens": 1800, "output_tokens": 700}
+
+
+def test_compute_cost_summary_excludes_stories_without_cost():
+    """AC4: a finished story carrying no cost data is omitted from story_costs,
+    and the middle/total are computed from the costed stories only."""
+    costed = _cost_card("c1", 120, 300, 0, 100, 0)
+    bare = Card(created=date(2024, 1, 1), card_id="bare")
+    story_costs, cost = _compute_cost_summary([costed, bare])
+    assert [item["card_id"] for item in story_costs] == ["c1"]
+    assert cost["middle"]["model_minutes"] == 2
+    assert cost["total"]["model_minutes"] == 2
+
+
+def test_compute_cost_summary_empty_when_no_story_carries_cost():
+    """AC5: when no story carries cost data (or there are no cards), story_costs
+    is an empty list and cost is None."""
+    bare1 = Card(created=date(2024, 1, 1), card_id="b1")
+    bare2 = Card(created=date(2024, 1, 1), card_id="b2")
+    assert _compute_cost_summary([bare1, bare2]) == ([], None)
+    assert _compute_cost_summary([]) == ([], None)
+
+
+def test_compute_cost_summary_short_story_rounds_to_whole_minutes():
+    """AC10: model_seconds 119 -> model_minutes 2 (119/60 ≈ 1.98 rounded, not
+    truncated to 1), so a short story never reads as a free story."""
+    card = _cost_card("short", 119, 100, 0, 10, 0)
+    story_costs, _ = _compute_cost_summary([card])
+    assert story_costs[0]["model_minutes"] == 2
+
+
+def test_median_odd_even_and_single():
+    """The middle value: median for odd counts, the rounded average of the two
+    middle values for even counts, the lone value for a single element."""
+    assert _median([2, 5, 9]) == 5
+    assert _median([58, 59]) == 58
+    assert _median([4]) == 4
+    assert _median([1, 2, 3, 4]) == round((2 + 3) / 2)
 
 
 @requires_db
@@ -400,9 +524,188 @@ def test_sprint_response_key_set_no_sprint_date():
             "superseded_points",
             "superseded_breakdown",
             "flags",
+            "story_costs",
+            "cost",
         }
         assert set(body.keys()) == expected_keys
         assert "sprint_date" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_response_story_costs_single_costed_story():
+    """AC1/AC8: GET /sprint returns story_costs with one six-key item for the
+    costed story and a cost object whose total matches the story's measures."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    for cid in ("cost-a", "cost-bare"):
+        conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = %s", (cid,))
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        for cid in ("cost-a", "cost-bare"):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=cid,
+                    event_type="started",
+                    timestamp="2024-01-03T10:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                ),
+            )
+            if cid == "cost-a":
+                finished = _make_event(
+                    card_id=cid,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                    model_seconds=3500,
+                    input_tokens=4000,
+                    cached_input_tokens=1400,
+                    output_tokens=900,
+                    reasoning_output_tokens=300,
+                )
+            else:
+                finished = _make_event(
+                    card_id=cid,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                )
+            _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert [item["card_id"] for item in body["story_costs"]] == ["cost-a"]
+        item = body["story_costs"][0]
+        assert set(item.keys()) == {
+            "card_id",
+            "model_minutes",
+            "input_tokens",
+            "cached_input_percent",
+            "output_tokens",
+            "reasoning_output_percent",
+        }
+        assert item["model_minutes"] == 58
+        assert item["input_tokens"] == 4000
+        assert item["output_tokens"] == 900
+        assert body["cost"]["total"]["model_minutes"] == 58
+        assert body["cost"]["total"]["input_tokens"] == 4000
+        assert body["cost"]["total"]["output_tokens"] == 900
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_response_story_costs_sprint_percents_and_middle():
+    """AC2/AC3: with two costed stories, every item carries the sprint's combined
+    cached/reasoning shares, and cost.middle is the median / cost.total the sum
+    of the per-story measures."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    for cid in ("cs-a", "cs-b"):
+        conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = %s", (cid,))
+    conn.commit()
+
+    payloads = {
+        "cs-a": {
+            "model_seconds": 60,
+            "input_tokens": 1000,
+            "cached_input_tokens": 500,
+            "output_tokens": 800,
+            "reasoning_output_tokens": 400,
+        },
+        "cs-b": {
+            "model_seconds": 60,
+            "input_tokens": 3000,
+            "cached_input_tokens": 900,
+            "output_tokens": 3200,
+            "reasoning_output_tokens": 640,
+        },
+    }
+    port = _start_service(conn, 0)
+    try:
+        for cid, payload in payloads.items():
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=cid,
+                    event_type="started",
+                    timestamp="2024-02-03T10:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=cid,
+                    event_type="finished",
+                    timestamp="2024-02-07T15:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                    **payload,
+                ),
+            )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-02")
+        assert status == 200
+        for item in body["story_costs"]:
+            assert item["cached_input_percent"] == 35
+            assert item["reasoning_output_percent"] == 26
+        assert body["cost"]["middle"]["model_minutes"] == 1
+        assert body["cost"]["total"]["input_tokens"] == 4000
+        assert body["cost"]["total"]["output_tokens"] == 4000
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_response_no_costed_story_costs_empty_and_cost_null():
+    """AC5: a sprint whose finished stories carry no cost payload returns
+    story_costs as an empty array and cost as null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ncc_sprint'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ncc_sprint",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ncc_sprint",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["story_costs"] == []
+        assert body["cost"] is None
     finally:
         conn.close()
 
