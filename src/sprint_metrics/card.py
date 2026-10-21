@@ -20,7 +20,7 @@ class Card:
     started: date | None = None
     completed: date | None = None
     blocked_since: date | None = None
-    attempts: int = 1
+    attempts: int = 1  # hands to review or QA (default: 1)
     failure_class: str | None = None
     failure_role: str | None = None
     points: int | None = None
@@ -35,6 +35,7 @@ class Card:
     output_tokens: int | None = None
     reasoning_output_tokens: int | None = None
     card_id: str | None = None
+    failures: list[tuple[str, str]] | None = None
 
     @property
     def is_completed(self) -> bool:
@@ -93,6 +94,29 @@ def parse_card(raw: Mapping[str, object]) -> Card:
                 f"superseded_because must be 'sponsor' or 'story_problem', got {reason!r}"
             )
         superseded_because = reason
+    failures_raw = raw.get("failures")
+    failures: list[tuple[str, str]] | None = None
+    if failures_raw is not None:
+        if not isinstance(failures_raw, list):
+            raise ValueError(
+                "failures must be an array of objects, "
+                "each carrying string 'failure_class' and 'failure_role'"
+            )
+        failures = []
+        for entry in failures_raw:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    "failures must be an array of objects, "
+                    "each carrying string 'failure_class' and 'failure_role'"
+                )
+            fc = entry.get("failure_class")
+            fr = entry.get("failure_role")
+            if not isinstance(fc, str) or not isinstance(fr, str):
+                raise ValueError(
+                    "failures must be an array of objects, "
+                    "each carrying string 'failure_class' and 'failure_role'"
+                )
+            failures.append((fc, fr))
     return Card(
         created=created,
         started=_parse_date(raw.get("started"), "started"),
@@ -107,6 +131,7 @@ def parse_card(raw: Mapping[str, object]) -> Card:
         created_at=created_at,
         started_at=_parse_datetime(raw.get("started_at"), "started_at"),
         completed_at=_parse_datetime(raw.get("completed_at"), "completed_at"),
+        failures=failures,
     )
 
 

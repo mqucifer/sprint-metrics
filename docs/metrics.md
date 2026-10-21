@@ -30,9 +30,11 @@ END:metrics
 
 ### First attempt rate
 
-The first attempt rate is the percentage of completed cards whose `attempts`
-field equals 1, rounded to the nearest whole number. A sprint with no
-completed cards reports 0.
+The first attempt rate is the percentage of completed stories accepted by
+review and QA on the first hand to them, rounded to the nearest whole number.
+An attempt is a hand of the story to review or QA; the crew's own checks
+before review do not count as attempts. A sprint with no completed stories
+reports 0.
 
 ### Failure breakdown
 

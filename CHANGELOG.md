@@ -4,6 +4,8 @@
 
 ### Added
 
+- CI now validates CHANGELOG.md by rules that hold for every release: pyproject version matches the newest section, sections run newest-first by version with dates in order, [Unreleased] is first with standard subheadings, and every released heading is dated YYYY-MM-DD
+
 ### Changed
 
 ### Fixed
