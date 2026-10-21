@@ -329,6 +329,28 @@ def test_parse_card_failures_is_string_raises():
         parse_card(raw)
 
 
+def test_cli_exits_2_on_invalid_failures(tmp_path, capsys):
+    """AC3: the CLI exits 2 when a card's 'failures' value is a string, and
+    stderr names the 'failures' field."""
+    import json
+
+    from sprint_metrics.cli import main
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "completed": "2024-01-03",
+            "failures": "not-an-array",
+        }
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "failures" in captured.err
+
+
 def test_parse_card_failures_entry_missing_failure_role():
     """AC3: a failures entry missing 'failure_role' raises ValueError naming 'failures'."""
     raw = {"created": "2024-01-01", "failures": [{"failure_class": "VERIFY"}]}
