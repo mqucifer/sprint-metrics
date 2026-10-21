@@ -1332,3 +1332,47 @@ def test_adr_0003_status_superseded_by_0011():
     assert "Releases were cut by hand" in text
     assert "A release is a pull request with the version bump" in text
     assert "The release is reviewed like any change" in text
+
+
+def test_service_md_documents_returned_event():
+    """AC8: docs/service.md Event intake section names 'returned' as the event for
+    a story handed back to the Business Analyst, describes reason as limited to
+    'session blocked' and 'contract ruling', describes missing as naming what was
+    missing (a file, a fact, or a stop), and states the current version is '2'."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "returned" in before, (
+        "Event intake section does not name 'returned' as an accepted event type"
+    )
+    assert "Business Analyst" in before, (
+        "Event intake section does not state 'returned' is for a story handed back "
+        "to the Business Analyst"
+    )
+    assert "session blocked" in before, (
+        "Event intake section does not name 'session blocked' as a reason value"
+    )
+    assert "contract ruling" in before, (
+        "Event intake section does not name 'contract ruling' as a reason value"
+    )
+    assert "missing" in before, "Event intake section does not name the 'missing' field"
+    assert "2" in before, "Event intake section does not state the current version is 2"
+
+
+def test_service_md_endpoint_table_lists_returned_alongside_seven():
+    """AC10: the POST /events row in the endpoint table lists all eight accepted
+    event types with 'returned' alongside the existing seven, matching the
+    eight-value type enum in EVENT_INTAKE_SCHEMA."""
+    from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
+
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    generated = text.split("BEGIN:service")[1].split("END:service")[0]
+
+    enum_values = EVENT_INTAKE_SCHEMA["properties"]["type"]["enum"]
+    assert len(enum_values) == 8, f"expected 8 event types, got {len(enum_values)}"
+
+    for event_type in enum_values:
+        assert event_type in generated, (
+            f"endpoint table POST /events row does not list event type {event_type!r}"
+        )

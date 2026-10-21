@@ -46,7 +46,16 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 
 VALID_EVENT_TYPES = frozenset(
-    {"started", "blocked", "unblocked", "finished", "escalated", "attempt_failed", "superseded"}
+    {
+        "started",
+        "blocked",
+        "unblocked",
+        "finished",
+        "escalated",
+        "attempt_failed",
+        "superseded",
+        "returned",
+    }
 )
 REQUIRED_FIELDS = ("api_version", "card_id", "type", "timestamp", "sprint", "card")
 
@@ -270,6 +279,13 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
 
                     if event_type == "superseded":
                         error = _validate_superseded_event(event)
+                        if error:
+                            self._send_json(400, {"error": error})
+                            status = 400
+                            return
+
+                    if event_type == "returned":
+                        error = _validate_returned_event(event)
                         if error:
                             self._send_json(400, {"error": error})
                             status = 400
@@ -719,7 +735,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "POST",
         "/events",
         "Accept a board event (started, blocked, unblocked, finished, escalated, "
-        "attempt_failed, superseded). The service validates the card's created "
+        "attempt_failed, superseded, returned). The service validates the card's created "
         "date and event type.",
     ),
     (
@@ -876,4 +892,18 @@ def _validate_superseded_event(event: dict) -> str | None:
         return f"invalid because: {event['because']!r} (must be 'sponsor' or 'story_problem')"
     if "replaced_by" in event and not isinstance(event["replaced_by"], list):
         return "replaced_by must be an array of integers"
+    return None
+
+
+def _validate_returned_event(event: dict) -> str | None:
+    """Validate returned-event-specific fields. Returns an error string or None."""
+    if event.get("api_version") != "2":
+        return "returned event requires api_version '2'"
+    reason = event.get("reason")
+    if not isinstance(reason, str) or reason not in ("session blocked", "contract ruling"):
+        return f"invalid reason: {reason!r} (must be 'session blocked' or 'contract ruling')"
+    if reason == "session blocked":
+        missing = event.get("missing")
+        if not isinstance(missing, str) or not missing:
+            return "missing must be a non-empty string when reason is 'session blocked'"
     return None
