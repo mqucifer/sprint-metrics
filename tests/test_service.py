@@ -617,10 +617,20 @@ def test_sprint_response_story_costs_sprint_percents_and_middle():
     conn.commit()
 
     payloads = {
-        "cs-a": {"model_seconds": 60, "input_tokens": 1000, "cached_input_tokens": 500,
-                  "output_tokens": 800, "reasoning_output_tokens": 400},
-        "cs-b": {"model_seconds": 60, "input_tokens": 3000, "cached_input_tokens": 900,
-                  "output_tokens": 3200, "reasoning_output_tokens": 640},
+        "cs-a": {
+            "model_seconds": 60,
+            "input_tokens": 1000,
+            "cached_input_tokens": 500,
+            "output_tokens": 800,
+            "reasoning_output_tokens": 400,
+        },
+        "cs-b": {
+            "model_seconds": 60,
+            "input_tokens": 3000,
+            "cached_input_tokens": 900,
+            "output_tokens": 3200,
+            "reasoning_output_tokens": 640,
+        },
     }
     port = _start_service(conn, 0)
     try:
