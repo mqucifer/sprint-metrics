@@ -603,6 +603,10 @@ def test_formats_worked_example_markdown_output(tmp_path, capsys):
     assert "- **Completed**: 1" in captured.out
     assert "- **In progress**: 0" in captured.out
     assert "- **Blocked**: 0" in captured.out
+    assert (
+        "- Top causes: Returns from review or QA, grouped by (failure class, "
+        "returning role), most frequent first" in captured.out
+    )
 
 
 def test_formats_worked_example_prometheus_output(tmp_path, capsys):
