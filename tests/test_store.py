@@ -321,7 +321,14 @@ def test_non_finished_row_has_null_cost(conn):
         "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('cost_fin2', 'cost_start2')"
     )
     conn.commit()
-    for event_type in ("started", "blocked", "unblocked", "escalated", "attempt_failed", "superseded"):
+    for event_type in (
+        "started",
+        "blocked",
+        "unblocked",
+        "escalated",
+        "attempt_failed",
+        "superseded",
+    ):
         insert_event(
             conn,
             {

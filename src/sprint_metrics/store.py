@@ -260,7 +260,17 @@ def _reconstruct_card(events: list[tuple]) -> Card | None:
     attempt_failed_count = 0
 
     for row in events:
-        event_type, event_time, card_created, card_created_at, ev_attempts, ev_failure_class, ev_failure_role, ev_points, ev_because = row[:9]
+        (
+            event_type,
+            event_time,
+            card_created,
+            card_created_at,
+            ev_attempts,
+            ev_failure_class,
+            ev_failure_role,
+            ev_points,
+            ev_because,
+        ) = row[:9]
         ev_model_seconds = row[9] if len(row) > 9 else None
         ev_input_tokens = row[10] if len(row) > 10 else None
         ev_cached_input_tokens = row[11] if len(row) > 11 else None
