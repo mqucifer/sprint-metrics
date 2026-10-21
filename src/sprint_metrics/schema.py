@@ -165,6 +165,52 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     "flags": {"type": ["object", "null"]},
                     "cycle_time_minutes": {"type": ["integer", "null"]},
                     "lead_time_minutes": {"type": ["integer", "null"]},
+                    "story_costs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "card_id": {"type": "string"},
+                                "model_minutes": {"type": "integer"},
+                                "input_tokens": {"type": "integer"},
+                                "cached_input_percent": {"type": "integer"},
+                                "output_tokens": {"type": "integer"},
+                                "reasoning_output_percent": {"type": "integer"},
+                            },
+                            "required": [
+                                "card_id",
+                                "model_minutes",
+                                "input_tokens",
+                                "cached_input_percent",
+                                "output_tokens",
+                                "reasoning_output_percent",
+                            ],
+                        },
+                    },
+                    "cost": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "middle": {
+                                "type": "object",
+                                "properties": {
+                                    "model_minutes": {"type": "integer"},
+                                    "input_tokens": {"type": "integer"},
+                                    "output_tokens": {"type": "integer"},
+                                },
+                                "required": ["model_minutes", "input_tokens", "output_tokens"],
+                            },
+                            "total": {
+                                "type": "object",
+                                "properties": {
+                                    "model_minutes": {"type": "integer"},
+                                    "input_tokens": {"type": "integer"},
+                                    "output_tokens": {"type": "integer"},
+                                },
+                                "required": ["model_minutes", "input_tokens", "output_tokens"],
+                            },
+                        },
+                        "required": ["middle", "total"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {
@@ -173,6 +219,12 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "superseded_breakdown": {"type": ["object", "null"]},
                             "cycle_time_minutes": {"type": ["integer", "null"]},
                             "lead_time_minutes": {"type": ["integer", "null"]},
+                            "model_minutes_middle": {"type": ["integer", "null"]},
+                            "model_minutes_total": {"type": ["integer", "null"]},
+                            "input_tokens_middle": {"type": ["integer", "null"]},
+                            "input_tokens_total": {"type": ["integer", "null"]},
+                            "output_tokens_middle": {"type": ["integer", "null"]},
+                            "output_tokens_total": {"type": ["integer", "null"]},
                         },
                     },
                     "delta": {
@@ -183,6 +235,12 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "superseded_breakdown": {"type": ["integer", "null"]},
                             "cycle_time_minutes": {"type": ["integer", "null"]},
                             "lead_time_minutes": {"type": ["integer", "null"]},
+                            "model_minutes_middle": {"type": ["integer", "null"]},
+                            "model_minutes_total": {"type": ["integer", "null"]},
+                            "input_tokens_middle": {"type": ["integer", "null"]},
+                            "input_tokens_total": {"type": ["integer", "null"]},
+                            "output_tokens_middle": {"type": ["integer", "null"]},
+                            "output_tokens_total": {"type": ["integer", "null"]},
                         },
                     },
                 },

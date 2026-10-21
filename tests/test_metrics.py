@@ -346,10 +346,10 @@ def test_calculate_points_and_first_attempt_empty():
 
 
 def test_all_metrics_grew_by_four():
-    """ALL_METRICS holds 17 entries, including the two sub-day minute metrics."""
+    """ALL_METRICS holds 25 entries, including the two sub-day minute metrics and the eight cost metrics."""
     from sprint_metrics.metrics import ALL_METRICS
 
-    assert len(ALL_METRICS) == 17
+    assert len(ALL_METRICS) == 25
     new_metrics = {
         "points_delivered",
         "first_attempt_numerator",
@@ -360,8 +360,19 @@ def test_all_metrics_grew_by_four():
         "superseded_breakdown",
     }
     minute_metrics = {"cycle_time_minutes", "lead_time_minutes"}
+    cost_metrics = {
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    }
     assert new_metrics.issubset(ALL_METRICS)
     assert minute_metrics.issubset(ALL_METRICS)
+    assert cost_metrics.issubset(ALL_METRICS)
     existing = {
         "cycle_time_days",
         "lead_time_days",
@@ -374,7 +385,8 @@ def test_all_metrics_grew_by_four():
     }
     assert new_metrics.isdisjoint(existing)
     assert minute_metrics.isdisjoint(existing)
-    for name in new_metrics | minute_metrics:
+    assert cost_metrics.isdisjoint(existing)
+    for name in new_metrics | minute_metrics | cost_metrics:
         assert name == name.lower() and "_" in name
 
 

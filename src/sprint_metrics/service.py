@@ -22,9 +22,17 @@ from opentelemetry.trace import StatusCode
 from sprint_metrics.metrics import (
     ALL_METRICS,
     calculate_blocked_aging,
+    calculate_cached_input_percent,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
     calculate_first_attempt_rate,
+    calculate_input_tokens_middle,
+    calculate_input_tokens_total,
+    calculate_model_minutes_middle,
+    calculate_model_minutes_total,
+    calculate_output_tokens_middle,
+    calculate_output_tokens_total,
+    calculate_reasoning_output_percent,
     calculate_throughput,
     calculate_wip_violations,
     metric_value,
@@ -431,9 +439,24 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         for i, label in enumerate(labels):
                             if label not in has_events:
                                 result["sprints"][label] = _null_range_entry()
-                            elif i > 0 and labels[i - 1] not in has_events:
-                                result["sprints"][label]["prior"] = None
-                                result["sprints"][label]["delta"] = None
+                                continue
+                            entry = result["sprints"][label]
+                            story_costs, cost = _compute_cost_summary(sprints[label])
+                            entry["story_costs"] = story_costs
+                            entry["cost"] = cost
+                            if i > 0 and labels[i - 1] not in has_events:
+                                entry["prior"] = None
+                                entry["delta"] = None
+                            elif i > 0:
+                                prior_cost = _compute_cost_summary(sprints[labels[i - 1]])[1]
+                                prior_flat = _cost_flat(prior_cost)
+                                current_flat = _cost_flat(cost)
+                                for name in _COST_FLAT_NAMES:
+                                    entry["prior"][name] = prior_flat[name]
+                                    cur, pri = current_flat[name], prior_flat[name]
+                                    entry["delta"][name] = (
+                                        cur - pri if cur is not None and pri is not None else None
+                                    )
                         self._send_json(200, result)
                         status = 200
                         return
@@ -684,6 +707,30 @@ def _median(values: list[int]) -> int:
     return round((ordered[mid - 1] + ordered[mid]) / 2)
 
 
+_COST_FLAT_NAMES: tuple[str, ...] = (
+    "model_minutes_middle",
+    "model_minutes_total",
+    "input_tokens_middle",
+    "input_tokens_total",
+    "output_tokens_middle",
+    "output_tokens_total",
+)
+
+
+def _cost_flat(cost: dict | None) -> dict[str, int | None]:
+    """The six flat cost names from a cost middle/total dict; None each when cost is None."""
+    if cost is None:
+        return {name: None for name in _COST_FLAT_NAMES}
+    return {
+        "model_minutes_middle": cost["middle"]["model_minutes"],
+        "model_minutes_total": cost["total"]["model_minutes"],
+        "input_tokens_middle": cost["middle"]["input_tokens"],
+        "input_tokens_total": cost["total"]["input_tokens"],
+        "output_tokens_middle": cost["middle"]["output_tokens"],
+        "output_tokens_total": cost["total"]["output_tokens"],
+    }
+
+
 def _metrics_text(sprints: dict[str, list], escalations: dict[str, int] | None = None) -> str:
     """Format stored sprint history as Prometheus text exposition with sprint labels."""
     if escalations is None:
@@ -705,6 +752,18 @@ def _metrics_text(sprints: dict[str, list], escalations: dict[str, int] | None =
         lines.append(f"sprint_blocked_aging_days{{{label}}} {blocked_aging}")
         lines.append(f"sprint_escalation_rate_percent{{{label}}} {escalation_rate}")
         lines.append(f"sprint_first_attempt_rate_percent{{{label}}} {first_attempt_rate}")
+        cost_values = {
+            "model_minutes_middle": calculate_model_minutes_middle(cards),
+            "model_minutes_total": calculate_model_minutes_total(cards),
+            "input_tokens_middle": calculate_input_tokens_middle(cards),
+            "input_tokens_total": calculate_input_tokens_total(cards),
+            "output_tokens_middle": calculate_output_tokens_middle(cards),
+            "output_tokens_total": calculate_output_tokens_total(cards),
+            "cached_input_percent": calculate_cached_input_percent(cards),
+            "reasoning_output_percent": calculate_reasoning_output_percent(cards),
+        }
+        for cost_name, cost_value in cost_values.items():
+            lines.append(f"sprint_{cost_name}{{{label}}} {0 if cost_value is None else cost_value}")
 
     return "\n".join(lines)
 
@@ -840,6 +899,8 @@ def _null_range_entry() -> dict:
         "flags": None,
         "prior": None,
         "delta": None,
+        "story_costs": [],
+        "cost": None,
     }
 
 
