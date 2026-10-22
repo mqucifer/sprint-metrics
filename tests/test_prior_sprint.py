@@ -178,7 +178,7 @@ def test_prior_sprint_json_includes_prior_and_delta(tmp_path, capsys):
         "blocked_aging_days": 0,
         "escalation_rate_percent": 0,
         "first_attempt_rate_percent": 100,
-        "top_failure_causes": {},
+        "top_failure_causes": [],
         "superseded_count": 0,
         "superseded_points": 0,
         "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
@@ -309,8 +309,10 @@ def test_prior_sprint_json_top_level_first_attempt_and_top_causes(tmp_path, caps
     """AC1: 2024-01 has 3 completed cards (2 first-attempt, 1 with attempts=2
     failure_class='bug') and 2024-02 has 5 completed cards (4 first-attempt, 1 with
     attempts=2 failure_class='requirement'). --prior-sprint 2024-01 --json exits 0,
-    top-level first_attempt_rate_percent is 80, top_failure_causes is {'requirement': 1},
-    prior first_attempt_rate_percent is 67, prior top_failure_causes is {'bug': 1},
+    top-level first_attempt_rate_percent is 80, top_failure_causes is
+    [{'class': 'requirement', 'role': '', 'count': 1}],
+    prior first_attempt_rate_percent is 67, prior top_failure_causes is
+    [{'class': 'bug', 'role': '', 'count': 1}],
     and delta first_attempt_rate_percent is 13."""
     first_attempt = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
     bug_card = {
@@ -339,9 +341,9 @@ def test_prior_sprint_json_top_level_first_attempt_and_top_causes(tmp_path, caps
     assert exit_code == 0
     data = json.loads(captured.out)
     assert data["first_attempt_rate_percent"] == 80
-    assert data["top_failure_causes"] == {"requirement": 1}
+    assert data["top_failure_causes"] == [{"class": "requirement", "role": "", "count": 1}]
     assert data["prior"]["first_attempt_rate_percent"] == 67
-    assert data["prior"]["top_failure_causes"] == {"bug": 1}
+    assert data["prior"]["top_failure_causes"] == [{"class": "bug", "role": "", "count": 1}]
     assert data["delta"]["first_attempt_rate_percent"] == 13
 
 
@@ -738,3 +740,126 @@ def test_markdown_summary_appears_before_prior_and_current_sprint(tmp_path, caps
     prior_idx = next(i for i, line in enumerate(lines) if line == "## Prior Sprint 2024-01")
     current_idx = next(i for i, line in enumerate(lines) if line == "## Current Sprint")
     assert summary_idx < prior_idx < current_idx
+
+
+def test_prior_sprint_section_cost_lines_present_only_when_costed():
+    """AC6: cost lines appear when the prior cards carry cost data; without cost data the
+    section is byte-for-byte identical to today's (no cost lines appended)."""
+    from datetime import date
+
+    from sprint_metrics.card import Card
+    from sprint_metrics.report import _prior_sprint_section
+
+    costed = [
+        Card(
+            created=date(2024, 1, 1),
+            model_seconds=3480,
+            input_tokens=4000,
+            cached_input_tokens=1800,
+            output_tokens=900,
+            reasoning_output_tokens=200,
+            card_id="c1",
+        ),
+    ]
+    bare = [Card(created=date(2024, 1, 1), card_id="b1")]
+    costed_section = _prior_sprint_section(costed, "2026-09", None, 0)
+    bare_section = _prior_sprint_section(bare, "2026-09", None, 0)
+    assert any(line.startswith("- **Cost (middle)**:") for line in costed_section)
+    assert any(line.startswith("- **Cost (total)**:") for line in costed_section)
+    assert not any(line.startswith("- **Cost") for line in bare_section)
+    # the bare section is today's section, unchanged, and a strict prefix of the costed one
+    assert bare_section == [
+        "## Prior Sprint 2026-09",
+        "",
+        "- **Cycle time**: 0 days",
+        "- **Lead time**: 0 days",
+        "- **Throughput**: 0 cards",
+        "- **WIP violations**: 0",
+        "- **Blocked aging**: 0 days",
+        "- **Escalation rate**: 0%",
+        "- **First-attempt rate**: 0%",
+    ]
+    assert costed_section[: len(bare_section)] == bare_section
+
+
+def test_prior_sprint_section_cost_lines_match_range_prior_object():
+    """AC9: the prior-sprint section's cost lines report, measure for measure, the same
+    middle and total the /range prior object carries (model minutes, input, output tokens)."""
+    from datetime import date
+
+    from sprint_metrics.card import Card
+    from sprint_metrics.report import _prior_sprint_section
+    from sprint_metrics.service import _compute_cost_summary, _cost_flat
+
+    prior_cards = [
+        Card(
+            created=date(2024, 1, 1),
+            model_seconds=1080,
+            input_tokens=2500,
+            cached_input_tokens=1000,
+            output_tokens=600,
+            reasoning_output_tokens=100,
+            card_id="p1",
+        ),
+        Card(
+            created=date(2024, 1, 1),
+            model_seconds=1860,
+            input_tokens=4000,
+            cached_input_tokens=1600,
+            output_tokens=1200,
+            reasoning_output_tokens=200,
+            card_id="p2",
+        ),
+        Card(
+            created=date(2024, 1, 1),
+            model_seconds=2580,
+            input_tokens=8000,
+            cached_input_tokens=3200,
+            output_tokens=3800,
+            reasoning_output_tokens=400,
+            card_id="p3",
+        ),
+    ]
+    _, cost = _compute_cost_summary(prior_cards)
+    flat = _cost_flat(cost)
+    section = _prior_sprint_section(prior_cards, "2026-09", None, 0)
+    text = "\n".join(section)
+    assert (
+        f"- **Cost (middle)**: {flat['model_minutes_middle']} model minutes, "
+        f"{flat['input_tokens_middle']} input tokens, {flat['output_tokens_middle']} output tokens"
+        in text
+    )
+    assert (
+        f"- **Cost (total)**: {flat['model_minutes_total']} model minutes, "
+        f"{flat['input_tokens_total']} input tokens, {flat['output_tokens_total']} output tokens"
+        in text
+    )
+    # concrete AC9 values for this data
+    assert "- **Cost (middle)**: 31 model minutes, 4000 input tokens, 1200 output tokens" in text
+    assert "- **Cost (total)**: 92 model minutes, 14500 input tokens, 5600 output tokens" in text
+
+
+def test_prior_sprint_section_model_cost_in_whole_minutes():
+    """AC10: the prior-sprint cost lines express the model cost in whole minutes (3500 model
+    seconds -> 58 minutes) and never show the raw model-seconds value."""
+    from datetime import date
+
+    from sprint_metrics.card import Card
+    from sprint_metrics.report import _prior_sprint_section
+
+    prior_cards = [
+        Card(
+            created=date(2024, 1, 1),
+            model_seconds=3500,
+            input_tokens=1000,
+            cached_input_tokens=0,
+            output_tokens=100,
+            reasoning_output_tokens=0,
+            card_id="p1",
+        ),
+    ]
+    section = _prior_sprint_section(prior_cards, "2026-09", None, 0)
+    text = "\n".join(section)
+    assert "- **Cost (middle)**: 58 model minutes" in text
+    assert "- **Cost (total)**: 58 model minutes" in text
+    assert "3500" not in text

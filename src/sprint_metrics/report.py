@@ -16,7 +16,13 @@ from sprint_metrics.metrics import (
     calculate_failure_breakdown,
     calculate_first_attempt_counts,
     calculate_first_attempt_rate,
+    calculate_input_tokens_middle,
+    calculate_input_tokens_total,
     calculate_lead_time_minutes,
+    calculate_model_minutes_middle,
+    calculate_model_minutes_total,
+    calculate_output_tokens_middle,
+    calculate_output_tokens_total,
     calculate_points_delivered,
     calculate_superseded_breakdown,
     calculate_superseded_count,
@@ -639,7 +645,9 @@ def format_json_report(
     report: dict[str, object] = {
         "api_version": API_VERSION,
         **metric_values,
-        "top_failure_causes": top_causes,
+        "top_failure_causes": [
+            {"class": cls, "role": role, "count": count} for cls, role, count in top_causes
+        ],
         "flags": filtered_flags,
     }
     if as_of is not None:
@@ -669,7 +677,10 @@ def format_json_report(
             "blocked_aging_days": prior_blocked,
             "escalation_rate_percent": prior_escalation,
             "first_attempt_rate_percent": prior_first_attempt,
-            "top_failure_causes": prior_top_causes,
+            "top_failure_causes": [
+                {"class": cls, "role": role, "count": count}
+                for cls, role, count in prior_top_causes
+            ],
             "superseded_count": prior_superseded_count,
             "superseded_points": prior_superseded_points,
             "superseded_breakdown": prior_superseded_breakdown,
@@ -712,12 +723,16 @@ def _prior_sprint_section(
 
     Only rendered when there are cards: with none, the metrics are all zero for
     want of data rather than because the sprint went that way.
+
+    When the prior sprint's cards carry cost data, two cost lines report the
+    prior sprint's middle and total model minutes, input tokens, and output
+    tokens; without cost data the section is unchanged.
     """
     if not cards:
         return ["No performance data available"]
     cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
     first_attempt_rate = calculate_first_attempt_rate(cards)
-    return [
+    lines = [
         f"## Prior Sprint {label}",
         "",
         f"- **Cycle time**: {cycle_time} days",
@@ -728,6 +743,18 @@ def _prior_sprint_section(
         f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%",
         f"- **First-attempt rate**: {first_attempt_rate}%",
     ]
+    if any(card.model_seconds is not None for card in cards):
+        lines.append(
+            f"- **Cost (middle)**: {calculate_model_minutes_middle(cards)} model minutes, "
+            f"{calculate_input_tokens_middle(cards)} input tokens, "
+            f"{calculate_output_tokens_middle(cards)} output tokens"
+        )
+        lines.append(
+            f"- **Cost (total)**: {calculate_model_minutes_total(cards)} model minutes, "
+            f"{calculate_input_tokens_total(cards)} input tokens, "
+            f"{calculate_output_tokens_total(cards)} output tokens"
+        )
+    return lines
 
 
 def _signed(delta: int) -> str:
@@ -758,6 +785,14 @@ _METRIC_COLUMNS: dict[str, str] = {
     "superseded_count": "Superseded",
     "superseded_points": "Superseded points",
     "superseded_breakdown": "Superseded breakdown",
+    "model_minutes_middle": "Model minutes (middle)",
+    "model_minutes_total": "Model minutes (total)",
+    "input_tokens_middle": "Input tokens (middle)",
+    "input_tokens_total": "Input tokens (total)",
+    "output_tokens_middle": "Output tokens (middle)",
+    "output_tokens_total": "Output tokens (total)",
+    "cached_input_percent": "Cached input percent",
+    "reasoning_output_percent": "Reasoning output percent",
 }
 
 
@@ -1018,7 +1053,7 @@ _DEFINITIONS: dict[str, str] = {
     "first_attempt_rate_percent": "Percentage of completed cards that passed on the first attempt",
     "first_attempt_numerator": "Count of completed cards whose attempts equals 1",
     "first_attempt_denominator": "Total count of completed cards",
-    "failure_breakdown": "Most frequent failure classes among completed cards with attempts greater than 1",
+    "failure_breakdown": "Returns from review or QA, grouped by (failure class, returning role), most frequent first",
     "superseded_count": "Number of superseded stories in the sprint",
     "superseded_points": "Sum of points on superseded stories",
     "superseded_breakdown": "Per-reason count of superseded stories (sponsor, story_problem)",

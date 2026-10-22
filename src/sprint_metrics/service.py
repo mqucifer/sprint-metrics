@@ -22,9 +22,17 @@ from opentelemetry.trace import StatusCode
 from sprint_metrics.metrics import (
     ALL_METRICS,
     calculate_blocked_aging,
+    calculate_cached_input_percent,
     calculate_cycle_time_and_lead_time,
     calculate_escalation_rate,
     calculate_first_attempt_rate,
+    calculate_input_tokens_middle,
+    calculate_input_tokens_total,
+    calculate_model_minutes_middle,
+    calculate_model_minutes_total,
+    calculate_output_tokens_middle,
+    calculate_output_tokens_total,
+    calculate_reasoning_output_percent,
     calculate_throughput,
     calculate_wip_violations,
     metric_value,
@@ -261,6 +269,13 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 400
                             return
 
+                    if event_type == "finished":
+                        error = _validate_cost_fields(card)
+                        if error:
+                            self._send_json(400, {"error": error})
+                            status = 400
+                            return
+
                     if event_type == "superseded":
                         error = _validate_superseded_event(event)
                         if error:
@@ -421,12 +436,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             sprints, labels, sprint_escalations=sprint_escs
                         )
                         result = json.loads(body)
-                        for i, label in enumerate(labels):
-                            if label not in has_events:
-                                result["sprints"][label] = _null_range_entry()
-                            elif i > 0 and labels[i - 1] not in has_events:
-                                result["sprints"][label]["prior"] = None
-                                result["sprints"][label]["delta"] = None
+                        _attach_range_cost(result, sprints, labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -607,7 +617,98 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
 
 def _sprint_json(cards, escalations: int = 0) -> str:
     """Compute sprint metrics from stored cards and return the JSON report string."""
-    return format_json_report(cards, escalations=escalations)
+    report = json.loads(format_json_report(cards, escalations=escalations))
+    story_costs, cost = _compute_cost_summary(cards)
+    report["story_costs"] = story_costs
+    report["cost"] = cost
+    return json.dumps(report)
+
+
+def _compute_cost_summary(cards) -> tuple[list[dict], dict | None]:
+    """Compute the per-story cost list and the sprint's cost middle and total.
+
+    A card carries cost data when its model_seconds is not None; the per-story
+    cost is the total already stored on the card (the sum across roles). The two
+    percents on every story_costs item are the sprint's combined shares, not the
+    story's own. ``cost`` is the median (middle) and sum (total) of the three
+    measures over the costed stories. Returns ``([], None)`` when no card carries
+    cost data.
+    """
+    costed = [card for card in cards if card.model_seconds is not None]
+    if not costed:
+        return [], None
+    total_input = sum(card.input_tokens for card in costed)
+    total_cached = sum(card.cached_input_tokens for card in costed)
+    total_output = sum(card.output_tokens for card in costed)
+    total_reasoning = sum(card.reasoning_output_tokens for card in costed)
+    cached_input_percent = round(100 * total_cached / total_input) if total_input > 0 else 0
+    reasoning_output_percent = (
+        round(100 * total_reasoning / total_output) if total_output > 0 else 0
+    )
+    story_costs = [
+        {
+            "card_id": card.card_id,
+            "model_minutes": round(card.model_seconds / 60),
+            "input_tokens": card.input_tokens,
+            "cached_input_percent": cached_input_percent,
+            "output_tokens": card.output_tokens,
+            "reasoning_output_percent": reasoning_output_percent,
+        }
+        for card in costed
+    ]
+    per_story_minutes = [item["model_minutes"] for item in story_costs]
+    per_story_input = [item["input_tokens"] for item in story_costs]
+    per_story_output = [item["output_tokens"] for item in story_costs]
+    cost = {
+        "middle": {
+            "model_minutes": _median(per_story_minutes),
+            "input_tokens": _median(per_story_input),
+            "output_tokens": _median(per_story_output),
+        },
+        "total": {
+            "model_minutes": sum(per_story_minutes),
+            "input_tokens": sum(per_story_input),
+            "output_tokens": sum(per_story_output),
+        },
+    }
+    return story_costs, cost
+
+
+def _median(values: list[int]) -> int:
+    """The median of a list of whole numbers.
+
+    For an odd count this is the middle value; for an even count it is the
+    average of the two middle values, rounded (Python's round-half-to-even).
+    """
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return round((ordered[mid - 1] + ordered[mid]) / 2)
+
+
+_COST_FLAT_NAMES: tuple[str, ...] = (
+    "model_minutes_middle",
+    "model_minutes_total",
+    "input_tokens_middle",
+    "input_tokens_total",
+    "output_tokens_middle",
+    "output_tokens_total",
+)
+
+
+def _cost_flat(cost: dict | None) -> dict[str, int | None]:
+    """The six flat cost names from a cost middle/total dict; None each when cost is None."""
+    if cost is None:
+        return {name: None for name in _COST_FLAT_NAMES}
+    return {
+        "model_minutes_middle": cost["middle"]["model_minutes"],
+        "model_minutes_total": cost["total"]["model_minutes"],
+        "input_tokens_middle": cost["middle"]["input_tokens"],
+        "input_tokens_total": cost["total"]["input_tokens"],
+        "output_tokens_middle": cost["middle"]["output_tokens"],
+        "output_tokens_total": cost["total"]["output_tokens"],
+    }
 
 
 def _metrics_text(sprints: dict[str, list], escalations: dict[str, int] | None = None) -> str:
@@ -631,6 +732,18 @@ def _metrics_text(sprints: dict[str, list], escalations: dict[str, int] | None =
         lines.append(f"sprint_blocked_aging_days{{{label}}} {blocked_aging}")
         lines.append(f"sprint_escalation_rate_percent{{{label}}} {escalation_rate}")
         lines.append(f"sprint_first_attempt_rate_percent{{{label}}} {first_attempt_rate}")
+        cost_values = {
+            "model_minutes_middle": calculate_model_minutes_middle(cards),
+            "model_minutes_total": calculate_model_minutes_total(cards),
+            "input_tokens_middle": calculate_input_tokens_middle(cards),
+            "input_tokens_total": calculate_input_tokens_total(cards),
+            "output_tokens_middle": calculate_output_tokens_middle(cards),
+            "output_tokens_total": calculate_output_tokens_total(cards),
+            "cached_input_percent": calculate_cached_input_percent(cards),
+            "reasoning_output_percent": calculate_reasoning_output_percent(cards),
+        }
+        for cost_name, cost_value in cost_values.items():
+            lines.append(f"sprint_{cost_name}{{{label}}} {0 if cost_value is None else cost_value}")
 
     return "\n".join(lines)
 
@@ -651,13 +764,18 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "GET",
         "/sprint",
-        "Return metrics for a single sprint. Sprints with no events return all-null values.",
+        "Return metrics for a single sprint. "
+        "failure_breakdown and top_failure_causes count returns — "
+        "one entry per return, by (failure class, returning role). "
+        "Sprints with no events return all-null values.",
     ),
     (
         "GET",
         "/range",
         "Return metrics for a range of sprints in chronological order. "
         "Each entry includes the prior-sprint delta. "
+        "failure_breakdown and top_failure_causes count returns, "
+        "one per return, by (failure class, returning role). "
         "Sprints with no events return all-null values.",
     ),
     (
@@ -671,7 +789,11 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "first_attempt_rate_percent, points_delivered, "
         "first_attempt_numerator, first_attempt_denominator, "
         "escalation_count, superseded_count, superseded_points, "
-        "superseded_breakdown, cycle_time_minutes, lead_time_minutes. "
+        "superseded_breakdown, cycle_time_minutes, lead_time_minutes, "
+        "model_minutes_middle, model_minutes_total, "
+        "input_tokens_middle, input_tokens_total, "
+        "output_tokens_middle, output_tokens_total, "
+        "cached_input_percent, reasoning_output_percent. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null.",
@@ -737,6 +859,8 @@ def _null_sprint_response() -> dict:
         "superseded_points": None,
         "superseded_breakdown": None,
         "flags": None,
+        "story_costs": [],
+        "cost": None,
     }
 
 
@@ -764,7 +888,71 @@ def _null_range_entry() -> dict:
         "flags": None,
         "prior": None,
         "delta": None,
+        "story_costs": [],
+        "cost": None,
     }
+
+
+def _attach_range_cost(
+    result: dict,
+    sprints: dict[str, list],
+    labels: list[str],
+    has_events: set[str],
+) -> None:
+    """Attach cost to each range entry: ``story_costs`` and ``cost`` on the entry, and
+    the six flat cost names on its prior and delta.
+
+    An entry for a sprint with no events becomes the null entry (story_costs [], cost
+    None, prior/delta None). The flat names in prior and delta are null where the
+    corresponding sprint has no costed stories, so a cost delta is never computed
+    against a missing cost.
+    """
+    for i, label in enumerate(labels):
+        if label not in has_events:
+            result["sprints"][label] = _null_range_entry()
+            continue
+        entry = result["sprints"][label]
+        story_costs, cost = _compute_cost_summary(sprints[label])
+        entry["story_costs"] = story_costs
+        entry["cost"] = cost
+        if i > 0 and labels[i - 1] not in has_events:
+            entry["prior"] = None
+            entry["delta"] = None
+        elif i > 0:
+            prior_cost = _compute_cost_summary(sprints[labels[i - 1]])[1]
+            prior_flat = _cost_flat(prior_cost)
+            current_flat = _cost_flat(cost)
+            for name in _COST_FLAT_NAMES:
+                entry["prior"][name] = prior_flat[name]
+                cur, pri = current_flat[name], prior_flat[name]
+                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+def _validate_cost_fields(card: dict) -> str | None:
+    """Validate all-or-nothing cost fields on a finished event's card payload.
+
+    Returns an error string on failure, None on success or when no cost key is present.
+    """
+    cost_keys = (
+        "model_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    )
+    present = [k for k in cost_keys if k in card]
+    if not present:
+        return None
+    missing = [k for k in cost_keys if k not in card]
+    if missing:
+        return f"partial cost payload on finished event: missing {', '.join(missing)}"
+    for key in cost_keys:
+        value = card[key]
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"invalid cost payload on finished event: {key} must be a non-negative integer"
+        if value < 0:
+            return f"invalid cost payload on finished event: {key} must be a non-negative integer"
+    return None
 
 
 def _validate_superseded_event(event: dict) -> str | None:

@@ -48,6 +48,14 @@ def _generate_metrics_content() -> str:
         "first_attempt_rate_percent": "calculate_first_attempt_rate",
         "failure_breakdown": "calculate_failure_breakdown",
         "points_delivered": "calculate_points_delivered",
+        "model_minutes_middle": "calculate_model_minutes_middle",
+        "model_minutes_total": "calculate_model_minutes_total",
+        "input_tokens_middle": "calculate_input_tokens_middle",
+        "input_tokens_total": "calculate_input_tokens_total",
+        "output_tokens_middle": "calculate_output_tokens_middle",
+        "output_tokens_total": "calculate_output_tokens_total",
+        "cached_input_percent": "calculate_cached_input_percent",
+        "reasoning_output_percent": "calculate_reasoning_output_percent",
     }
 
     # Metrics whose description is not the first line of a single calculate
@@ -137,7 +145,8 @@ def _generate_input_format_content() -> str:
         "| `started_at` | No | ISO-8601 datetime | When work started on the card (sub-day precision) |",
         "| `completed_at` | No | ISO-8601 datetime | When the card was completed (sub-day precision) |",
         "| `blocked_since` | No | ISO-8601 date | When the card was blocked |",
-        "| `attempts` | No | integer | Number of attempts (default: 1) |",
+        "| `attempts` | No | integer | Number of hands to review or QA (default: 1) |",
+        "| `failures` | No | array of objects | One entry per return by review or QA; each entry has `failure_class` and `failure_role` |",
         "| `failure_class` | No | string | Classification of the failure |",
         "| `failure_role` | No | string | Role responsible for the failure |",
         "",
@@ -150,7 +159,16 @@ def _generate_input_format_content() -> str:
                     "completed": "2024-01-10",
                     "blocked_since": "2024-01-06",
                 },
-                {"created": "2024-01-04"},
+                {
+                    "created": "2024-01-04",
+                    "attempts": 2,
+                    "failures": [
+                        {
+                            "failure_class": "VERIFY",
+                            "failure_role": "Review",
+                        }
+                    ],
+                },
             ],
             indent=2,
         ),

@@ -324,6 +324,36 @@ def test_worked_example_throughput_and_cycle_time_are_correct(tmp_path, capsys):
         assert cells[1] == f"{expected_cycle} days"
 
 
+def test_cards_md_json_example_includes_failures_field():
+    """AC6: the JSON example in docs/cards.md's input-format section contains a card
+    carrying both an 'attempts' value and a 'failures' array whose entries are objects
+    each holding 'failure_class' and 'failure_role'."""
+    text = (DOCS_DIR / "cards.md").read_text()
+    cards = _extract_json_block(text)
+    cards_with_failures = [c for c in cards if "attempts" in c and "failures" in c]
+    assert cards_with_failures, (
+        "no card in docs/cards.md example carries both 'attempts' and 'failures'"
+    )
+    card = cards_with_failures[0]
+    assert isinstance(card["failures"], list)
+    for entry in card["failures"]:
+        assert "failure_class" in entry
+        assert "failure_role" in entry
+
+
+def test_metrics_md_first_attempt_rate_states_review_qa_semantics():
+    """AC8: docs/metrics.md's 'First attempt rate' subsection states that an attempt
+    is a hand of the story to review or QA and that the crew's own checks before
+    review do not count as attempts."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section_start = text.index("### First attempt rate")
+    section_end = text.index("###", section_start + 1)
+    section = text[section_start:section_end]
+    assert "hand of the story to review or QA" in section
+    assert "crew's own checks" in section
+    assert "do not count as attempts" in section
+
+
 def test_metrics_contains_all_six_display_names():
     """AC (migrated): docs/metrics.md contains all six original metric display names."""
     text = (DOCS_DIR / "metrics.md").read_text()
@@ -528,7 +558,18 @@ def test_formats_worked_example_table_output(tmp_path, capsys):
     current_rows = [line for line in lines if line.startswith("| Current |")]
     assert len(current_rows) == 1, f"expected exactly one Current row, got {len(current_rows)}"
     cells = [c.strip() for c in current_rows[0].split("|") if c.strip()]
-    assert cells == ["Current", "4 days", "6 days", "1", "0", "0", "0 days", "0%", "100%", "\u2014"]
+    assert cells == [
+        "Current",
+        "4 days",
+        "6 days",
+        "1",
+        "0",
+        "0",
+        "0 days",
+        "0%",
+        "100%",
+        "1\u00d7 VERIFY (Review)",
+    ]
 
 
 def test_formats_worked_example_json_output(tmp_path, capsys):
@@ -550,15 +591,17 @@ def test_formats_worked_example_json_output(tmp_path, capsys):
     assert data["blocked_aging_days"] == 0
     assert data["escalation_rate_percent"] == 0
     assert data["first_attempt_rate_percent"] == 100
-    assert data["failure_breakdown"] == []
-    assert data["top_failure_causes"] == {}
+    assert data["failure_breakdown"] == [{"class": "VERIFY", "role": "Review", "count": 1}]
+    assert data["top_failure_causes"] == [{"class": "VERIFY", "role": "Review", "count": 1}]
     assert all(v is False for v in data["flags"].values())
 
 
 def test_formats_worked_example_markdown_output(tmp_path, capsys):
     """AC4: the same cards JSON with --markdown exits 0 and stdout contains the
-    expected structural elements: heading, report date, sprint section, and
-    summary section with Completed/In progress/Blocked lines."""
+    expected structural elements: heading, report date, sprint section,
+    summary section with Completed/In progress/Blocked lines, and the
+    Definitions section's 'Top causes' line stating returns grouped by
+    (failure class, returning role)."""
     cards = _extract_formats_cards()
     path = tmp_path / "cards.json"
     path.write_text(json.dumps(cards))
@@ -573,6 +616,10 @@ def test_formats_worked_example_markdown_output(tmp_path, capsys):
     assert "- **Completed**: 1" in captured.out
     assert "- **In progress**: 0" in captured.out
     assert "- **Blocked**: 0" in captured.out
+    assert (
+        "- Top causes: Returns from review or QA, grouped by (failure class, "
+        "returning role), most frequent first" in captured.out
+    )
 
 
 def test_formats_worked_example_prometheus_output(tmp_path, capsys):
@@ -593,6 +640,7 @@ def test_formats_worked_example_prometheus_output(tmp_path, capsys):
     assert "sprint_blocked_aging_days 0" in lines
     assert "sprint_escalation_rate_percent 0" in lines
     assert "sprint_first_attempt_rate_percent 100" in lines
+    assert 'sprint_failure_count{class="VERIFY",role="Review"} 1' in lines
 
 
 def test_sprint_range_doc_output_matches(tmp_path, capsys):
@@ -800,7 +848,7 @@ def test_formats_empty_sprint_json_output(tmp_path, capsys):
     assert data["escalation_rate_percent"] == 0
     assert data["first_attempt_rate_percent"] == 0
     assert data["failure_breakdown"] == []
-    assert data["top_failure_causes"] == {}
+    assert data["top_failure_causes"] == []
     flags = data["flags"]
     assert flags["throughput"] is True
     assert flags["first_attempt_rate_percent"] is True
@@ -979,6 +1027,46 @@ def test_service_md_documents_superseded_event():
     )
     assert "no prior event" in before.lower(), (
         "hand-written content does not state no prior event is required"
+    )
+
+
+def test_service_md_sprint_range_descriptions_state_per_return_semantics():
+    """AC5: the hand-written /sprint and /range endpoint descriptions in
+    docs/service.md state that failure_breakdown and top_failure_causes count
+    returns — one entry per return, by (failure class, returning role) — not
+    one entry per failed story."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+
+    sprint_section = before[before.index("GET /sprint") :]
+    range_start = before.index("GET /range")
+    range_section = before[range_start : range_start + 500]
+
+    assert "failure_breakdown" in sprint_section, (
+        "hand-written /sprint description does not mention failure_breakdown"
+    )
+    assert "top_failure_causes" in sprint_section, (
+        "hand-written /sprint description does not mention top_failure_causes"
+    )
+    assert "one entry per return" in sprint_section, (
+        "hand-written /sprint description does not state per-return semantics"
+    )
+    assert "failure class, returning role" in sprint_section, (
+        "hand-written /sprint description does not name the (class, role) key"
+    )
+
+    assert "failure_breakdown" in range_section, (
+        "hand-written /range description does not mention failure_breakdown"
+    )
+    assert "top_failure_causes" in range_section, (
+        "hand-written /range description does not mention top_failure_causes"
+    )
+    assert "one entry per return" in range_section, (
+        "hand-written /range description does not state per-return semantics"
+    )
+    assert "failure class, returning role" in range_section, (
+        "hand-written /range description does not name the (class, role) key"
     )
 
 
@@ -1175,3 +1263,317 @@ def test_thresholds_md_default_section_covers_table_marker():
     for doc in ALL_DOCS:
         for line in (DOCS_DIR / doc).read_text().splitlines():
             assert not ("--sprint-range" in line and "--markdown" in line)
+
+
+# --- Changelog-rules release-cut docs (epic #692) ---
+
+
+def _versioning_section() -> str:
+    """Extract the README's Versioning section (from '## Versioning' to the next '## ')."""
+    text = README.read_text()
+    start = text.index("## Versioning")
+    rest = text[start + len("## Versioning") :]
+    next_heading = rest.find("\n## ")
+    if next_heading == -1:
+        return rest
+    return rest[:next_heading]
+
+
+def _adr_0011_decision() -> str:
+    """Extract the Decision section from the 0011 ADR file."""
+    adr_dir = DOCS_DIR / "decisions"
+    adr_files = sorted(adr_dir.glob("0011-*.md"))
+    assert len(adr_files) == 1, f"Expected one 0011 ADR, found: {adr_files}"
+    text = adr_files[0].read_text()
+    start = text.index("## Decision")
+    rest = text[start + len("## Decision") :]
+    next_heading = rest.find("\n## ")
+    if next_heading == -1:
+        return rest
+    return rest[:next_heading]
+
+
+def test_readme_versioning_states_pyproject_version_rule():
+    """AC1: the Versioning section states the version in pyproject.toml equals
+    the newest released section's version in CHANGELOG.md."""
+    section = _versioning_section()
+    assert "pyproject.toml" in section
+    assert "newest released section" in section
+
+
+def test_readme_versioning_states_newest_first_and_date_bound():
+    """AC2: the Versioning section states released sections run newest first by
+    version, and no released section's date is later than the date of the section
+    above it or later than the day the check runs."""
+    section = _versioning_section()
+    assert "newest first" in section
+    assert "later than the day the check runs" in section
+
+
+def test_readme_versioning_states_unreleased_first_with_subheadings():
+    """AC3: the Versioning section states ## [Unreleased] is the first section,
+    with the subheadings Added, Changed, Fixed, Removed in that order."""
+    section = _versioning_section()
+    assert "## [Unreleased]" in section
+    assert "Added, Changed, Fixed" in section
+
+
+def test_readme_versioning_states_released_heading_date_format():
+    """AC4: the Versioning section states every released section's heading is
+    dated YYYY-MM-DD."""
+    section = _versioning_section()
+    assert "YYYY-MM-DD" in section
+
+
+def test_readme_versioning_states_content_not_checked_by_tests():
+    """AC5: the Versioning section states a section's content is not checked by
+    tests, and entries are checked by review, not by CI."""
+    section = _versioning_section()
+    assert "not checked by tests" in section
+    assert "review, not by CI" in section
+
+
+def test_adr_0011_decision_states_same_rules_in_order():
+    """AC6/AC10: the four rules' markers appear in the same order in both the
+    README's Versioning section and ADR 0011's Decision section."""
+    readme_section = _versioning_section()
+    adr_decision = _adr_0011_decision()
+
+    # Rule 1 marker
+    r1_readme = readme_section.index("pyproject.toml")
+    r1_adr = adr_decision.index("pyproject.toml")
+
+    # Rule 2 marker
+    r2_readme = readme_section.index("newest first")
+    r2_adr = adr_decision.index("newest first")
+
+    # Rule 3 marker
+    r3_readme = readme_section.index("## [Unreleased]")
+    r3_adr = adr_decision.index("## [Unreleased]")
+
+    # Rule 4 marker
+    r4_readme = readme_section.index("YYYY-MM-DD")
+    r4_adr = adr_decision.index("YYYY-MM-DD")
+
+    # In both files, rule 1 before rule 2 before rule 3 before rule 4
+    assert r1_readme < r2_readme < r3_readme < r4_readme
+    assert r1_adr < r2_adr < r3_adr < r4_adr
+
+
+def test_readme_versioning_preserves_semver_and_github_releases():
+    """AC11: the Versioning section still contains the SemVer bullets and the
+    GitHub Releases sentence."""
+    section = _versioning_section()
+    assert "SemVer" in section
+    assert "MAJOR" in section
+    assert "MINOR" in section
+    assert "PATCH" in section
+    assert "GitHub Releases" in section
+
+
+def test_adr_0011_file_name_and_heading():
+    """AC12: the new ADR file name starts with '0011-' and its H1 heading reads
+    '# 11. '."""
+    adr_dir = DOCS_DIR / "decisions"
+    adr_files = sorted(adr_dir.glob("0011-*.md"))
+    assert len(adr_files) == 1, f"Expected one 0011 ADR file, found: {adr_files}"
+    first_line = adr_files[0].read_text().splitlines()[0]
+    assert first_line.startswith("# 11. ")
+
+
+def test_adr_0003_status_superseded_by_0011():
+    """AC7: 0003's Status line reads 'Superseded by 0011' and its body is
+    unedited (Date, Context, Decision, Consequences, Source unchanged)."""
+    text = (DOCS_DIR / "decisions" / "0003-releases.md").read_text()
+    assert "Superseded by 0011" in text
+    assert "**Date:** 2026-09-28" in text
+    assert "Releases were cut by hand" in text
+    assert "A release is a pull request with the version bump" in text
+    assert "The release is reviewed like any change" in text
+
+
+def test_metrics_md_names_all_cost_measures():
+    """AC1: the generated metrics table names every cost measure and the
+    computation-details section states model minutes as the display unit."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    ):
+        assert name in section, f"missing cost measure {name!r} in metrics table"
+    assert "Model minutes (middle)" in section
+    assert "Model minutes (total)" in section
+    # Computation-details states model minutes as display unit
+    detail_start = text.index("## Computation details")
+    detail = text[detail_start:]
+    model_cost_start = detail.index("### Model cost")
+    model_cost_section = detail[model_cost_start:]
+    assert (
+        "display unit" in model_cost_section.lower()
+        or "whole minutes" in model_cost_section.lower()
+    )
+    assert "model_seconds" in model_cost_section
+    assert "model_minutes" in model_cost_section
+
+
+def test_metrics_md_explains_cost_aggregation_semantics():
+    """AC2: computation-details explains story cost as summed total across roles,
+    middle as median of per-story values, total as sum, and percents from
+    the sprint's combined token totals rather than per story."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    detail_start = text.index("## Computation details")
+    detail = text[detail_start:]
+    model_cost_start = detail.index("### Model cost")
+    # Find the next section heading (## or ###) after the Model cost heading line
+    next_heading = detail.index("\n##", model_cost_start + 1)
+    model_cost_section = detail[model_cost_start:next_heading]
+    # Story cost is summed total across every role's model calls
+    assert (
+        "summed total across every role" in model_cost_section
+        or "summed total" in model_cost_section
+    )
+    # Middle is the median of per-story values
+    assert "median" in model_cost_section.lower()
+    # Total is the sum
+    assert "sum" in model_cost_section.lower()
+    # Percents from sprint's combined token totals
+    assert "combined" in model_cost_section.lower() or "sprint's" in model_cost_section
+
+
+def test_service_md_documents_cost_payload_fields():
+    """AC3: the event-intake section documents the finished event's cost payload
+    with all five fields, each a non-negative integer, sent together or not at all."""
+    text = (DOCS_DIR / "service.md").read_text()
+    before = text.split("BEGIN:service")[0]
+    # All five fields are named
+    for field in (
+        "model_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    ):
+        assert field in before, f"missing cost field {field!r} in event-intake section"
+    # States sent together or not at all
+    assert "together or not at all" in before or "all-or-nothing" in before
+    # States non-negative integer
+    assert "non-negative" in before or "minimum 0" in before
+
+
+def test_service_md_trend_row_lists_cost_metrics():
+    """AC4: the generated endpoints table in docs/service.md lists the eight cost
+    metric names among the valid /trend metrics."""
+    text = (DOCS_DIR / "service.md").read_text()
+    section = _extract_marked_section(text, "service")
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    ):
+        assert name in section, f"missing cost metric {name!r} in /trend row"
+
+
+def test_formats_md_names_story_costs_and_cost():
+    """AC4: docs/formats.md's top-level field list names story_costs and cost as
+    optional response properties, and the generated schema block shows them."""
+    text = (DOCS_DIR / "formats.md").read_text()
+    # Top-level field list names them
+    before = text.split("BEGIN:formats")[0]
+    assert "story_costs" in before
+    assert "cost" in before
+    # Generated schema block shows them
+    section = _extract_marked_section(text, "formats")
+    assert '"story_costs"' in section
+    assert '"cost"' in section
+
+
+def test_cards_and_usage_md_have_no_cost_content():
+    """AC5: docs/cards.md and docs/usage.md are unchanged — cost is service-only,
+    so the CLI's documented card input takes no cost field and the CLI documents
+    no cost measure."""
+    cards_text = (DOCS_DIR / "cards.md").read_text()
+    usage_text = (DOCS_DIR / "usage.md").read_text()
+    for cost_name in (
+        "model_minutes",
+        "input_tokens",
+        "output_tokens",
+        "cached_input_percent",
+        "reasoning_output_percent",
+        "model_seconds",
+        "cached_input_tokens",
+        "reasoning_output_tokens",
+    ):
+        assert cost_name not in cards_text, f"docs/cards.md mentions {cost_name!r}"
+        assert cost_name not in usage_text, f"docs/usage.md mentions {cost_name!r}"
+
+
+def test_metrics_md_cost_names_match_service_metrics():
+    """AC6: the cost measure names in the generated metrics table match the names
+    in ALL_METRICS and _METRIC_COLUMNS exactly."""
+    from sprint_metrics.metrics import ALL_METRICS
+    from sprint_metrics.report import _METRIC_COLUMNS
+
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    cost_metrics = {
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    }
+    # All cost metrics are in ALL_METRICS
+    assert cost_metrics.issubset(ALL_METRICS)
+    # All cost metrics have a display name in _METRIC_COLUMNS
+    for name in cost_metrics:
+        assert name in _METRIC_COLUMNS
+        # The display name appears in the generated table
+        display = _METRIC_COLUMNS[name]
+        assert display in section, f"display name {display!r} not in metrics table"
+    # Prometheus names follow the sprint_{key} pattern
+    for name in cost_metrics:
+        prom = f"sprint_{name}"
+        assert prom in section, f"Prometheus name {prom!r} not in metrics table"
+
+
+def test_service_md_cost_example_is_complete():
+    """AC7: the event-intake section has a complete cost-payload example with all
+    five fields and non-negative integer values, in a copy-ready JSON block."""
+    import json as json_mod
+
+    text = (DOCS_DIR / "service.md").read_text()
+    before = text.split("BEGIN:service")[0]
+    # Find the JSON block after the cost payload documentation
+    cost_doc_idx = before.index("A `finished` event may carry a cost payload")
+    after_cost_doc = before[cost_doc_idx:]
+    # Find the ```json block
+    json_start = after_cost_doc.index("```json")
+    json_end = after_cost_doc.index("```", json_start + 7)
+    json_block = after_cost_doc[json_start + 7 : json_end]
+    example = json_mod.loads(json_block)
+    # All five fields are present with non-negative integer values
+    for field in (
+        "model_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    ):
+        assert field in example, f"cost example missing field {field!r}"
+        assert isinstance(example[field], int)
+        assert example[field] >= 0, f"cost example field {field!r} is negative"

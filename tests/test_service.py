@@ -6,11 +6,12 @@ import json
 import os
 import urllib.error
 import urllib.request
-from datetime import UTC
+from datetime import UTC, date
 
 import pytest
 
-from sprint_metrics.service import _start_service, run
+from sprint_metrics.card import Card
+from sprint_metrics.service import _compute_cost_summary, _median, _start_service, run
 from sprint_metrics.store import init_db
 
 SPRINT_METRICS_DB = os.environ.get("SPRINT_METRICS_DB")
@@ -57,6 +58,294 @@ def _get_json(url: str) -> tuple[int, dict]:
             return resp.status, json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read().decode())
+
+
+def _cost_card(
+    card_id: str,
+    model_seconds: int,
+    input_tokens: int,
+    cached_input_tokens: int,
+    output_tokens: int,
+    reasoning_output_tokens: int,
+) -> Card:
+    """A finished card carrying a full cost payload."""
+    return Card(
+        created=date(2024, 1, 1),
+        model_seconds=model_seconds,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        reasoning_output_tokens=reasoning_output_tokens,
+        card_id=card_id,
+    )
+
+
+def test_compute_cost_summary_single_story_six_keys_and_rounded_minutes():
+    """AC1: one costed story's item has exactly the six keys, card_id, and
+    model_minutes is model_seconds expressed in whole minutes (rounded)."""
+    card = _cost_card("cost-a", 3500, 4000, 1400, 900, 300)
+    story_costs, cost = _compute_cost_summary([card])
+    assert len(story_costs) == 1
+    item = story_costs[0]
+    assert set(item.keys()) == {
+        "card_id",
+        "model_minutes",
+        "input_tokens",
+        "cached_input_percent",
+        "output_tokens",
+        "reasoning_output_percent",
+    }
+    assert item["card_id"] == "cost-a"
+    assert item["model_minutes"] == 58
+    assert item["input_tokens"] == 4000
+    assert item["output_tokens"] == 900
+    assert cost["total"]["model_minutes"] == 58
+
+
+def test_compute_cost_summary_percents_are_the_sprints_not_the_stories():
+    """AC2: every item carries the sprint's combined cached/reasoning shares, not
+    each story's own share (story A's own 50% / story B's 30% are both reported
+    as the sprint's 35% / 26%)."""
+    a = _cost_card("a", 60, 1000, 500, 800, 400)
+    b = _cost_card("b", 60, 3000, 900, 3200, 640)
+    story_costs, _ = _compute_cost_summary([a, b])
+    for item in story_costs:
+        assert item["cached_input_percent"] == 35
+        assert item["reasoning_output_percent"] == 26
+
+
+def test_compute_cost_summary_middle_is_median_and_total_is_sum():
+    """AC3: cost.middle is the median and cost.total is the sum of the per-story
+    values for each measure."""
+    c1 = _cost_card("c1", 120, 300, 0, 100, 0)
+    c2 = _cost_card("c2", 300, 900, 0, 200, 0)
+    c3 = _cost_card("c3", 540, 600, 0, 400, 0)
+    _, cost = _compute_cost_summary([c1, c2, c3])
+    assert cost["middle"]["model_minutes"] == 5
+    assert cost["total"]["model_minutes"] == 16
+    assert cost["middle"]["input_tokens"] == 600
+    assert cost["total"]["input_tokens"] == 1800
+    assert cost["middle"]["output_tokens"] == 200
+    assert cost["total"]["output_tokens"] == 700
+
+
+def test_compute_cost_summary_cost_object_holds_only_the_three_measures():
+    """AC9: cost.middle and cost.total each carry exactly model_minutes,
+    input_tokens and output_tokens; the two percents ride only on story_costs
+    items and never appear inside cost."""
+    c1 = _cost_card("c1", 120, 300, 0, 100, 0)
+    c2 = _cost_card("c2", 300, 900, 0, 200, 0)
+    c3 = _cost_card("c3", 540, 600, 0, 400, 0)
+    _, cost = _compute_cost_summary([c1, c2, c3])
+    measure_keys = {"model_minutes", "input_tokens", "output_tokens"}
+    assert set(cost["middle"].keys()) == measure_keys
+    assert set(cost["total"].keys()) == measure_keys
+    assert "cached_input_percent" not in cost
+    assert "reasoning_output_percent" not in cost
+    assert cost["middle"] == {"model_minutes": 5, "input_tokens": 600, "output_tokens": 200}
+    assert cost["total"] == {"model_minutes": 16, "input_tokens": 1800, "output_tokens": 700}
+
+
+def test_compute_cost_summary_excludes_stories_without_cost():
+    """AC4: a finished story carrying no cost data is omitted from story_costs,
+    and the middle/total are computed from the costed stories only."""
+    costed = _cost_card("c1", 120, 300, 0, 100, 0)
+    bare = Card(created=date(2024, 1, 1), card_id="bare")
+    story_costs, cost = _compute_cost_summary([costed, bare])
+    assert [item["card_id"] for item in story_costs] == ["c1"]
+    assert cost["middle"]["model_minutes"] == 2
+    assert cost["total"]["model_minutes"] == 2
+
+
+def test_compute_cost_summary_empty_when_no_story_carries_cost():
+    """AC5: when no story carries cost data (or there are no cards), story_costs
+    is an empty list and cost is None."""
+    bare1 = Card(created=date(2024, 1, 1), card_id="b1")
+    bare2 = Card(created=date(2024, 1, 1), card_id="b2")
+    assert _compute_cost_summary([bare1, bare2]) == ([], None)
+    assert _compute_cost_summary([]) == ([], None)
+
+
+def test_compute_cost_summary_short_story_rounds_to_whole_minutes():
+    """AC10: model_seconds 119 -> model_minutes 2 (119/60 ≈ 1.98 rounded, not
+    truncated to 1), so a short story never reads as a free story."""
+    card = _cost_card("short", 119, 100, 0, 10, 0)
+    story_costs, _ = _compute_cost_summary([card])
+    assert story_costs[0]["model_minutes"] == 2
+
+
+def test_median_odd_even_and_single():
+    """The middle value: median for odd counts, the rounded average of the two
+    middle values for even counts, the lone value for a single element."""
+    assert _median([2, 5, 9]) == 5
+    assert _median([58, 59]) == 58
+    assert _median([4]) == 4
+    assert _median([1, 2, 3, 4]) == round((2 + 3) / 2)
+
+
+def _stub_range_result(labels):
+    """Mimic format_sprint_range_json's per-sprint entries: prior/delta dicts after the first."""
+    result = {"sprints": {}}
+    for i, label in enumerate(labels):
+        entry = {"cycle_time_days": 0, "throughput": 0, "flags": {}}
+        if i == 0:
+            entry["prior"] = None
+            entry["delta"] = None
+        else:
+            entry["prior"] = {"cycle_time_days": 0}
+            entry["delta"] = {"cycle_time_days": 0}
+        result["sprints"][label] = entry
+    return result
+
+
+def test_metrics_text_carries_eight_cost_lines():
+    """AC5: _metrics_text emits one line each for the eight cost metrics per sprint,
+    labelled by sprint, carrying that sprint's values."""
+    from sprint_metrics.service import _metrics_text
+
+    sprints = {
+        "2026-10": [
+            _cost_card("a", 3480, 4000, 1800, 900, 200),
+            _cost_card("b", 5400, 12000, 5840, 4800, 1200),
+        ],
+    }
+    text = _metrics_text(sprints)
+    label = 'sprint="2026-10"'
+    assert f"sprint_model_minutes_middle{{{label}}} 74" in text
+    assert f"sprint_model_minutes_total{{{label}}} 148" in text
+    assert f"sprint_input_tokens_middle{{{label}}} 8000" in text
+    assert f"sprint_input_tokens_total{{{label}}} 16000" in text
+    assert f"sprint_output_tokens_middle{{{label}}} 2850" in text
+    assert f"sprint_output_tokens_total{{{label}}} 5700" in text
+    assert f"sprint_cached_input_percent{{{label}}} 48" in text
+    assert f"sprint_reasoning_output_percent{{{label}}} 25" in text
+
+
+def test_metrics_text_cost_lines_zero_when_no_costed_stories():
+    """AC5: a sprint with events but no costed stories reports 0 for all eight cost metrics."""
+    from sprint_metrics.service import _metrics_text
+
+    sprints = {"2026-10": [Card(created=date(2024, 1, 1), card_id="a")]}
+    text = _metrics_text(sprints)
+    label = 'sprint="2026-10"'
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    ):
+        assert f"sprint_{name}{{{label}}} 0" in text
+
+
+def test_attach_range_cost_entry_carries_cost_and_prior_delta():
+    """AC1/AC9: each range entry carries story_costs and cost matching /sprint, and the
+    second entry's prior and delta carry the six flat cost names (current minus prior)."""
+    from sprint_metrics.service import _attach_range_cost, _compute_cost_summary, _cost_flat
+
+    prior_cards = [
+        _cost_card("p1", 1080, 2500, 1000, 600, 100),
+        _cost_card("p2", 1860, 4000, 1600, 1200, 200),
+        _cost_card("p3", 2580, 8000, 3200, 3800, 400),
+    ]
+    current_cards = [
+        _cost_card("c1", 3480, 4000, 1800, 900, 200),
+        _cost_card("c2", 5400, 12000, 5840, 4800, 1200),
+    ]
+    sprints = {"2026-09": prior_cards, "2026-10": current_cards}
+    labels = ["2026-09", "2026-10"]
+    has_events = {"2026-09", "2026-10"}
+    result = _stub_range_result(labels)
+    _attach_range_cost(result, sprints, labels, has_events)
+
+    e09 = result["sprints"]["2026-09"]
+    assert e09["prior"] is None
+    assert e09["delta"] is None
+    sc09, cost09 = _compute_cost_summary(prior_cards)
+    assert e09["story_costs"] == sc09
+    assert e09["cost"] == cost09
+    assert e09["cost"]["middle"]["model_minutes"] == 31
+    assert e09["cost"]["total"]["model_minutes"] == 92
+    assert e09["cost"]["middle"]["input_tokens"] == 4000
+    assert e09["cost"]["total"]["input_tokens"] == 14500
+    assert e09["cost"]["middle"]["output_tokens"] == 1200
+    assert e09["cost"]["total"]["output_tokens"] == 5600
+
+    e10 = result["sprints"]["2026-10"]
+    sc10, cost10 = _compute_cost_summary(current_cards)
+    assert e10["story_costs"] == sc10
+    assert e10["cost"] == cost10
+    prior_flat = _cost_flat(cost09)
+    cur_flat = _cost_flat(cost10)
+    for name in prior_flat:
+        assert e10["prior"][name] == prior_flat[name]
+        assert e10["delta"][name] == (
+            cur_flat[name] - prior_flat[name]
+            if cur_flat[name] is not None and prior_flat[name] is not None
+            else None
+        )
+    assert e10["prior"]["model_minutes_middle"] == 31
+    assert e10["prior"]["model_minutes_total"] == 92
+    assert e10["prior"]["input_tokens_middle"] == 4000
+    assert e10["prior"]["input_tokens_total"] == 14500
+    assert e10["prior"]["output_tokens_middle"] == 1200
+    assert e10["prior"]["output_tokens_total"] == 5600
+
+
+def test_attach_range_cost_prior_no_costed_stories_nulls_cost():
+    """AC2: the preceding sprint has events but no costed stories, so its non-null prior
+    object carries null for the six cost values and the delta carries null for each."""
+    from sprint_metrics.service import _attach_range_cost
+
+    prior_cards = [Card(created=date(2024, 1, 1), card_id="p")]
+    current_cards = [
+        _cost_card("c1", 3480, 4000, 1800, 900, 200),
+        _cost_card("c2", 5400, 12000, 5840, 4800, 1200),
+    ]
+    sprints = {"2024-01": prior_cards, "2024-02": current_cards}
+    labels = ["2024-01", "2024-02"]
+    has_events = {"2024-01", "2024-02"}
+    result = _stub_range_result(labels)
+    _attach_range_cost(result, sprints, labels, has_events)
+
+    e02 = result["sprints"]["2024-02"]
+    assert e02["prior"] is not None
+    assert e02["delta"] is not None
+    for name in (
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+    ):
+        assert e02["prior"][name] is None
+        assert e02["delta"][name] is None
+
+
+def test_attach_range_cost_null_entry_for_no_events():
+    """AC3: a range entry for a sprint with no events is the all-null entry, with
+    story_costs an empty array and cost null, alongside the entry's other null metrics."""
+    from sprint_metrics.service import _attach_range_cost
+
+    current_cards = [_cost_card("c1", 3480, 4000, 1800, 900, 200)]
+    sprints = {"2024-01": [], "2024-02": current_cards}
+    labels = ["2024-01", "2024-02"]
+    has_events = {"2024-02"}
+    result = _stub_range_result(labels)
+    _attach_range_cost(result, sprints, labels, has_events)
+
+    e01 = result["sprints"]["2024-01"]
+    assert e01["story_costs"] == []
+    assert e01["cost"] is None
+    assert e01["prior"] is None
+    assert e01["delta"] is None
+    e02 = result["sprints"]["2024-02"]
+    assert e02["prior"] is None
+    assert e02["delta"] is None
 
 
 @requires_db
@@ -400,9 +689,188 @@ def test_sprint_response_key_set_no_sprint_date():
             "superseded_points",
             "superseded_breakdown",
             "flags",
+            "story_costs",
+            "cost",
         }
         assert set(body.keys()) == expected_keys
         assert "sprint_date" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_response_story_costs_single_costed_story():
+    """AC1/AC8: GET /sprint returns story_costs with one six-key item for the
+    costed story and a cost object whose total matches the story's measures."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    for cid in ("cost-a", "cost-bare"):
+        conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = %s", (cid,))
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        for cid in ("cost-a", "cost-bare"):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=cid,
+                    event_type="started",
+                    timestamp="2024-01-03T10:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                ),
+            )
+            if cid == "cost-a":
+                finished = _make_event(
+                    card_id=cid,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                    model_seconds=3500,
+                    input_tokens=4000,
+                    cached_input_tokens=1400,
+                    output_tokens=900,
+                    reasoning_output_tokens=300,
+                )
+            else:
+                finished = _make_event(
+                    card_id=cid,
+                    event_type="finished",
+                    timestamp="2024-01-07T15:00:00Z",
+                    sprint="2024-01",
+                    created="2024-01-01",
+                )
+            _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert [item["card_id"] for item in body["story_costs"]] == ["cost-a"]
+        item = body["story_costs"][0]
+        assert set(item.keys()) == {
+            "card_id",
+            "model_minutes",
+            "input_tokens",
+            "cached_input_percent",
+            "output_tokens",
+            "reasoning_output_percent",
+        }
+        assert item["model_minutes"] == 58
+        assert item["input_tokens"] == 4000
+        assert item["output_tokens"] == 900
+        assert body["cost"]["total"]["model_minutes"] == 58
+        assert body["cost"]["total"]["input_tokens"] == 4000
+        assert body["cost"]["total"]["output_tokens"] == 900
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_response_story_costs_sprint_percents_and_middle():
+    """AC2/AC3: with two costed stories, every item carries the sprint's combined
+    cached/reasoning shares, and cost.middle is the median / cost.total the sum
+    of the per-story measures."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    for cid in ("cs-a", "cs-b"):
+        conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = %s", (cid,))
+    conn.commit()
+
+    payloads = {
+        "cs-a": {
+            "model_seconds": 60,
+            "input_tokens": 1000,
+            "cached_input_tokens": 500,
+            "output_tokens": 800,
+            "reasoning_output_tokens": 400,
+        },
+        "cs-b": {
+            "model_seconds": 60,
+            "input_tokens": 3000,
+            "cached_input_tokens": 900,
+            "output_tokens": 3200,
+            "reasoning_output_tokens": 640,
+        },
+    }
+    port = _start_service(conn, 0)
+    try:
+        for cid, payload in payloads.items():
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=cid,
+                    event_type="started",
+                    timestamp="2024-02-03T10:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=cid,
+                    event_type="finished",
+                    timestamp="2024-02-07T15:00:00Z",
+                    sprint="2024-02",
+                    created="2024-02-01",
+                    **payload,
+                ),
+            )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-02")
+        assert status == 200
+        for item in body["story_costs"]:
+            assert item["cached_input_percent"] == 35
+            assert item["reasoning_output_percent"] == 26
+        assert body["cost"]["middle"]["model_minutes"] == 1
+        assert body["cost"]["total"]["input_tokens"] == 4000
+        assert body["cost"]["total"]["output_tokens"] == 4000
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_response_no_costed_story_costs_empty_and_cost_null():
+    """AC5: a sprint whose finished stories carry no cost payload returns
+    story_costs as an empty array and cost as null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ncc_sprint'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ncc_sprint",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="ncc_sprint",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 200
+        assert body["story_costs"] == []
+        assert body["cost"] is None
     finally:
         conn.close()
 
@@ -3581,9 +4049,11 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
 
 @requires_db
 def test_sprint_failure_breakdown_with_multiple_attempts():
-    """UX5: after started + six attempt_failed + finished (attempts 7),
+    """AC3+UX6: after started + six attempt_failed + finished (attempts 7),
     GET /sprint returns first_attempt_rate_percent=0, throughput=1, and
-    failure_breakdown with exactly one element."""
+    failure_breakdown with one entry per return (VERIFY 3, SCHEMA 2, TEST 1,
+    all Developer) in count-descending order. top_failure_causes holds
+    exactly three entries, one per (class, role) return pair."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -3633,7 +4103,234 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
         assert status == 200
         assert body["first_attempt_rate_percent"] == 0
         assert body["throughput"] == 1
-        assert body["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
+        assert body["failure_breakdown"] == [
+            {"class": "VERIFY", "role": "Developer", "count": 3},
+            {"class": "SCHEMA", "role": "Developer", "count": 2},
+            {"class": "TEST", "role": "Developer", "count": 1},
+        ]
+        assert body["top_failure_causes"] == [
+            {"class": "VERIFY", "role": "Developer", "count": 3},
+            {"class": "SCHEMA", "role": "Developer", "count": 2},
+            {"class": "TEST", "role": "Developer", "count": 1},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_first_attempt_rate_driven_by_crew_attempts():
+    """AC1: a card with started + two attempt_failed + finished (attempts 1)
+    yields first_attempt_rate_percent 100 — the rate is driven by the
+    crew-sent attempts on the finished row, not by 1 + count."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_crew_attempts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac1_crew_attempts",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ac1_crew_attempts",
+                "type": "attempt_failed",
+                "timestamp": f"2024-01-12T{10 + i}:00:00Z",
+                "sprint": "Sprint 18",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2024-01-10"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ac1_crew_attempts",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+            attempts=1,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_rate_percent"] == 100
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_first_attempt_rate_fallback_when_no_crew_attempts():
+    """AC2: a card whose finished event carries no attempts field and whose
+    history holds two attempt_failed rows yields first_attempt_rate_percent 0
+    — the attempts count falls back to 1 + count (3)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_no_attempts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ac2_no_attempts",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ac2_no_attempts",
+                "type": "attempt_failed",
+                "timestamp": f"2024-01-12T{10 + i}:00:00Z",
+                "sprint": "Sprint 18",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2024-01-10"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ac2_no_attempts",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_rate_percent"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_sprint_first_attempt_numerator_denominator_crew_attempts():
+    """UX7: a card with started + two attempt_failed + finished (attempts 1)
+    yields first_attempt_numerator 1 and first_attempt_denominator 1, so the
+    raw counts agree with the 100% rate and the crew-sent attempts count."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ux7_counts'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ux7_counts",
+            event_type="started",
+            timestamp="2024-01-12T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ux7_counts",
+                "type": "attempt_failed",
+                "timestamp": f"2024-01-12T{10 + i}:00:00Z",
+                "sprint": "Sprint 18",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2024-01-10"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ux7_counts",
+            event_type="finished",
+            timestamp="2024-01-16T10:00:00Z",
+            sprint="Sprint 18",
+            created="2024-01-10",
+            attempts=1,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        assert status == 200
+        assert body["first_attempt_numerator"] == 1
+        assert body["first_attempt_denominator"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_first_attempt_rate_crew_attempts():
+    """UX8: a sprint with a card (started + two attempt_failed + finished
+    attempts 1) included in a range yields first_attempt_rate_percent 100 —
+    the crew's handout count drives the rate on the range surface as well."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ux8_range'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2026-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        started = _make_event(
+            card_id="ux8_range",
+            event_type="started",
+            timestamp="2026-10-07T10:00:00Z",
+            sprint="2026-10",
+            created="2026-10-07",
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", started)
+
+        for i in (1, 2):
+            event = {
+                "api_version": "1",
+                "card_id": "ux8_range",
+                "type": "attempt_failed",
+                "timestamp": f"2026-10-07T{10 + i}:00:00Z",
+                "sprint": "2026-10",
+                "attempt_number": i,
+                "failure_class": "VERIFY",
+                "failure_role": "Developer",
+                "card": {"created": "2026-10-07"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", event)
+
+        finished = _make_event(
+            card_id="ux8_range",
+            event_type="finished",
+            timestamp="2026-10-10T10:00:00Z",
+            sprint="2026-10",
+            created="2026-10-07",
+            attempts=1,
+        )
+        _post_events(f"http://127.0.0.1:{port}/events", finished)
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
+        assert status == 200
+        entry = body["sprints"]["2026-10"]
+        assert entry["first_attempt_rate_percent"] == 100
     finally:
         conn.close()
 
@@ -4651,7 +5348,7 @@ def test_range_failure_breakdown_and_top_failure_causes_coexist():
         assert status == 200
         entry = body["sprints"]["2026-10"]
         assert entry["failure_breakdown"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
-        assert entry["top_failure_causes"] == {"VERIFY": 1}
+        assert entry["top_failure_causes"] == [{"class": "VERIFY", "role": "Developer", "count": 1}]
         assert len(entry["failure_breakdown"]) == 1
     finally:
         conn.close()
@@ -6922,5 +7619,231 @@ def test_service_escalation_rate_200_on_sprint_range_and_trend():
         )
         assert status == 200
         assert body["values"][0] == {"sprint": "2024-01", "value": 200}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_finite_event_with_full_cost_payload_accepted():
+    """AC1: POST a finished event with all five cost fields returns 200."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-a'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # First, post a started event so the card exists
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(card_id="cost-a", event_type="started", sprint="2024-01"),
+        )
+        # Now post a finished event with all five cost fields
+        event = _make_event(
+            card_id="cost-a",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_partial_cost_payload_rejected():
+    """AC2: POST a finished event with only some cost fields returns 400,
+    and the error identifies the cost payload as the problem."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-b'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-b",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cost" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_negative_cost_field_rejected():
+    """AC3a: POST a finished event with a negative cost field returns 400."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-c'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-c",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+            cached_input_tokens=-5,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cost" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_non_integer_cost_field_rejected():
+    """AC3b: POST a finished event with a non-integer cost field returns 400."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-d'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-d",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500.5,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cost" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_finite_event_without_cost_fields_accepted():
+    """AC4: POST a finished event with no cost fields returns 200, unchanged."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-e'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-e",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_schema_event_cost_properties_declared():
+    """AC5: GET /schema/event's card object declares the five cost fields
+    as integer properties with minimum 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/schema/event")
+        assert status == 200
+        card_props = body["properties"]["card"]["properties"]
+        for field in (
+            "model_seconds",
+            "input_tokens",
+            "cached_input_tokens",
+            "output_tokens",
+            "reasoning_output_tokens",
+        ):
+            assert field in card_props
+            assert card_props[field]["type"] == "integer"
+            assert card_props[field]["minimum"] == 0
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_partial_cost_error_names_missing_fields():
+    """UX7: The 400 response body's error message names the missing cost
+    fields by their schema names."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'cost-ux'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="cost-ux",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=3500,
+            input_tokens=4000,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "cached_input_tokens" in body["error"]
+        assert "output_tokens" in body["error"]
+        assert "reasoning_output_tokens" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_schema_event_card_required_unchanged():
+    """UX8: The card object's required array is still exactly ['created']."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/schema/event")
+        assert status == 200
+        card = body["properties"]["card"]
+        assert card["required"] == ["created"]
     finally:
         conn.close()

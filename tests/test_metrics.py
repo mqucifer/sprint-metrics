@@ -16,6 +16,7 @@ from sprint_metrics.metrics import (
     calculate_failure_breakdown,
     calculate_first_attempt_rate,
     calculate_throughput,
+    calculate_top_failure_causes,
     calculate_wip_violations,
 )
 
@@ -205,6 +206,89 @@ def test_calculate_failure_breakdown_empty_when_all_first_attempt():
     assert calculate_failure_breakdown(cards) == []
 
 
+def test_failure_breakdown_counts_returns_not_stories():
+    """AC1: a card whose failures list holds three returns (VERIFY/Review x2,
+    SCHEMA/QA x1) produces one item per (class, role) return group, counting
+    returns not stories."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "SCHEMA", "failure_role": "QA"},
+            ],
+        },
+    ]
+    result = calculate_failure_breakdown(cards)
+    assert result == [("VERIFY", "Review", 2), ("SCHEMA", "QA", 1)]
+
+
+def test_top_failure_causes_separate_entries_same_class_different_role():
+    """AC4: two returns sharing class VERIFY but with different roles (Developer,
+    Reviewer) yield two separate entries in top_failure_causes, each naming both
+    class and role; a legacy card with only failure_class and no role keeps the
+    class alone (empty role)."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 2,
+            "failures": [
+                {"failure_class": "VERIFY", "failure_role": "Developer"},
+                {"failure_class": "VERIFY", "failure_role": "Reviewer"},
+            ],
+        },
+    ]
+    result = calculate_top_failure_causes(cards)
+    assert ("VERIFY", "Developer", 1) in result
+    assert ("VERIFY", "Reviewer", 1) in result
+    assert len(result) == 2
+    # 'VERIFY' alone is not a key: each entry names both class and role
+    for _cls, role, _count in result:
+        assert role != ""
+
+
+def test_top_failure_causes_tie_break_alphabetical():
+    """AC5: returns whose (class, role) groups tie in count are ordered
+    alphabetically in top_failure_causes (by class then role), while the full
+    failure_breakdown preserves first-encounter order (stable sort)."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "ZULU", "failure_role": "QA"},
+                {"failure_class": "ALPHA", "failure_role": "Review"},
+            ],
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "ALPHA", "failure_role": "Review"},
+                {"failure_class": "ZULU", "failure_role": "QA"},
+            ],
+        },
+    ]
+    # Both groups have count 2. Top-3 ties broken alphabetically: ALPHA before ZULU.
+    top = calculate_top_failure_causes(cards)
+    assert top == [("ALPHA", "Review", 2), ("ZULU", "QA", 2)]
+
+    # Full breakdown: count descending, ties in first-encounter order (stable).
+    # ZULU was first encountered in card 1, so it comes first.
+    breakdown = calculate_failure_breakdown(cards)
+    assert breakdown == [("ZULU", "QA", 2), ("ALPHA", "Review", 2)]
+
+
 def test_calculate_first_attempt_rate_half():
     """AC5: 4 cards where 2 have attempts 1 and 2 have attempts > 1 returns 50."""
     cards = [
@@ -346,10 +430,10 @@ def test_calculate_points_and_first_attempt_empty():
 
 
 def test_all_metrics_grew_by_four():
-    """ALL_METRICS holds 17 entries, including the two sub-day minute metrics."""
+    """ALL_METRICS holds 25 entries, including the two sub-day minute metrics and the eight cost metrics."""
     from sprint_metrics.metrics import ALL_METRICS
 
-    assert len(ALL_METRICS) == 17
+    assert len(ALL_METRICS) == 25
     new_metrics = {
         "points_delivered",
         "first_attempt_numerator",
@@ -360,8 +444,19 @@ def test_all_metrics_grew_by_four():
         "superseded_breakdown",
     }
     minute_metrics = {"cycle_time_minutes", "lead_time_minutes"}
+    cost_metrics = {
+        "model_minutes_middle",
+        "model_minutes_total",
+        "input_tokens_middle",
+        "input_tokens_total",
+        "output_tokens_middle",
+        "output_tokens_total",
+        "cached_input_percent",
+        "reasoning_output_percent",
+    }
     assert new_metrics.issubset(ALL_METRICS)
     assert minute_metrics.issubset(ALL_METRICS)
+    assert cost_metrics.issubset(ALL_METRICS)
     existing = {
         "cycle_time_days",
         "lead_time_days",
@@ -374,7 +469,8 @@ def test_all_metrics_grew_by_four():
     }
     assert new_metrics.isdisjoint(existing)
     assert minute_metrics.isdisjoint(existing)
-    for name in new_metrics | minute_metrics:
+    assert cost_metrics.isdisjoint(existing)
+    for name in new_metrics | minute_metrics | cost_metrics:
         assert name == name.lower() and "_" in name
 
 
@@ -672,3 +768,166 @@ def test_cycle_time_minutes_excludes_in_flight_card():
     )
     assert card.is_completed is False
     assert calculate_cycle_time_minutes([card]) is None
+
+
+def _cost_card(
+    model_seconds=None,
+    input_tokens=None,
+    cached_input_tokens=None,
+    output_tokens=None,
+    reasoning_output_tokens=None,
+    card_id=None,
+):
+    """A completed Card with optional cost fields set."""
+    from datetime import date
+
+    return Card(
+        created=date(2024, 1, 1),
+        started=date(2024, 1, 2),
+        completed=date(2024, 1, 3),
+        model_seconds=model_seconds,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+        reasoning_output_tokens=reasoning_output_tokens,
+        card_id=card_id,
+    )
+
+
+def test_cost_metrics_model_minutes_middle_and_total():
+    """AC4: the model-minutes cost metrics report the median and sum of per-story whole minutes."""
+    from sprint_metrics.metrics import (
+        calculate_model_minutes_middle,
+        calculate_model_minutes_total,
+    )
+
+    # model_seconds 3480, 5400, 120 -> whole minutes 58, 90, 2
+    cards = [
+        _cost_card(model_seconds=3480, input_tokens=1, output_tokens=1, card_id="a"),
+        _cost_card(model_seconds=5400, input_tokens=1, output_tokens=1, card_id="b"),
+        _cost_card(model_seconds=120, input_tokens=1, output_tokens=1, card_id="c"),
+    ]
+    assert calculate_model_minutes_middle(cards) == 58
+    assert calculate_model_minutes_total(cards) == 150
+
+
+def test_cost_metrics_tokens_middle_and_total():
+    """AC4: the input/output token cost metrics report the median and sum across costed stories."""
+    from sprint_metrics.metrics import (
+        calculate_input_tokens_middle,
+        calculate_input_tokens_total,
+        calculate_output_tokens_middle,
+        calculate_output_tokens_total,
+    )
+
+    cards = [
+        _cost_card(model_seconds=60, input_tokens=2500, output_tokens=600, card_id="a"),
+        _cost_card(model_seconds=60, input_tokens=4000, output_tokens=1200, card_id="b"),
+        _cost_card(model_seconds=60, input_tokens=8000, output_tokens=3800, card_id="c"),
+    ]
+    assert calculate_input_tokens_middle(cards) == 4000
+    assert calculate_input_tokens_total(cards) == 14500
+    assert calculate_output_tokens_middle(cards) == 1200
+    assert calculate_output_tokens_total(cards) == 5600
+
+
+def test_cost_metrics_percents_are_sprint_combined():
+    """AC4: the two cost percents are the sprint's combined shares, not a story's own share."""
+    from sprint_metrics.metrics import (
+        calculate_cached_input_percent,
+        calculate_reasoning_output_percent,
+    )
+
+    # total input 10000, cached 4500 -> 45%; total output 5000, reasoning 1500 -> 30%
+    cards = [
+        _cost_card(
+            model_seconds=60,
+            input_tokens=5000,
+            cached_input_tokens=2000,
+            output_tokens=3000,
+            reasoning_output_tokens=600,
+            card_id="a",
+        ),
+        _cost_card(
+            model_seconds=60,
+            input_tokens=5000,
+            cached_input_tokens=2500,
+            output_tokens=2000,
+            reasoning_output_tokens=900,
+            card_id="b",
+        ),
+    ]
+    assert calculate_cached_input_percent(cards) == 45
+    assert calculate_reasoning_output_percent(cards) == 30
+
+
+def test_cost_metrics_none_when_no_costed_story():
+    """AC4: every cost metric is None when no story carries cost, including an event-bearing sprint."""
+    from sprint_metrics.metrics import (
+        calculate_cached_input_percent,
+        calculate_input_tokens_middle,
+        calculate_input_tokens_total,
+        calculate_model_minutes_middle,
+        calculate_model_minutes_total,
+        calculate_output_tokens_middle,
+        calculate_output_tokens_total,
+        calculate_reasoning_output_percent,
+    )
+
+    bare = _cost_card()
+    assert calculate_model_minutes_middle([bare]) is None
+    assert calculate_model_minutes_total([bare]) is None
+    assert calculate_input_tokens_middle([bare]) is None
+    assert calculate_input_tokens_total([bare]) is None
+    assert calculate_output_tokens_middle([bare]) is None
+    assert calculate_output_tokens_total([bare]) is None
+    assert calculate_cached_input_percent([bare]) is None
+    assert calculate_reasoning_output_percent([bare]) is None
+    assert calculate_model_minutes_middle([]) is None
+
+
+def test_metric_value_dispatches_eight_cost_metrics():
+    """AC4/AC8: metric_value accepts each cost name and returns that sprint's integer value."""
+    from sprint_metrics.metrics import (
+        calculate_cached_input_percent,
+        calculate_input_tokens_middle,
+        calculate_input_tokens_total,
+        calculate_model_minutes_middle,
+        calculate_model_minutes_total,
+        calculate_output_tokens_middle,
+        calculate_output_tokens_total,
+        calculate_reasoning_output_percent,
+        metric_value,
+    )
+
+    cards = [
+        _cost_card(
+            model_seconds=3480,
+            input_tokens=4000,
+            cached_input_tokens=1800,
+            output_tokens=900,
+            reasoning_output_tokens=200,
+            card_id="a",
+        ),
+        _cost_card(
+            model_seconds=5400,
+            input_tokens=12000,
+            cached_input_tokens=5840,
+            output_tokens=4800,
+            reasoning_output_tokens=1200,
+            card_id="b",
+        ),
+    ]
+    expected = {
+        "model_minutes_middle": calculate_model_minutes_middle(cards),
+        "model_minutes_total": calculate_model_minutes_total(cards),
+        "input_tokens_middle": calculate_input_tokens_middle(cards),
+        "input_tokens_total": calculate_input_tokens_total(cards),
+        "output_tokens_middle": calculate_output_tokens_middle(cards),
+        "output_tokens_total": calculate_output_tokens_total(cards),
+        "cached_input_percent": calculate_cached_input_percent(cards),
+        "reasoning_output_percent": calculate_reasoning_output_percent(cards),
+    }
+    for name, value in expected.items():
+        assert metric_value(name, cards) == value
+        assert isinstance(value, int)

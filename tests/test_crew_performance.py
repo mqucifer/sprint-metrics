@@ -1861,6 +1861,89 @@ def test_prometheus_empty_sprint_shows_zero_rate_and_no_failure_count(tmp_path, 
     assert "sprint_failure_count" not in captured.out
 
 
+def test_table_top_causes_counts_returns_not_stories(tmp_path, capsys):
+    """AC9: a sprint whose returns are VERIFY by Review (twice) and SCHEMA by QA
+    (once) renders the 'Top causes' cell as '2× VERIFY (Review), 1× SCHEMA (QA)'."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "SCHEMA", "failure_role": "QA"},
+            ],
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "2\u00d7 VERIFY (Review), 1\u00d7 SCHEMA (QA)" in captured.out
+
+
+def test_markdown_top_failure_causes_counts_returns_not_stories(tmp_path, capsys):
+    """AC10: a sprint whose returns are VERIFY by Review (twice) and SCHEMA by QA
+    (once) renders the 'Top failure causes' subsection with
+    '- 2× VERIFY (Review)' and '- 1× SCHEMA (QA)'."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "SCHEMA", "failure_role": "QA"},
+            ],
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--markdown"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Top failure causes" in captured.out
+    assert "- 2\u00d7 VERIFY (Review)" in captured.out
+    assert "- 1\u00d7 SCHEMA (QA)" in captured.out
+
+
+def test_prometheus_failure_count_counts_returns_not_stories(tmp_path, capsys):
+    """AC6: a sprint carrying VERIFY by Review twice and SCHEMA by QA once emits
+    exactly two failure lines — sprint_failure_count{class="VERIFY",role="Review"} 2
+    and sprint_failure_count{class="SCHEMA",role="QA"} 1."""
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-03",
+            "completed": "2024-01-07",
+            "attempts": 3,
+            "failures": [
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "VERIFY", "failure_role": "Review"},
+                {"failure_class": "SCHEMA", "failure_role": "QA"},
+            ],
+        },
+    ]
+    path = tmp_path / "cards.json"
+    path.write_text(json.dumps(cards))
+    exit_code = main([str(path), "--prometheus"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    lines = captured.out.splitlines()
+    assert 'sprint_failure_count{class="VERIFY",role="Review"} 2' in lines
+    assert 'sprint_failure_count{class="SCHEMA",role="QA"} 1' in lines
+    failure_lines = [line for line in lines if line.startswith("sprint_failure_count")]
+    assert len(failure_lines) == 2
+
+
 def test_markdown_wip_violations_names_breached_state_with_peak_and_limit(run_command):
     """AC1: 4 in-progress cards with WIP limit 3 for In Progress shows an indented
     line beneath the WIP violations line naming In Progress with peak 4 and limit 3."""
