@@ -1,0 +1,19 @@
+services:
+  sprint-metrics:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm@sha256:85d4cb1afa769a7338e095b927bee941cf5ec92266c7424b3f6c0f2748567248
+
+  postgres:
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    user: "999:999"
+    environment:
+      POSTGRES_USER: sprint_metrics
+      POSTGRES_PASSWORD: sprint_metrics
+      POSTGRES_DB: sprint_metrics
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sprint_metrics", "-d", "sprint_metrics", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data
+      - /var/run/postgresql

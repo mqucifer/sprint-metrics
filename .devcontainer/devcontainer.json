@@ -1,0 +1,11 @@
+{
+  "name": "sprint-metrics",
+  "image": "ghcr.io/astral-sh/uv:python3.12-bookworm@sha256:85d4cb1afa769a7338e095b927bee941cf5ec92266c7424b3f6c0f2748567248",
+  "dockerComposeFile": "compose.yaml",
+  "service": "sprint-metrics",
+  "runServices": ["postgres"],
+  "postCreateCommand": ["uv", "sync", "--extra", "dev", "--quiet"],
+  "containerEnv": {
+    "SPRINT_METRICS_DB": "postgresql://sprint_metrics:sprint_metrics@postgres:5432/sprint_metrics"
+  }
+}
