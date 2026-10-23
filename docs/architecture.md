@@ -12,7 +12,7 @@ its CLI and its image, sends it board events, and reads its answers back. The
 Sponsor sees its results second-hand, on the crew-presentation site.
 
 ```mermaid
-c4Context
+C4Context
     title sprint-metrics — Context
     Person(crew, "The Crew", "Runs the CLI and the container image, sends board events, and reads sprint metrics back.")
     System(sprintMetrics, "sprint-metrics", "Delivery metrics for the crew's board: a CLI, a scrape server, and a stateful event service, in one Python package.")
@@ -37,7 +37,7 @@ released as a git tag and as a container image at
 `sprint-metrics` command, so the image runs any of the modes.
 
 ```mermaid
-c4Container
+C4Container
     title sprint-metrics — Containers
     Person(crew, "The Crew")
     SystemDb(postgres, "Postgres", "Shared server. Owns the sprint_metrics schema: board_events (keyed by card_id, type, event_time) and sprints.")
@@ -66,7 +66,7 @@ and formatting code; only the service touches the database, and all SQL lives
 in `store.py`.
 
 ```mermaid
-c4Component
+C4Component
     title sprint-metrics — Components
     Container_Boundary(pkg, "sprint_metrics package")
         Component(cli, "cli.py", "Entry point: argument parsing, file I/O; target of the sprint-metrics script and python -m.")
