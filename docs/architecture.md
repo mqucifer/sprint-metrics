@@ -1,6 +1,6 @@
 # Architecture
 
-The system as the code has it (2026-10-22, v1.3.3), drawn as a C4 diagram in
+The system as the code has it (2026-10-23, v1.3.3), drawn as a C4 diagram in
 Mermaid: context, containers, and components. This file is the repository's
 diagram of record: each Goal's target diagram is drawn from it, and becomes it
 once the Goal is done (ADR 0036). Update it when the code changes.
@@ -44,11 +44,11 @@ C4Container
     System(otlp, "OTLP receiver", "Optional.")
     System(prom, "Prometheus", "Scrapes /metrics.")
 
-    Container_Boundary(boundary, "sprint-metrics", "Python 3.12 package, src/sprint_metrics; released at a tag and as a container image")
+    Boundary(boundary, "sprint-metrics", "Python 3.12 package, src/sprint_metrics; released at a tag and as a container image") {
         Container(cli, "CLI", "sprint_metrics.cli", "One-shot report: reads card JSON from a file or stdin, prints a table, JSON, markdown, or Prometheus text. No database.")
         Container(scrape, "Scrape server", "sprint_metrics.serve, --scrape", "Serves /metrics (Prometheus text) and /json. Re-reads the cards file on every request. No database.")
         Container(service, "Stateful service", "sprint_metrics.service, --service", "Long-lived HTTP server on port 8080: POST /sprints and /events; GET /sprint, /range, /trend, /metrics, /schema/event, /health. Requires a database.")
-    End_Boundary
+    }
 
     Rel(crew, cli, "runs sprint-metrics, reads the report", "stdout")
     Rel(crew, service, "POSTs board events and sprint definitions; GETs queries", "HTTP")
@@ -68,7 +68,7 @@ in `store.py`.
 ```mermaid
 C4Component
     title sprint-metrics — Components
-    Container_Boundary(pkg, "sprint_metrics package")
+    Boundary(pkg, "sprint_metrics package") {
         Component(cli, "cli.py", "Entry point: argument parsing, file I/O; target of the sprint-metrics script and python -m.")
         Component(card, "card.py", "Card dataclass; card, sprint, and WIP-limit parsing.")
         Component(metrics, "metrics.py", "Pure metric calculations: cycle time, lead time, throughput, WIP violations, blocked aging, escalation rate, first-attempt rate, failure breakdown and its top causes, cost metrics.")
@@ -81,7 +81,7 @@ C4Component
         Component(store, "store.py", "Postgres persistence: the sprint_metrics schema DDL, idempotent event upsert, and the query functions. All SQL lives here.")
         Component(otel, "telemetry.py", "OpenTelemetry setup: tracer, logger, OTLP exporter, from OTEL_* environment variables.")
         Component(docgen, "_docs_gen.py", "Dev tool, not part of the public API: regenerates the marked (generated) sections of the docs/ files from the code.")
-    End_Boundary
+    }
     ContainerDb(db, "Postgres", "sprint_metrics schema: board_events, sprints.")
 
     Rel(cli, card, "loads cards and WIP limits")
