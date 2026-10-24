@@ -299,7 +299,7 @@ def main() -> int:
 def _generate_service_content() -> str:
     """Generate the text for the 'service' marked section."""
     lines = [
-        "Long-lived HTTP service that accepts board events and answers sprint, range, and trend queries from Postgres.",
+        "Long-lived HTTP service that accepts board events and answers range and trend queries from Postgres.",
         "",
         "| Method | Path | Description |",
         "|---|---|---|",
