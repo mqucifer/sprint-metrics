@@ -127,6 +127,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
         def do_POST(self) -> None:  # noqa: N802
             route = self.path.split("?")[0]
             status = 500
+            response_body = {}
             tracer = get_tracer()
             with tracer.start_as_current_span(
                 f"POST {route}",
@@ -134,8 +135,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
             ) as span:
                 try:
                     if self.path == "/schema/event":
-                        self._send_json(405, {"error": "method not allowed"})
-                        status = 405
+                        status, response_body = 405, {"error": "method not allowed"}
                         return
 
                     if self.path == "/sprints":
@@ -144,46 +144,47 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             body = self.rfile.read(content_length)
                             sprint_data = json.loads(body)
                         except (json.JSONDecodeError, ValueError):
-                            self._send_json(400, {"error": "invalid JSON body"})
-                            status = 400
+                            status, response_body = 400, {"error": "invalid JSON body"}
                             return
 
                         name = sprint_data.get("name")
                         if not isinstance(name, str) or not name:
-                            self._send_json(
-                                400, {"error": "missing or empty required field: 'name'"}
+                            status, response_body = (
+                                400,
+                                {"error": "missing or empty required field: 'name'"},
                             )
-                            status = 400
                             return
 
                         start_date_str = sprint_data.get("start_date", "")
                         try:
                             start_date = date.fromisoformat(start_date_str)
                         except (ValueError, TypeError):
-                            self._send_json(
-                                400, {"error": f"invalid start_date: {start_date_str!r}"}
+                            status, response_body = (
+                                400,
+                                {"error": f"invalid start_date: {start_date_str!r}"},
                             )
-                            status = 400
                             return
 
                         end_date_str = sprint_data.get("end_date", "")
                         try:
                             end_date = date.fromisoformat(end_date_str)
                         except (ValueError, TypeError):
-                            self._send_json(400, {"error": f"invalid end_date: {end_date_str!r}"})
-                            status = 400
+                            status, response_body = (
+                                400,
+                                {"error": f"invalid end_date: {end_date_str!r}"},
+                            )
                             return
 
                         timezone = sprint_data.get("timezone")
                         if not isinstance(timezone, str) or not timezone:
-                            self._send_json(
-                                400, {"error": "missing or empty required field: 'timezone'"}
+                            status, response_body = (
+                                400,
+                                {"error": "missing or empty required field: 'timezone'"},
                             )
-                            status = 400
                             return
 
                         if not self._ensure_db():
-                            self._send_json(
+                            status, response_body = (
                                 503,
                                 {
                                     "status": "unavailable",
@@ -191,23 +192,19 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     "retryable": True,
                                 },
                             )
-                            status = 503
                             return
 
                         try:
                             upsert_sprint(conn_holder[0], name, start_date, end_date, timezone)
                         except Exception as exc:
-                            self._send_json(500, {"error": f"database error: {exc}"})
-                            status = 500
+                            status, response_body = 500, {"error": f"database error: {exc}"}
                             return
 
-                        self._send_json(200, {"name": name})
-                        status = 200
+                        status, response_body = 200, {"name": name}
                         return
 
                     if self.path != "/events":
-                        self._send_json(404, {"error": "not found"})
-                        status = 404
+                        status, response_body = 404, {"error": "not found"}
                         return
 
                     try:
@@ -215,76 +212,73 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         body = self.rfile.read(content_length)
                         event = json.loads(body)
                     except (json.JSONDecodeError, ValueError):
-                        self._send_json(400, {"error": "invalid JSON body"})
-                        status = 400
+                        status, response_body = 400, {"error": "invalid JSON body"}
                         return
 
                     for field in REQUIRED_FIELDS:
                         if field not in event:
-                            self._send_json(400, {"error": f"missing required field: {field!r}"})
-                            status = 400
+                            status, response_body = (
+                                400,
+                                {"error": f"missing required field: {field!r}"},
+                            )
                             return
 
                     sprint_name = event.get("sprint")
                     if not isinstance(sprint_name, str) or not sprint_name:
-                        self._send_json(400, {"error": "sprint must be a non-empty string"})
-                        status = 400
+                        status, response_body = 400, {"error": "sprint must be a non-empty string"}
                         return
 
                     event_type = event["type"]
                     if event_type not in VALID_EVENT_TYPES:
-                        self._send_json(400, {"error": f"unknown event type: {event_type!r}"})
                         _emit_log(
                             SeverityNumber.ERROR,
                             f"event rejected: unknown type {event_type}",
                             {"card_id": event["card_id"], "event_type": event_type},
                         )
-                        status = 400
+                        status, response_body = (
+                            400,
+                            {"error": f"unknown event type: {event_type!r}"},
+                        )
                         return
 
                     card = event["card"]
                     if not isinstance(card, dict) or "created" not in card:
-                        self._send_json(400, {"error": "card.created is required"})
-                        status = 400
+                        status, response_body = 400, {"error": "card.created is required"}
                         return
 
                     card_created_at = card.get("created_at")
                     if card_created_at is not None and card_created_at != "":
                         if not isinstance(card_created_at, str):
-                            self._send_json(
+                            status, response_body = (
                                 400,
                                 {"error": "card.created_at must be an ISO-8601 datetime string"},
                             )
-                            status = 400
                             return
                         try:
                             datetime.fromisoformat(card_created_at)
                         except ValueError:
-                            self._send_json(
+                            status, response_body = (
                                 400,
                                 {
                                     "error": f"card.created_at is not a valid ISO-8601 datetime: {card_created_at!r}"
                                 },
                             )
-                            status = 400
                             return
 
                     if event_type == "finished":
                         error = _validate_cost_fields(card)
                         if error:
-                            self._send_json(400, {"error": error})
-                            status = 400
+                            status, response_body = 400, {"error": error}
                             return
 
                     if event_type == "superseded":
                         error = _validate_superseded_event(event)
                         if error:
-                            self._send_json(400, {"error": error})
-                            status = 400
+                            status, response_body = 400, {"error": error}
                             return
 
                     if not self._ensure_db():
-                        self._send_json(
+                        status, response_body = (
                             503,
                             {
                                 "status": "unavailable",
@@ -292,14 +286,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 "retryable": True,
                             },
                         )
-                        status = 503
                         return
 
                     try:
                         insert_event(conn_holder[0], event)
                     except Exception as exc:
-                        self._send_json(500, {"error": f"database error: {exc}"})
-                        status = 500
+                        status, response_body = 500, {"error": f"database error: {exc}"}
                         return
 
                     _emit_log(
@@ -307,11 +299,11 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         f"event accepted: card_id={event['card_id']} type={event_type}",
                         {"card_id": event["card_id"], "event_type": event_type},
                     )
-                    self._send_json(200, {})
-                    status = 200
+                    status, response_body = 200, {}
                 finally:
                     span.set_attribute("http.status_code", status)
                     span.set_status(StatusCode.OK if status < 400 else StatusCode.ERROR)
+            self._send_json(status, response_body)
 
         def do_GET(self) -> None:  # noqa: N802
             route = self.path.split("?")[0]
