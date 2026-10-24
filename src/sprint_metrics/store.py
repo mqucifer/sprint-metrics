@@ -284,6 +284,8 @@ def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card |
         ev_output_tokens = row[12] if len(row) > 12 else None
         ev_reasoning_output_tokens = row[13] if len(row) > 13 else None
         event_date = event_time.date() if hasattr(event_time, "date") else event_time
+        if ev_points is not None and (event_type == "finished" or points is None):
+            points = ev_points
         if created is None and card_created is not None:
             created = card_created
         if created_at is None and card_created_at is not None:
@@ -297,7 +299,6 @@ def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card |
             finished_attempts = ev_attempts
             failure_class = ev_failure_class
             failure_role = ev_failure_role
-            points = ev_points
             model_seconds = ev_model_seconds
             input_tokens = ev_input_tokens
             cached_input_tokens = ev_cached_input_tokens
@@ -306,8 +307,6 @@ def _reconstruct_card(events: list[tuple], card_id: str | None = None) -> Card |
         elif event_type == "superseded":
             superseded = True
             superseded_because = ev_because
-            if points is None:
-                points = ev_points
         elif event_type == "blocked":
             blocked_events.append(event_date)
         elif event_type == "unblocked":

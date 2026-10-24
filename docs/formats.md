@@ -702,7 +702,7 @@ The /trend response is a JSON object with the following top-level fields:
 - `end` — the end sprint label (YYYY-MM)
 - `values` — an ordered array of objects, one per sprint in the inclusive range, each with:
   - `sprint` — the sprint label (YYYY-MM)
-  - `value` — the metric's integer value for that sprint; 0 when no events are stored
+  - `value` — the metric's integer value for that sprint; null when no events are stored
 
 ### Worked example
 
@@ -727,7 +727,7 @@ Response:
     },
     {
       "sprint": "2024-03",
-      "value": 0
+      "value": null
     },
     {
       "sprint": "2024-04",
@@ -737,5 +737,5 @@ Response:
 }
 ```
 
-Sprint 2024-03 has no stored events and appears with value 0 rather than being omitted.
+Sprint 2024-03 has no stored events and appears with value null rather than being omitted.
 END:trend-format

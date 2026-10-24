@@ -19,6 +19,45 @@ SPRINT_METRICS_DB = os.environ.get("SPRINT_METRICS_DB")
 requires_db = pytest.mark.skipif(SPRINT_METRICS_DB is None, reason="SPRINT_METRICS_DB not set")
 
 
+class _InMemoryLogExporter:
+    """Minimal in-memory log exporter for testing (opentelemetry-sdk lacks one)."""
+
+    def __init__(self):
+        self._logs = []
+
+    def export(self, logs):
+        self._logs.extend(logs)
+
+    def flush(self):
+        pass
+
+    def shutdown(self):
+        pass
+
+    def get_finished_logs(self):
+        return list(self._logs)
+
+
+@pytest.fixture(autouse=True)
+def _clean_board_events():
+    """Ensure each test runs against a clean board_events and sprints table."""
+    if SPRINT_METRICS_DB is None:
+        return
+    import psycopg
+
+    conn = None
+    try:
+        conn = psycopg.connect(SPRINT_METRICS_DB, connect_timeout=5)
+        conn.execute("DELETE FROM sprint_metrics.board_events")
+        conn.execute("DELETE FROM sprint_metrics.sprints")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _make_event(
     card_id: str = "c1",
     event_type: str = "started",
@@ -910,6 +949,8 @@ def test_sprint_flags_has_exactly_seven_boolean_keys():
         expected_flag_keys = {
             "cycle_time_days",
             "lead_time_days",
+            "cycle_time_minutes",
+            "lead_time_minutes",
             "throughput",
             "wip_violations",
             "blocked_aging_days",
@@ -2453,12 +2494,11 @@ def test_post_valid_event_emits_info_log_record(monkeypatch):
     body includes card_id and event type."""
     import psycopg
     from opentelemetry._logs import SeverityNumber
-    from opentelemetry.sdk._logs.export.in_memory_log_exporter import InMemoryLogExporter
 
     from sprint_metrics.telemetry import init_telemetry
 
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
-    log_exporter = InMemoryLogExporter()
+    log_exporter = _InMemoryLogExporter()
     init_telemetry(log_exporter=log_exporter)
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -2490,12 +2530,11 @@ def test_post_invalid_type_emits_error_log_record(monkeypatch):
     body includes the invalid type value."""
     import psycopg
     from opentelemetry._logs import SeverityNumber
-    from opentelemetry.sdk._logs.export.in_memory_log_exporter import InMemoryLogExporter
 
     from sprint_metrics.telemetry import init_telemetry
 
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
-    log_exporter = InMemoryLogExporter()
+    log_exporter = _InMemoryLogExporter()
     init_telemetry(log_exporter=log_exporter)
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -2510,7 +2549,7 @@ def test_post_invalid_type_emits_error_log_record(monkeypatch):
         logs = log_exporter.get_finished_logs()
         matching = [ld for ld in logs if "frobnicated" in (ld.log_record.body or "")]
         assert len(matching) >= 1
-        assert matching[0].log_record.severity_number >= SeverityNumber.ERROR
+        assert matching[0].log_record.severity_number.value >= SeverityNumber.ERROR.value
     finally:
         conn.close()
 
@@ -3090,7 +3129,7 @@ def test_trend_doc_worked_example_matches_service_response():
         for entry in expected_values:
             sprint = entry["sprint"]
             value = entry["value"]
-            if metric == "throughput" and value > 0:
+            if metric == "throughput" and value is not None and value > 0:
                 for i in range(value):
                     card_id = f"doc_trend_{sprint}_{i}"
                     _post_events(
@@ -3864,6 +3903,8 @@ def test_get_sprint_free_form_label_only_started_event():
         expected_flag_keys = {
             "cycle_time_days",
             "lead_time_days",
+            "cycle_time_minutes",
+            "lead_time_minutes",
             "throughput",
             "wip_violations",
             "blocked_aging_days",
