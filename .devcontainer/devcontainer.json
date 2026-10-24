@@ -7,5 +7,15 @@
   "postCreateCommand": ["uv", "sync", "--extra", "dev", "--quiet"],
   "containerEnv": {
     "SPRINT_METRICS_DB": "postgresql://sprint_metrics:sprint_metrics@postgres:5432/sprint_metrics"
+  },
+  "customizations": {
+    "crew": {
+      "ciOnlySkips": [
+        "tests/test_dockerfile.py::test_docker_build_and_help",
+        "tests/test_dockerfile.py::test_docker_run_repeating_program_name_fails",
+        "tests/test_dockerfile.py::test_docker_run_with_cards",
+        "tests/test_dockerfile.py::test_docker_runs_as_non_root"
+      ]
+    }
   }
 }
