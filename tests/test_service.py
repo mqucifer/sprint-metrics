@@ -6789,7 +6789,7 @@ def test_trend_escalation_rate_percent_matches_range(monkeypatch):
 @requires_db
 def test_service_escalation_rate_200_on_sprint_range_and_trend():
     """AC3: sprint 2024-01 has one completed card and 2 escalated events;
-    /sprint, /range, and /trend all report escalation_rate_percent 200."""
+    /range and /trend both report escalation_rate_percent 200."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
