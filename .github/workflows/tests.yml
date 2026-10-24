@@ -11,6 +11,27 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    # The same postgres service as the workspace's compose file
+    # (.devcontainer/compose.yaml), image by the same digest, so the DB-backed
+    # tests (tests/test_store.py, @requires_db in tests/test_service.py) run
+    # here instead of skipping, as they run in the workspace.
+    services:
+      postgres:
+        image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+        env:
+          POSTGRES_USER: sprint_metrics
+          POSTGRES_PASSWORD: sprint_metrics
+          POSTGRES_DB: sprint_metrics
+        options: >-
+          --user=999:999
+          --tmpfs /var/lib/postgresql/data
+          --tmpfs /var/run/postgresql
+          --health-cmd="pg_isready -U sprint_metrics -d sprint_metrics -h 127.0.0.1"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      SPRINT_METRICS_DB: postgresql://sprint_metrics:sprint_metrics@postgres:5432/sprint_metrics
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
