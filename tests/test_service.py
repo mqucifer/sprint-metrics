@@ -140,8 +140,50 @@ def test_get_sprint_returns_410_without_query_string():
 
 
 @requires_db
-def test_get_sprint_returns_410_with_empty_label():
-    """AC2: GET /sprint?label= (empty) returns 410 without a database query."""
+def test_get_sprint_returns_410_when_db_unreachable():
+    """AC2: GET /sprint?label=2024-01 with unreachable DB returns the same 410
+    answer without a database query being attempted."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
+    port = _start_service(conn, 0, unreachable_url)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 410
+        assert "removed" in body["error"]
+    finally:
+        pass
+
+
+@requires_db
+def test_get_sprint_no_query_string_returns_410_not_400():
+    """AC2: GET /sprint (no label at all) is answered 410, distinct from the 400
+    validation answer and the 503/500 conditions."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint")
+        assert status == 410
+        assert status not in (200, 400, 404, 500, 503)
+        assert "error" in body
+        assert "removed" in body["error"]
+    finally:
+        pass
+
+
+@requires_db
+def test_get_sprint_empty_label_returns_410():
+    """AC2: GET /sprint?label= (empty label) is answered 410 without a database
+    query, the same as a missing label."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -152,7 +194,6 @@ def test_get_sprint_returns_410_with_empty_label():
     try:
         status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=")
         assert status == 410
-        assert "error" in body
         assert "removed" in body["error"]
     finally:
         pass
