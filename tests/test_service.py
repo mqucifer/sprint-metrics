@@ -99,6 +99,65 @@ def _get_json(url: str) -> tuple[int, dict]:
         return e.code, json.loads(e.read().decode())
 
 
+@requires_db
+def test_get_sprint_returns_410_with_label():
+    """AC1: GET /sprint?label=2024-01 returns 410 with error naming the removal
+    and pointing to GET /range."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        assert status == 410
+        assert "error" in body
+        assert "removed" in body["error"]
+        assert "/range" in body["error"]
+    finally:
+        pass
+
+
+@requires_db
+def test_get_sprint_returns_410_without_query_string():
+    """AC2: GET /sprint with no query string returns 410 without a database query."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint")
+        assert status == 410
+        assert "error" in body
+        assert "removed" in body["error"]
+    finally:
+        pass
+
+
+@requires_db
+def test_get_sprint_returns_410_with_empty_label():
+    """AC2: GET /sprint?label= (empty) returns 410 without a database query."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.close()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=")
+        assert status == 410
+        assert "error" in body
+        assert "removed" in body["error"]
+    finally:
+        pass
+
+
 def _cost_card(
     card_id: str,
     model_seconds: int,
@@ -439,9 +498,9 @@ def test_post_duplicate_finished_event_idempotent():
         status, _ = _post_events(f"http://127.0.0.1:{port}/events", finished)
         assert status == 200
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["throughput"] == 1
+        assert body["sprints"][0]["throughput"] == 1
     finally:
         conn.close()
 
@@ -520,484 +579,6 @@ def test_post_frobnicated_error_contains_type():
         assert status == 400
         assert "error" in body
         assert "frobnicated" in body["error"]
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_response_metrics_and_content_type():
-    """AC1: GET /sprint?label=2024-01 after POSTing started+finished for c1
-    returns 200, Content-Type application/json, and the expected metric values."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac1_sprint'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac1_sprint",
-            event_type="started",
-            timestamp="2024-01-03T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        finished = _make_event(
-            card_id="ac1_sprint",
-            event_type="finished",
-            timestamp="2024-01-07T15:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=2024-01", timeout=5
-        ) as resp:
-            assert resp.status == 200
-            assert "application/json" in resp.headers.get("Content-Type", "")
-            body = json.loads(resp.read().decode())
-
-        assert body["api_version"] == "1"
-        assert body["throughput"] == 1
-        assert body["cycle_time_days"] == 4
-        assert body["lead_time_days"] == 6
-        for key, value in body["flags"].items():
-            assert isinstance(value, bool), f"flags[{key!r}] is {type(value).__name__}, not bool"
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_excludes_card_finishing_in_different_sprint():
-    """AC2: c2's finished event is in sprint 2024-02, so GET /sprint?label=2024-01
-    reports throughput 0 for that card."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_sprint'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac2_sprint",
-            event_type="started",
-            timestamp="2024-01-20T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-05",
-        )
-        finished = _make_event(
-            card_id="ac2_sprint",
-            event_type="finished",
-            timestamp="2024-02-10T14:00:00Z",
-            sprint="2024-02",
-            created="2024-01-05",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        assert body["throughput"] == 0
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_empty_db_returns_all_zeros():
-    """AC3: GET /sprint?label=2024-03 with no events returns 200 and all metrics null."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-03'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-03")
-        assert status == 200
-        assert body["throughput"] is None
-        assert body["cycle_time_days"] is None
-        assert body["lead_time_days"] is None
-        assert body["wip_violations"] is None
-        assert body["blocked_aging_days"] is None
-        assert body["escalation_rate_percent"] is None
-        assert body["flags"] is None
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_data_survives_reconnect():
-    """AC4: events stored via one connection are still returned when a new
-    connection (simulating a process restart) queries them."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_sprint'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac4_sprint",
-            event_type="started",
-            timestamp="2024-01-03T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        finished = _make_event(
-            card_id="ac4_sprint",
-            event_type="finished",
-            timestamp="2024-01-07T15:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-    finally:
-        conn.close()
-
-    # Simulate restart: open a fresh connection and query
-    conn2 = psycopg.connect(SPRINT_METRICS_DB)
-    port2 = _start_service(conn2, 0)
-    try:
-        status, body = _get_json(f"http://127.0.0.1:{port2}/sprint?label=2024-01")
-        assert status == 200
-        assert body["throughput"] == 1
-    finally:
-        conn2.close()
-
-
-@requires_db
-def test_sprint_response_key_set_no_sprint_date():
-    """GET /sprint response has the full set of top-level keys and no sprint_date."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac5_sprint'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac5_sprint",
-            event_type="started",
-            timestamp="2024-01-03T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        finished = _make_event(
-            card_id="ac5_sprint",
-            event_type="finished",
-            timestamp="2024-01-07T15:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        expected_keys = {
-            "api_version",
-            "cycle_time_days",
-            "lead_time_days",
-            "cycle_time_minutes",
-            "lead_time_minutes",
-            "throughput",
-            "points_delivered",
-            "wip_violations",
-            "blocked_aging_days",
-            "escalation_rate_percent",
-            "escalation_count",
-            "first_attempt_rate_percent",
-            "first_attempt_numerator",
-            "first_attempt_denominator",
-            "failure_breakdown",
-            "top_failure_causes",
-            "superseded_count",
-            "superseded_points",
-            "superseded_breakdown",
-            "flags",
-            "story_costs",
-            "cost",
-        }
-        assert set(body.keys()) == expected_keys
-        assert "sprint_date" not in body
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_response_story_costs_single_costed_story():
-    """AC1/AC8: GET /sprint returns story_costs with one six-key item for the
-    costed story and a cost object whose total matches the story's measures."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    for cid in ("cost-a", "cost-bare"):
-        conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = %s", (cid,))
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        for cid in ("cost-a", "cost-bare"):
-            _post_events(
-                f"http://127.0.0.1:{port}/events",
-                _make_event(
-                    card_id=cid,
-                    event_type="started",
-                    timestamp="2024-01-03T10:00:00Z",
-                    sprint="2024-01",
-                    created="2024-01-01",
-                ),
-            )
-            if cid == "cost-a":
-                finished = _make_event(
-                    card_id=cid,
-                    event_type="finished",
-                    timestamp="2024-01-07T15:00:00Z",
-                    sprint="2024-01",
-                    created="2024-01-01",
-                    model_seconds=3500,
-                    input_tokens=4000,
-                    cached_input_tokens=1400,
-                    output_tokens=900,
-                    reasoning_output_tokens=300,
-                )
-            else:
-                finished = _make_event(
-                    card_id=cid,
-                    event_type="finished",
-                    timestamp="2024-01-07T15:00:00Z",
-                    sprint="2024-01",
-                    created="2024-01-01",
-                )
-            _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        assert [item["card_id"] for item in body["story_costs"]] == ["cost-a"]
-        item = body["story_costs"][0]
-        assert set(item.keys()) == {
-            "card_id",
-            "model_minutes",
-            "input_tokens",
-            "cached_input_percent",
-            "output_tokens",
-            "reasoning_output_percent",
-        }
-        assert item["model_minutes"] == 58
-        assert item["input_tokens"] == 4000
-        assert item["output_tokens"] == 900
-        assert body["cost"]["total"]["model_minutes"] == 58
-        assert body["cost"]["total"]["input_tokens"] == 4000
-        assert body["cost"]["total"]["output_tokens"] == 900
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_response_story_costs_sprint_percents_and_middle():
-    """AC2/AC3: with two costed stories, every item carries the sprint's combined
-    cached/reasoning shares, and cost.middle is the median / cost.total the sum
-    of the per-story measures."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    for cid in ("cs-a", "cs-b"):
-        conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = %s", (cid,))
-    conn.commit()
-
-    payloads = {
-        "cs-a": {
-            "model_seconds": 60,
-            "input_tokens": 1000,
-            "cached_input_tokens": 500,
-            "output_tokens": 800,
-            "reasoning_output_tokens": 400,
-        },
-        "cs-b": {
-            "model_seconds": 60,
-            "input_tokens": 3000,
-            "cached_input_tokens": 900,
-            "output_tokens": 3200,
-            "reasoning_output_tokens": 640,
-        },
-    }
-    port = _start_service(conn, 0)
-    try:
-        for cid, payload in payloads.items():
-            _post_events(
-                f"http://127.0.0.1:{port}/events",
-                _make_event(
-                    card_id=cid,
-                    event_type="started",
-                    timestamp="2024-02-03T10:00:00Z",
-                    sprint="2024-02",
-                    created="2024-02-01",
-                ),
-            )
-            _post_events(
-                f"http://127.0.0.1:{port}/events",
-                _make_event(
-                    card_id=cid,
-                    event_type="finished",
-                    timestamp="2024-02-07T15:00:00Z",
-                    sprint="2024-02",
-                    created="2024-02-01",
-                    **payload,
-                ),
-            )
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-02")
-        assert status == 200
-        for item in body["story_costs"]:
-            assert item["cached_input_percent"] == 35
-            assert item["reasoning_output_percent"] == 26
-        assert body["cost"]["middle"]["model_minutes"] == 1
-        assert body["cost"]["total"]["input_tokens"] == 4000
-        assert body["cost"]["total"]["output_tokens"] == 4000
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_response_no_costed_story_costs_empty_and_cost_null():
-    """AC5: a sprint whose finished stories carry no cost payload returns
-    story_costs as an empty array and cost as null."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ncc_sprint'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="ncc_sprint",
-                event_type="started",
-                timestamp="2024-01-03T10:00:00Z",
-                sprint="2024-01",
-                created="2024-01-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="ncc_sprint",
-                event_type="finished",
-                timestamp="2024-01-07T15:00:00Z",
-                sprint="2024-01",
-                created="2024-01-01",
-            ),
-        )
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        assert body["story_costs"] == []
-        assert body["cost"] is None
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_flags_has_exactly_seven_boolean_keys():
-    """AC6: the flags object has exactly 7 keys, all with boolean values."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac6_sprint'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac6_sprint",
-            event_type="started",
-            timestamp="2024-01-03T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        finished = _make_event(
-            card_id="ac6_sprint",
-            event_type="finished",
-            timestamp="2024-01-07T15:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        flags = body["flags"]
-        expected_flag_keys = {
-            "cycle_time_days",
-            "lead_time_days",
-            "cycle_time_minutes",
-            "lead_time_minutes",
-            "throughput",
-            "wip_violations",
-            "blocked_aging_days",
-            "escalation_rate_percent",
-            "first_attempt_rate_percent",
-        }
-        assert set(flags.keys()) == expected_flag_keys
-        for key, value in flags.items():
-            assert isinstance(value, bool), f"flags[{key!r}] is {type(value).__name__}, not bool"
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_sprint_throughput_and_cycle_zero_for_cross_sprint_card():
-    """AC7: c2's finished event is in sprint 2024-02, so GET /sprint?label=2024-01
-    reports throughput 0 and cycle_time_days 0."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac7_sprint'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac7_sprint",
-            event_type="started",
-            timestamp="2024-01-20T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-05",
-        )
-        finished = _make_event(
-            card_id="ac7_sprint",
-            event_type="finished",
-            timestamp="2024-02-10T14:00:00Z",
-            sprint="2024-02",
-            created="2024-01-05",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        assert body["throughput"] == 0
-        assert body["cycle_time_days"] == 0
     finally:
         conn.close()
 
@@ -2381,49 +1962,6 @@ def test_post_events_span_name_and_attributes(monkeypatch):
 
 
 @requires_db
-def test_get_sprint_span_ok_status(monkeypatch):
-    """AC2: GET /sprint?label=2024-01 → span has http.method=GET, http.route=/sprint, status OK."""
-    import psycopg
-    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-    from opentelemetry.trace import StatusCode
-
-    from sprint_metrics.telemetry import init_telemetry
-
-    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
-    exporter = InMemorySpanExporter()
-    init_telemetry(span_exporter=exporter)
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_span'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac2_span",
-            event_type="started",
-            timestamp="2024-01-03T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-
-        spans = exporter.get_finished_spans()
-        get_spans = [s for s in spans if s.name == "GET /sprint"]
-        assert len(get_spans) == 1
-        span = get_spans[0]
-        assert span.attributes["http.method"] == "GET"
-        assert span.attributes["http.route"] == "/sprint"
-        assert span.status.status_code == StatusCode.OK
-    finally:
-        conn.close()
-
-
-@requires_db
 def test_post_invalid_type_span_error_status(monkeypatch):
     """AC3: POST /events with invalid type 'frobnicated' → span status is not OK."""
     import psycopg
@@ -2450,40 +1988,6 @@ def test_post_invalid_type_span_error_status(monkeypatch):
         assert len(matching) == 1
         span = matching[0]
         assert span.status.status_code != StatusCode.OK
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_get_sprint_without_otel_endpoint_returns_200(monkeypatch):
-    """AC4: OTEL endpoint not set → GET /sprint returns 200 with api_version='1'."""
-    import psycopg
-
-    from sprint_metrics.telemetry import init_telemetry
-
-    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
-    monkeypatch.delenv("OTEL_SERVICE_NAME", raising=False)
-    init_telemetry()
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_span'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac4_span",
-            event_type="started",
-            timestamp="2024-01-03T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        assert body["api_version"] == "1"
     finally:
         conn.close()
 
@@ -3231,9 +2735,9 @@ def test_post_events_recover_after_connection_lost():
         status, _ = _post_events(f"http://127.0.0.1:{port}/events", finished)
         assert status == 200
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["throughput"] == 1
+        assert body["sprints"][0]["throughput"] == 1
     finally:
         pass
 
@@ -3312,25 +2816,6 @@ def test_post_events_503_body_has_no_card_id_key():
 
 
 @requires_db
-def test_get_sprint_returns_503_when_db_unreachable():
-    """AC1: GET /sprint?label=2024-01 with unreachable DB returns 503 and non-empty body."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.close()
-
-    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
-    port = _start_service(conn, 0, unreachable_url)
-    try:
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 503
-        assert len(body) > 0
-    finally:
-        pass
-
-
-@requires_db
 def test_get_range_returns_503_when_db_unreachable():
     """AC2: GET /range?start=2024-01&end=2024-02 with unreachable DB returns 503 and non-empty body."""
     import psycopg
@@ -3367,36 +2852,6 @@ def test_get_trend_returns_503_when_db_unreachable():
         )
         assert status == 503
         assert len(body) > 0
-    finally:
-        pass
-
-
-@requires_db
-def test_get_sprint_503_content_type_and_database_in_body():
-    """AC6 (UX): GET /sprint?label=2024-01 with unreachable DB returns Content-Type
-    'application/json' and body has at least one value containing 'database'."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.close()
-
-    unreachable_url = "postgresql://user:pass@127.0.0.1:19999/nonexistent"
-    port = _start_service(conn, 0, unreachable_url)
-    try:
-        try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/sprint?label=2024-01", timeout=5
-            ) as resp:
-                content_type = resp.headers.get("Content-Type", "")
-                body = json.loads(resp.read().decode())
-        except urllib.error.HTTPError as e:
-            content_type = e.headers.get("Content-Type", "")
-            body = json.loads(e.read().decode())
-        assert content_type == "application/json"
-        assert isinstance(body, dict)
-        values_lowered = [str(v).lower() for v in body.values()]
-        assert any("database" in v for v in values_lowered)
     finally:
         pass
 
@@ -3477,46 +2932,6 @@ def test_health_reconnects_after_connection_lost():
     try:
         status, body = _get_json(f"http://127.0.0.1:{port}/health")
         assert status == 200
-    finally:
-        pass
-
-
-@requires_db
-def test_sprint_reconnects_after_connection_lost():
-    """AC2: after storing events and the connection is lost, GET /sprint?label=2024-01
-    returns 200 with throughput=1 (the service reconnected and read the stored data)."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_reconnect'")
-    conn.commit()
-
-    port = _start_service(conn, 0, SPRINT_METRICS_DB)
-    try:
-        started = _make_event(
-            card_id="ac2_reconnect",
-            event_type="started",
-            timestamp="2024-01-03T10:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        finished = _make_event(
-            card_id="ac2_reconnect",
-            event_type="finished",
-            timestamp="2024-01-07T15:00:00Z",
-            sprint="2024-01",
-            created="2024-01-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        # Simulate DB restart: close the connection the service is using
-        conn.close()
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        assert body["throughput"] == 1
     finally:
         pass
 
@@ -3806,50 +3221,6 @@ def test_post_events_free_form_sprint_name_returns_200():
 
 
 @requires_db
-def test_get_sprint_free_form_label_returns_metrics():
-    """AC2: GET /sprint?label=Sprint%2018 after posting a finished event returns
-    200, Content-Type application/json, api_version='1', throughput=1, cycle_time_days=4."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac2_sprint_name'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac2_sprint_name",
-            event_type="started",
-            timestamp="2024-01-12T10:00:00Z",
-            sprint="Sprint 18",
-            created="2024-01-10",
-        )
-        finished = _make_event(
-            card_id="ac2_sprint_name",
-            event_type="finished",
-            timestamp="2024-01-16T10:00:00Z",
-            sprint="Sprint 18",
-            created="2024-01-10",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=Sprint%2018", timeout=5
-        ) as resp:
-            assert resp.status == 200
-            assert "application/json" in resp.headers.get("Content-Type", "")
-            body = json.loads(resp.read().decode())
-
-        assert body["api_version"] == "1"
-        assert body["throughput"] == 1
-        assert body["cycle_time_days"] == 4
-    finally:
-        conn.close()
-
-
-@requires_db
 def test_post_events_empty_sprint_returns_400():
     """AC3: POST /events with sprint='' returns 400 and body has a non-empty 'error' key."""
     import psycopg
@@ -3864,120 +3235,6 @@ def test_post_events_empty_sprint_returns_400():
         assert status == 400
         assert "error" in body
         assert isinstance(body["error"], str) and len(body["error"]) > 0
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_get_sprint_free_form_label_only_started_event():
-    """UX4: GET /sprint?label=Sprint%2018 after only a started event returns
-    200, Content-Type application/json, api_version='1', throughput=0,
-    and flags has exactly seven keys."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac4_sprint_name'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        event = _make_event(
-            card_id="ac4_sprint_name",
-            event_type="started",
-            timestamp="2024-01-15T10:00:00Z",
-            sprint="Sprint 18",
-            created="2024-01-10",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", event)
-
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=Sprint%2018", timeout=5
-        ) as resp:
-            assert resp.status == 200
-            assert "application/json" in resp.headers.get("Content-Type", "")
-            body = json.loads(resp.read().decode())
-
-        assert body["api_version"] == "1"
-        assert body["throughput"] == 0
-        expected_flag_keys = {
-            "cycle_time_days",
-            "lead_time_days",
-            "cycle_time_minutes",
-            "lead_time_minutes",
-            "throughput",
-            "wip_violations",
-            "blocked_aging_days",
-            "escalation_rate_percent",
-            "first_attempt_rate_percent",
-        }
-        assert set(body["flags"].keys()) == expected_flag_keys
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_get_sprint_free_form_label_same_day_completion():
-    """UX5: GET /sprint?label=Sprint%2018 after started+finished on the same day
-    returns 200, throughput=1, cycle_time_days=0, lead_time_days=0,
-    first_attempt_rate_percent=100."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac5_sprint_name'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="ac5_sprint_name",
-            event_type="started",
-            timestamp="2026-10-07T10:00:00Z",
-            sprint="Sprint 18",
-            created="2026-10-07",
-        )
-        finished = _make_event(
-            card_id="ac5_sprint_name",
-            event_type="finished",
-            timestamp="2026-10-07T20:52:22Z",
-            sprint="Sprint 18",
-            created="2026-10-07",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
-        assert status == 200
-        assert body["throughput"] == 1
-        assert body["cycle_time_days"] == 0
-        assert body["lead_time_days"] == 0
-        assert body["first_attempt_rate_percent"] == 100
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_get_sprint_free_form_label_never_sent():
-    """UX6: GET /sprint?label=Never%20Sent with no events returns 200,
-    Content-Type application/json, and all metrics null."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-
-    port = _start_service(conn, 0)
-    try:
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=Never%20Sent", timeout=5
-        ) as resp:
-            assert resp.status == 200
-            assert "application/json" in resp.headers.get("Content-Type", "")
-            body = json.loads(resp.read().decode())
-
-        assert body["throughput"] is None
-        assert body["cycle_time_days"] is None
-        assert body["first_attempt_rate_percent"] is None
     finally:
         conn.close()
 
@@ -4080,10 +3337,10 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
         assert status == 200
-        assert body["first_attempt_rate_percent"] == 0
-        assert body["throughput"] == 1
+        assert body["sprints"][0]["first_attempt_rate_percent"] == 0
+        assert body["sprints"][0]["throughput"] == 1
     finally:
         conn.close()
 
@@ -4140,16 +3397,17 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
         assert status == 200
-        assert body["first_attempt_rate_percent"] == 0
-        assert body["throughput"] == 1
-        assert body["failure_breakdown"] == [
+        sprint_data = body["sprints"][0]
+        assert sprint_data["first_attempt_rate_percent"] == 0
+        assert sprint_data["throughput"] == 1
+        assert sprint_data["failure_breakdown"] == [
             {"class": "VERIFY", "role": "Developer", "count": 3},
             {"class": "SCHEMA", "role": "Developer", "count": 2},
             {"class": "TEST", "role": "Developer", "count": 1},
         ]
-        assert body["top_failure_causes"] == [
+        assert sprint_data["top_failure_causes"] == [
             {"class": "VERIFY", "role": "Developer", "count": 3},
             {"class": "SCHEMA", "role": "Developer", "count": 2},
             {"class": "TEST", "role": "Developer", "count": 1},
@@ -4205,9 +3463,9 @@ def test_sprint_first_attempt_rate_driven_by_crew_attempts():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
         assert status == 200
-        assert body["first_attempt_rate_percent"] == 100
+        assert body["sprints"][0]["first_attempt_rate_percent"] == 100
     finally:
         conn.close()
 
@@ -4258,9 +3516,9 @@ def test_sprint_first_attempt_rate_fallback_when_no_crew_attempts():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
         assert status == 200
-        assert body["first_attempt_rate_percent"] == 0
+        assert body["sprints"][0]["first_attempt_rate_percent"] == 0
     finally:
         conn.close()
 
@@ -4312,10 +3570,10 @@ def test_sprint_first_attempt_numerator_denominator_crew_attempts():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
         assert status == 200
-        assert body["first_attempt_numerator"] == 1
-        assert body["first_attempt_denominator"] == 1
+        assert body["sprints"][0]["first_attempt_numerator"] == 1
+        assert body["sprints"][0]["first_attempt_denominator"] == 1
     finally:
         conn.close()
 
@@ -4632,15 +3890,15 @@ def test_sprint_started_no_finished_returns_zeros():
         _post_events(f"http://127.0.0.1:{port}/events", started)
 
         with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=2024-05", timeout=5
+            f"http://127.0.0.1:{port}/range?start=2024-05&end=2024-05", timeout=5
         ) as resp:
             assert resp.status == 200
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["throughput"] == 0
-        assert body["cycle_time_days"] == 0
-        assert body["lead_time_days"] == 0
+        assert body["sprints"][0]["throughput"] == 0
+        assert body["sprints"][0]["cycle_time_days"] == 0
+        assert body["sprints"][0]["lead_time_days"] == 0
     finally:
         conn.close()
 
@@ -4658,19 +3916,19 @@ def test_sprint_no_events_returns_all_nulls():
     port = _start_service(conn, 0)
     try:
         with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=2026-11", timeout=5
+            f"http://127.0.0.1:{port}/range?start=2026-11&end=2026-11", timeout=5
         ) as resp:
             assert resp.status == 200
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "1"
-        assert body["throughput"] is None
-        assert body["cycle_time_days"] is None
-        assert body["lead_time_days"] is None
-        assert body["failure_breakdown"] is None
-        assert body["top_failure_causes"] is None
-        assert body["flags"] is None
+        sprint_data = body["sprints"][0]
+        assert sprint_data["throughput"] is None
+        assert sprint_data["cycle_time_days"] is None
+        assert sprint_data["lead_time_days"] is None
+        assert sprint_data["failure_breakdown"] is None
+        assert sprint_data["top_failure_causes"] is None
+        assert sprint_data["flags"] is None
     finally:
         conn.close()
 
@@ -4708,13 +3966,14 @@ def test_sprint_same_day_completion_with_failure_data():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-10")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
         assert status == 200
-        assert body["throughput"] == 1
-        assert body["cycle_time_days"] == 0
-        assert isinstance(body["failure_breakdown"], list)
-        assert len(body["failure_breakdown"]) == 1
-        assert body["first_attempt_rate_percent"] == 0
+        sprint_data = body["sprints"][0]
+        assert sprint_data["throughput"] == 1
+        assert sprint_data["cycle_time_days"] == 0
+        assert isinstance(sprint_data["failure_breakdown"], list)
+        assert len(sprint_data["failure_breakdown"]) == 1
+        assert sprint_data["first_attempt_rate_percent"] == 0
     finally:
         conn.close()
 
@@ -5435,21 +4694,22 @@ def test_sprint_response_includes_points_first_attempt_and_escalation_count():
         _post_events(f"http://127.0.0.1:{port}/events", finished)
         _post_events(f"http://127.0.0.1:{port}/events", escalated)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["points_delivered"] == 5
-        assert body["first_attempt_numerator"] == 1
-        assert body["first_attempt_denominator"] == 1
-        assert body["escalation_count"] == 1
-        assert "throughput" in body
-        assert "first_attempt_rate_percent" in body
+        sprint_data = body["sprints"][0]
+        assert sprint_data["points_delivered"] == 5
+        assert sprint_data["first_attempt_numerator"] == 1
+        assert sprint_data["first_attempt_denominator"] == 1
+        assert sprint_data["escalation_count"] == 1
+        assert "throughput" in sprint_data
+        assert "first_attempt_rate_percent" in sprint_data
     finally:
         conn.close()
 
 
 @requires_db
 def test_sprint_no_events_new_fields_are_null():
-    """AC2/AC7: no events stored for sprint 2026-11, GET /sprint returns 200
+    """AC2/AC7: no events stored for sprint 2026-11, GET /range returns 200
     and the four new fields are null, matching the existing null pattern."""
     import psycopg
 
@@ -5460,14 +4720,15 @@ def test_sprint_no_events_new_fields_are_null():
 
     port = _start_service(conn, 0)
     try:
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-11")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-11&end=2026-11")
         assert status == 200
-        assert body["points_delivered"] is None
-        assert body["first_attempt_numerator"] is None
-        assert body["first_attempt_denominator"] is None
-        assert body["escalation_count"] is None
-        assert body["throughput"] is None
-        assert body["first_attempt_rate_percent"] is None
+        sprint_data = body["sprints"][0]
+        assert sprint_data["points_delivered"] is None
+        assert sprint_data["first_attempt_numerator"] is None
+        assert sprint_data["first_attempt_denominator"] is None
+        assert sprint_data["escalation_count"] is None
+        assert sprint_data["throughput"] is None
+        assert sprint_data["first_attempt_rate_percent"] is None
     finally:
         conn.close()
 
@@ -5512,12 +4773,13 @@ def test_sprint_escalations_counted_without_completions():
         _post_events(f"http://127.0.0.1:{port}/events", esc1)
         _post_events(f"http://127.0.0.1:{port}/events", esc2)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["points_delivered"] == 0
-        assert body["first_attempt_numerator"] == 0
-        assert body["first_attempt_denominator"] == 0
-        assert body["escalation_count"] == 2
+        sprint_data = body["sprints"][0]
+        assert sprint_data["points_delivered"] == 0
+        assert sprint_data["first_attempt_numerator"] == 0
+        assert sprint_data["first_attempt_denominator"] == 0
+        assert sprint_data["escalation_count"] == 2
     finally:
         conn.close()
 
@@ -6095,119 +5357,6 @@ def test_post_superseded_no_prior_events_returns_200():
 
 
 @requires_db
-def test_get_sprint_label_without_encoding_returns_metrics():
-    """A sprint label with no percent-encoded characters still works after the decode fix."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 's1_nospace'")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        started = _make_event(
-            card_id="s1_nospace",
-            event_type="started",
-            timestamp="2024-03-04T10:00:00Z",
-            sprint="S1",
-            created="2024-03-01",
-        )
-        finished = _make_event(
-            card_id="s1_nospace",
-            event_type="finished",
-            timestamp="2024-03-08T10:00:00Z",
-            sprint="S1",
-            created="2024-03-01",
-        )
-        _post_events(f"http://127.0.0.1:{port}/events", started)
-        _post_events(f"http://127.0.0.1:{port}/events", finished)
-
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/sprint?label=S1", timeout=5) as resp:
-            assert resp.status == 200
-            body = json.loads(resp.read().decode())
-
-        assert body["throughput"] == 1
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_get_sprint_encoded_label_no_events_returns_null():
-    """A percent-encoded label with no matching events returns 200 and all-null metrics."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-
-    port = _start_service(conn, 0)
-    try:
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=Sprint%2099", timeout=5
-        ) as resp:
-            assert resp.status == 200
-            assert "application/json" in resp.headers.get("Content-Type", "")
-            body = json.loads(resp.read().decode())
-
-        assert body["throughput"] is None
-    finally:
-        conn.close()
-
-
-def test_get_sprint_decodes_label(monkeypatch):
-    """GET /sprint?label=Sprint%2018 passes the decoded label 'Sprint 18' to the store.
-
-    Against the old extraction (self.path[len('/sprint?label='):]), the label
-    arrives as 'Sprint%2018' and the SQL WHERE clause matches no rows.
-    """
-    from datetime import date
-    from unittest.mock import MagicMock
-
-    from sprint_metrics import service
-    from sprint_metrics.card import Card
-
-    labels_seen: list[str] = []
-
-    def fake_sprint_has_events(conn, label):
-        labels_seen.append(label)
-        return True
-
-    def fake_query_sprint(conn, label):
-        labels_seen.append(label)
-        return [
-            Card(
-                created=date(2024, 1, 10),
-                started=date(2024, 1, 12),
-                completed=date(2024, 1, 16),
-            )
-        ]
-
-    def fake_count_escalated_events(conn, label):
-        labels_seen.append(label)
-        return 0
-
-    monkeypatch.setattr(service, "sprint_has_events", fake_sprint_has_events)
-    monkeypatch.setattr(service, "query_sprint", fake_query_sprint)
-    monkeypatch.setattr(service, "count_escalated_events", fake_count_escalated_events)
-
-    mock_conn = MagicMock()
-    port = _start_service(mock_conn, 0)
-    try:
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=Sprint%2018", timeout=5
-        ) as resp:
-            assert resp.status == 200
-            assert "application/json" in resp.headers.get("Content-Type", "")
-            body = json.loads(resp.read().decode())
-    finally:
-        pass
-
-    assert body["throughput"] == 1
-    assert body["cycle_time_days"] == 4
-    assert labels_seen == ["Sprint 18", "Sprint 18", "Sprint 18"]
-
-
-@requires_db
 def test_range_single_named_sprint_registered_returns_200():
     """AC1: GET /range?start=Sprint%206&end=Sprint%206 with Sprint 6 registered
     returns 200 and the sprints object has exactly one key, 'Sprint 6'."""
@@ -6373,16 +5522,17 @@ def test_sprint_superseded_metrics_with_mixed_events():
         _post_events(f"http://127.0.0.1:{port}/events", finished_c2)
 
         with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=2024-01", timeout=5
+            f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01", timeout=5
         ) as resp:
             assert resp.status == 200
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["superseded_count"] == 1
-        assert body["superseded_points"] == 5
-        assert body["superseded_breakdown"] == {"sponsor": 1, "story_problem": 0}
-        assert body["throughput"] == 1
+        sprint_data = body["sprints"][0]
+        assert sprint_data["superseded_count"] == 1
+        assert sprint_data["superseded_points"] == 5
+        assert sprint_data["superseded_breakdown"] == {"sponsor": 1, "story_problem": 0}
+        assert sprint_data["throughput"] == 1
     finally:
         conn.close()
 
@@ -6538,10 +5688,10 @@ def test_sprint_superseded_excluded_from_throughput():
         _post_events(f"http://127.0.0.1:{port}/events", started_c1)
         _post_events(f"http://127.0.0.1:{port}/events", superseded_c1)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["throughput"] == 0
-        assert body["superseded_count"] == 1
+        assert body["sprints"][0]["throughput"] == 0
+        assert body["sprints"][0]["superseded_count"] == 1
     finally:
         conn.close()
 
@@ -6592,16 +5742,17 @@ def test_sprint_multiple_superseded_breakdown():
         _post_events(f"http://127.0.0.1:{port}/events", finished_c3)
 
         with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/sprint?label=2024-01", timeout=5
+            f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01", timeout=5
         ) as resp:
             assert resp.status == 200
             assert resp.headers.get("Content-Type", "") == "application/json"
             body = json.loads(resp.read().decode())
 
-        assert body["superseded_count"] == 2
-        assert body["superseded_points"] == 8
-        assert body["superseded_breakdown"] == {"sponsor": 1, "story_problem": 1}
-        assert body["throughput"] == 1
+        sprint_data = body["sprints"][0]
+        assert sprint_data["superseded_count"] == 2
+        assert sprint_data["superseded_points"] == 8
+        assert sprint_data["superseded_breakdown"] == {"sponsor": 1, "story_problem": 1}
+        assert sprint_data["throughput"] == 1
     finally:
         conn.close()
 
@@ -6628,15 +5779,16 @@ def test_sprint_only_started_superseded_zeros_not_null():
         )
         _post_events(f"http://127.0.0.1:{port}/events", started_c1)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["superseded_count"] == 0
-        assert body["superseded_points"] == 0
-        assert body["superseded_breakdown"] == {"sponsor": 0, "story_problem": 0}
-        assert body["throughput"] == 0
-        assert isinstance(body["superseded_count"], int)
-        assert isinstance(body["superseded_points"], int)
-        assert isinstance(body["superseded_breakdown"], dict)
+        sprint_data = body["sprints"][0]
+        assert sprint_data["superseded_count"] == 0
+        assert sprint_data["superseded_points"] == 0
+        assert sprint_data["superseded_breakdown"] == {"sponsor": 0, "story_problem": 0}
+        assert sprint_data["throughput"] == 0
+        assert isinstance(sprint_data["superseded_count"], int)
+        assert isinstance(sprint_data["superseded_points"], int)
+        assert isinstance(sprint_data["superseded_breakdown"], dict)
     finally:
         conn.close()
 
@@ -6654,11 +5806,12 @@ def test_sprint_no_events_superseded_fields_null():
 
     port = _start_service(conn, 0)
     try:
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-11")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-11&end=2026-11")
         assert status == 200
-        assert body["superseded_count"] is None
-        assert body["superseded_points"] is None
-        assert body["superseded_breakdown"] is None
+        sprint_data = body["sprints"][0]
+        assert sprint_data["superseded_count"] is None
+        assert sprint_data["superseded_points"] is None
+        assert sprint_data["superseded_breakdown"] is None
     finally:
         conn.close()
 
@@ -7034,19 +6187,20 @@ def test_sprint_cycle_and_lead_time_minutes_sub_day():
             ),
         )
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["cycle_time_minutes"] == 686
-        assert body["cycle_time_days"] == 0
-        assert body["lead_time_minutes"] == 3686
-        assert body["lead_time_days"] == 2
+        sprint_data = body["sprints"][0]
+        assert sprint_data["cycle_time_minutes"] == 686
+        assert sprint_data["cycle_time_days"] == 0
+        assert sprint_data["lead_time_minutes"] == 3686
+        assert sprint_data["lead_time_days"] == 2
     finally:
         conn.close()
 
 
 @requires_db
 def test_sprint_no_events_minute_fields_null():
-    """AC2: /sprint with no stored events returns cycle_time_minutes and lead_time_minutes as null."""
+    """AC2: /range with no stored events returns cycle_time_minutes and lead_time_minutes as null."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -7056,10 +6210,11 @@ def test_sprint_no_events_minute_fields_null():
 
     port = _start_service(conn, 0)
     try:
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-03")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-03&end=2024-03")
         assert status == 200
-        assert body["cycle_time_minutes"] is None
-        assert body["lead_time_minutes"] is None
+        sprint_data = body["sprints"][0]
+        assert sprint_data["cycle_time_minutes"] is None
+        assert sprint_data["lead_time_minutes"] is None
     finally:
         conn.close()
 
@@ -7153,12 +6308,13 @@ def test_sprint_same_day_card_minute_fields():
             ),
         )
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["cycle_time_days"] == 0
-        assert body["lead_time_days"] == 0
-        assert body["cycle_time_minutes"] == 30
-        assert body["lead_time_minutes"] == 90
+        sprint_data = body["sprints"][0]
+        assert sprint_data["cycle_time_days"] == 0
+        assert sprint_data["lead_time_days"] == 0
+        assert sprint_data["cycle_time_minutes"] == 30
+        assert sprint_data["lead_time_minutes"] == 90
     finally:
         conn.close()
 
@@ -7199,10 +6355,11 @@ def test_sprint_cycle_and_lead_time_minutes_rounding():
             ),
         )
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2026-10")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
         assert status == 200
-        assert body["cycle_time_minutes"] == 686
-        assert body["lead_time_minutes"] == 878
+        sprint_data = body["sprints"][0]
+        assert sprint_data["cycle_time_minutes"] == 686
+        assert sprint_data["lead_time_minutes"] == 878
     finally:
         conn.close()
 
@@ -7407,7 +6564,7 @@ def test_trend_lead_time_minutes_single_sprint_integer():
 
 @requires_db
 def test_resend_event_fills_null_points_via_service():
-    """AC3: POST /events without points, then with points=5: /sprint shows points_delivered=5."""
+    """AC3: POST /events without points, then with points=5: /range shows points_delivered=5."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -7439,16 +6596,16 @@ def test_resend_event_fills_null_points_via_service():
         status, body = _post_events(f"http://127.0.0.1:{port}/events", event_with_points)
         assert status == 200
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["points_delivered"] == 5
+        assert body["sprints"][0]["points_delivered"] == 5
     finally:
         conn.close()
 
 
 @requires_db
 def test_resend_event_keeps_existing_points_via_service():
-    """AC4: POST /events with points=5, then with points=3: /sprint shows points_delivered=5."""
+    """AC4: POST /events with points=5, then with points=3: /range shows points_delivered=5."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -7480,9 +6637,9 @@ def test_resend_event_keeps_existing_points_via_service():
         status, body = _post_events(f"http://127.0.0.1:{port}/events", event_points_3)
         assert status == 200
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["points_delivered"] == 5
+        assert body["sprints"][0]["points_delivered"] == 5
     finally:
         conn.close()
 
@@ -7643,11 +6800,6 @@ def test_service_escalation_rate_200_on_sprint_range_and_trend():
                 created="2024-01-01",
             ),
         )
-
-        # /sprint
-        status, body = _get_json(f"http://127.0.0.1:{port}/sprint?label=2024-01")
-        assert status == 200
-        assert body["escalation_rate_percent"] == 200
 
         # /range
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")

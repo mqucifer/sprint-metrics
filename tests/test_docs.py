@@ -862,7 +862,7 @@ def test_formats_empty_sprint_json_output(tmp_path, capsys):
 def test_service_md_has_handwritten_intro():
     """AC1: docs/service.md's hand-written content before BEGIN:service states
     SPRINT_METRICS_DB, shows a docker run command publishing port 8080, and
-    names POST /events and GET /sprint."""
+    names POST /events and GET /range."""
     path = DOCS_DIR / "service.md"
     text = path.read_text()
     before = text.split("BEGIN:service")[0]
@@ -870,7 +870,7 @@ def test_service_md_has_handwritten_intro():
     assert "docker run" in before, "hand-written content does not show a docker run command"
     assert "8080" in before, "docker run command does not publish port 8080"
     assert "POST /events" in before, "hand-written content does not name POST /events"
-    assert "GET /sprint" in before, "hand-written content does not name GET /sprint"
+    assert "GET /range" in before, "hand-written content does not name GET /range"
 
 
 def test_service_md_generated_section_contains_all_endpoints():
@@ -882,7 +882,6 @@ def test_service_md_generated_section_contains_all_endpoints():
     lines = section.splitlines()
     for method, path_part in [
         ("POST", "/events"),
-        ("GET", "/sprint"),
         ("GET", "/range"),
         ("GET", "/trend"),
         ("GET", "/metrics"),
@@ -1031,30 +1030,16 @@ def test_service_md_documents_superseded_event():
 
 
 def test_service_md_sprint_range_descriptions_state_per_return_semantics():
-    """AC5: the hand-written /sprint and /range endpoint descriptions in
-    docs/service.md state that failure_breakdown and top_failure_causes count
+    """AC5: the hand-written /range endpoint description in
+    docs/service.md states that failure_breakdown and top_failure_causes count
     returns — one entry per return, by (failure class, returning role) — not
     one entry per failed story."""
     path = DOCS_DIR / "service.md"
     text = path.read_text()
     before = text.split("BEGIN:service")[0]
 
-    sprint_section = before[before.index("GET /sprint") :]
     range_start = before.index("GET /range")
     range_section = before[range_start : range_start + 500]
-
-    assert "failure_breakdown" in sprint_section, (
-        "hand-written /sprint description does not mention failure_breakdown"
-    )
-    assert "top_failure_causes" in sprint_section, (
-        "hand-written /sprint description does not mention top_failure_causes"
-    )
-    assert "one entry per return" in sprint_section, (
-        "hand-written /sprint description does not state per-return semantics"
-    )
-    assert "failure class, returning role" in sprint_section, (
-        "hand-written /sprint description does not name the (class, role) key"
-    )
 
     assert "failure_breakdown" in range_section, (
         "hand-written /range description does not mention failure_breakdown"

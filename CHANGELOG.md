@@ -12,6 +12,8 @@
 
 ### Removed
 
+- GET /sprint endpoint: single-sprint queries are answered by GET /range with a range spanning one sprint; the endpoint now returns HTTP 410
+
 ## [1.3.3] - 2026-10-19
 
 ### Added

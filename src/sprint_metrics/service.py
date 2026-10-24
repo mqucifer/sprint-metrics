@@ -1,6 +1,6 @@
 """Long-lived HTTP service for the sprint-metrics package.
 
-Accepts board events via POST /events and answers sprint queries via GET /sprint.
+Accepts board events via POST /events and answers range and trend queries.
 Requires a Postgres database (SPRINT_METRICS_DB).
 """
 
@@ -37,7 +37,7 @@ from sprint_metrics.metrics import (
     calculate_wip_violations,
     metric_value,
 )
-from sprint_metrics.report import API_VERSION, format_json_report
+from sprint_metrics.report import API_VERSION
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
@@ -315,39 +315,17 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                 attributes={"http.method": "GET", "http.route": route},
             ) as span:
                 try:
-                    if self.path.startswith("/sprint?"):
-                        parsed = urlparse(self.path)
-                        params = parse_qs(parsed.query)
-                        label = params.get("label", [""])[0]
-                        if not label:
-                            self._send_json(400, {"error": "missing label parameter"})
-                            status = 400
-                            return
-                        if not self._ensure_db():
-                            self._send_json(
-                                503,
-                                {
-                                    "status": "unavailable",
-                                    "error": "database temporarily unavailable",
-                                    "retryable": True,
-                                },
-                            )
-                            status = 503
-                            return
-                        try:
-                            if not sprint_has_events(conn_holder[0], label):
-                                self._send_json(200, _null_sprint_response())
-                                status = 200
-                                return
-                            cards = query_sprint(conn_holder[0], label)
-                            esc_count = count_escalated_events(conn_holder[0], label)
-                        except Exception as exc:
-                            self._send_json(500, {"error": f"database error: {exc}"})
-                            status = 500
-                            return
-                        body = _sprint_json(cards, escalations=esc_count)
-                        self._send_json(200, json.loads(body))
-                        status = 200
+                    if route == "/sprint":
+                        self._send_json(
+                            410,
+                            {
+                                "error": (
+                                    "endpoint removed: GET /sprint has been removed; "
+                                    "use GET /range with a range spanning one sprint"
+                                )
+                            },
+                        )
+                        status = 410
                         return
                     elif self.path.startswith("/range?"):
                         parsed = urlparse(self.path)
@@ -625,15 +603,6 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
     return actual_port
 
 
-def _sprint_json(cards, escalations: int = 0) -> str:
-    """Compute sprint metrics from stored cards and return the JSON report string."""
-    report = json.loads(format_json_report(cards, escalations=escalations))
-    story_costs, cost = _compute_cost_summary(cards)
-    report["story_costs"] = story_costs
-    report["cost"] = cost
-    return json.dumps(report)
-
-
 def _compute_cost_summary(cards) -> tuple[list[dict], dict | None]:
     """Compute the per-story cost list and the sprint's cost middle and total.
 
@@ -773,14 +742,6 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     ),
     (
         "GET",
-        "/sprint",
-        "Return metrics for a single sprint. "
-        "failure_breakdown and top_failure_causes count returns — "
-        "one entry per return, by (failure class, returning role). "
-        "Sprints with no events return all-null values.",
-    ),
-    (
-        "GET",
         "/range",
         "Return metrics for a range of sprints in chronological order. "
         "Each entry includes the prior-sprint delta. "
@@ -844,34 +805,6 @@ def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
         logger.emit(record)
     except Exception:
         pass
-
-
-def _null_sprint_response() -> dict:
-    """Return the null-filled response for a sprint with no stored events."""
-    return {
-        "api_version": API_VERSION,
-        "cycle_time_days": None,
-        "lead_time_days": None,
-        "cycle_time_minutes": None,
-        "lead_time_minutes": None,
-        "throughput": None,
-        "points_delivered": None,
-        "wip_violations": None,
-        "blocked_aging_days": None,
-        "escalation_rate_percent": None,
-        "escalation_count": None,
-        "first_attempt_rate_percent": None,
-        "first_attempt_numerator": None,
-        "first_attempt_denominator": None,
-        "failure_breakdown": None,
-        "top_failure_causes": None,
-        "superseded_count": None,
-        "superseded_points": None,
-        "superseded_breakdown": None,
-        "flags": None,
-        "story_costs": [],
-        "cost": None,
-    }
 
 
 def _attach_range_cost(
