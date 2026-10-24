@@ -500,7 +500,7 @@ def test_post_duplicate_finished_event_idempotent():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["sprints"][0]["throughput"] == 1
+        assert body["sprints"]["2024-01"]["throughput"] == 1
     finally:
         conn.close()
 
@@ -2705,7 +2705,7 @@ def test_post_events_returns_503_when_db_unreachable():
 @requires_db
 def test_post_events_recover_after_connection_lost():
     """AC4: after the connection is lost, POST /events succeeds once the database
-    is reachable again; subsequent GET /sprint returns throughput=1."""
+    is reachable again; subsequent GET /range returns throughput=1."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -2737,7 +2737,7 @@ def test_post_events_recover_after_connection_lost():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["sprints"][0]["throughput"] == 1
+        assert body["sprints"]["2024-01"]["throughput"] == 1
     finally:
         pass
 
@@ -3292,7 +3292,7 @@ def test_post_attempt_failed_returns_200_no_error():
 
 @requires_db
 def test_sprint_first_attempt_rate_zero_with_attempt_failed():
-    """AC2: after started + attempt_failed + finished, GET /sprint returns
+    """AC2: after started + attempt_failed + finished, GET /range returns
     first_attempt_rate_percent=0 and throughput=1."""
     import psycopg
 
@@ -3307,7 +3307,7 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
             card_id="ac2_attempt",
             event_type="started",
             timestamp="2024-01-12T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
         )
         _post_events(f"http://127.0.0.1:{port}/events", started)
@@ -3317,7 +3317,7 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
             "card_id": "ac2_attempt",
             "type": "attempt_failed",
             "timestamp": "2024-01-12T14:00:00Z",
-            "sprint": "Sprint 18",
+            "sprint": "2024-06",
             "attempt_number": 1,
             "failure_class": "parse",
             "failure_role": "Developer",
@@ -3329,7 +3329,7 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
             card_id="ac2_attempt",
             event_type="finished",
             timestamp="2024-01-16T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
             attempts=2,
             failure_class="parse",
@@ -3337,10 +3337,10 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-06&end=2024-06")
         assert status == 200
-        assert body["sprints"][0]["first_attempt_rate_percent"] == 0
-        assert body["sprints"][0]["throughput"] == 1
+        assert body["sprints"]["2024-06"]["first_attempt_rate_percent"] == 0
+        assert body["sprints"]["2024-06"]["throughput"] == 1
     finally:
         conn.close()
 
@@ -3348,7 +3348,7 @@ def test_sprint_first_attempt_rate_zero_with_attempt_failed():
 @requires_db
 def test_sprint_failure_breakdown_with_multiple_attempts():
     """AC3+UX6: after started + six attempt_failed + finished (attempts 7),
-    GET /sprint returns first_attempt_rate_percent=0, throughput=1, and
+    GET /range returns first_attempt_rate_percent=0, throughput=1, and
     failure_breakdown with one entry per return (VERIFY 3, SCHEMA 2, TEST 1,
     all Developer) in count-descending order. top_failure_causes holds
     exactly three entries, one per (class, role) return pair."""
@@ -3365,7 +3365,7 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
             card_id="ac5_attempt",
             event_type="started",
             timestamp="2024-01-12T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
         )
         _post_events(f"http://127.0.0.1:{port}/events", started)
@@ -3377,7 +3377,7 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
                 "card_id": "ac5_attempt",
                 "type": "attempt_failed",
                 "timestamp": f"2024-01-12T{10 + i}:00:00Z",
-                "sprint": "Sprint 18",
+                "sprint": "2024-06",
                 "attempt_number": i,
                 "failure_class": fc,
                 "failure_role": "Developer",
@@ -3389,7 +3389,7 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
             card_id="ac5_attempt",
             event_type="finished",
             timestamp="2024-01-16T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
             attempts=7,
             failure_class="VERIFY",
@@ -3397,9 +3397,9 @@ def test_sprint_failure_breakdown_with_multiple_attempts():
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-06&end=2024-06")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-06"]
         assert sprint_data["first_attempt_rate_percent"] == 0
         assert sprint_data["throughput"] == 1
         assert sprint_data["failure_breakdown"] == [
@@ -3434,7 +3434,7 @@ def test_sprint_first_attempt_rate_driven_by_crew_attempts():
             card_id="ac1_crew_attempts",
             event_type="started",
             timestamp="2024-01-12T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
         )
         _post_events(f"http://127.0.0.1:{port}/events", started)
@@ -3445,7 +3445,7 @@ def test_sprint_first_attempt_rate_driven_by_crew_attempts():
                 "card_id": "ac1_crew_attempts",
                 "type": "attempt_failed",
                 "timestamp": f"2024-01-12T{10 + i}:00:00Z",
-                "sprint": "Sprint 18",
+                "sprint": "2024-06",
                 "attempt_number": i,
                 "failure_class": "VERIFY",
                 "failure_role": "Developer",
@@ -3457,15 +3457,15 @@ def test_sprint_first_attempt_rate_driven_by_crew_attempts():
             card_id="ac1_crew_attempts",
             event_type="finished",
             timestamp="2024-01-16T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
             attempts=1,
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-06&end=2024-06")
         assert status == 200
-        assert body["sprints"][0]["first_attempt_rate_percent"] == 100
+        assert body["sprints"]["2024-06"]["first_attempt_rate_percent"] == 100
     finally:
         conn.close()
 
@@ -3488,7 +3488,7 @@ def test_sprint_first_attempt_rate_fallback_when_no_crew_attempts():
             card_id="ac2_no_attempts",
             event_type="started",
             timestamp="2024-01-12T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
         )
         _post_events(f"http://127.0.0.1:{port}/events", started)
@@ -3499,7 +3499,7 @@ def test_sprint_first_attempt_rate_fallback_when_no_crew_attempts():
                 "card_id": "ac2_no_attempts",
                 "type": "attempt_failed",
                 "timestamp": f"2024-01-12T{10 + i}:00:00Z",
-                "sprint": "Sprint 18",
+                "sprint": "2024-06",
                 "attempt_number": i,
                 "failure_class": "VERIFY",
                 "failure_role": "Developer",
@@ -3511,14 +3511,14 @@ def test_sprint_first_attempt_rate_fallback_when_no_crew_attempts():
             card_id="ac2_no_attempts",
             event_type="finished",
             timestamp="2024-01-16T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-06&end=2024-06")
         assert status == 200
-        assert body["sprints"][0]["first_attempt_rate_percent"] == 0
+        assert body["sprints"]["2024-06"]["first_attempt_rate_percent"] == 0
     finally:
         conn.close()
 
@@ -3541,7 +3541,7 @@ def test_sprint_first_attempt_numerator_denominator_crew_attempts():
             card_id="ux7_counts",
             event_type="started",
             timestamp="2024-01-12T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
         )
         _post_events(f"http://127.0.0.1:{port}/events", started)
@@ -3552,7 +3552,7 @@ def test_sprint_first_attempt_numerator_denominator_crew_attempts():
                 "card_id": "ux7_counts",
                 "type": "attempt_failed",
                 "timestamp": f"2024-01-12T{10 + i}:00:00Z",
-                "sprint": "Sprint 18",
+                "sprint": "2024-06",
                 "attempt_number": i,
                 "failure_class": "VERIFY",
                 "failure_role": "Developer",
@@ -3564,16 +3564,16 @@ def test_sprint_first_attempt_numerator_denominator_crew_attempts():
             card_id="ux7_counts",
             event_type="finished",
             timestamp="2024-01-16T10:00:00Z",
-            sprint="Sprint 18",
+            sprint="2024-06",
             created="2024-01-10",
             attempts=1,
         )
         _post_events(f"http://127.0.0.1:{port}/events", finished)
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=Sprint%2018&end=Sprint%2018")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-06&end=2024-06")
         assert status == 200
-        assert body["sprints"][0]["first_attempt_numerator"] == 1
-        assert body["sprints"][0]["first_attempt_denominator"] == 1
+        assert body["sprints"]["2024-06"]["first_attempt_numerator"] == 1
+        assert body["sprints"]["2024-06"]["first_attempt_denominator"] == 1
     finally:
         conn.close()
 
@@ -3896,9 +3896,9 @@ def test_sprint_started_no_finished_returns_zeros():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["sprints"][0]["throughput"] == 0
-        assert body["sprints"][0]["cycle_time_days"] == 0
-        assert body["sprints"][0]["lead_time_days"] == 0
+        assert body["sprints"]["2024-05"]["throughput"] == 0
+        assert body["sprints"]["2024-05"]["cycle_time_days"] == 0
+        assert body["sprints"]["2024-05"]["lead_time_days"] == 0
     finally:
         conn.close()
 
@@ -3922,7 +3922,7 @@ def test_sprint_no_events_returns_all_nulls():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2026-11"]
         assert sprint_data["throughput"] is None
         assert sprint_data["cycle_time_days"] is None
         assert sprint_data["lead_time_days"] is None
@@ -3968,7 +3968,7 @@ def test_sprint_same_day_completion_with_failure_data():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2026-10"]
         assert sprint_data["throughput"] == 1
         assert sprint_data["cycle_time_days"] == 0
         assert isinstance(sprint_data["failure_breakdown"], list)
@@ -4657,7 +4657,7 @@ def test_range_failure_breakdown_and_top_failure_causes_coexist():
 @requires_db
 def test_sprint_response_includes_points_first_attempt_and_escalation_count():
     """AC1/AC6: after POSTing started+finished+escalated for a card with points 5,
-    GET /sprint returns the four new fields with correct values alongside existing keys."""
+    GET /range returns the four new fields with correct values alongside existing keys."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -4696,7 +4696,7 @@ def test_sprint_response_includes_points_first_attempt_and_escalation_count():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["points_delivered"] == 5
         assert sprint_data["first_attempt_numerator"] == 1
         assert sprint_data["first_attempt_denominator"] == 1
@@ -4722,7 +4722,7 @@ def test_sprint_no_events_new_fields_are_null():
     try:
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-11&end=2026-11")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2026-11"]
         assert sprint_data["points_delivered"] is None
         assert sprint_data["first_attempt_numerator"] is None
         assert sprint_data["first_attempt_denominator"] is None
@@ -4736,7 +4736,7 @@ def test_sprint_no_events_new_fields_are_null():
 @requires_db
 def test_sprint_escalations_counted_without_completions():
     """AC3: one started event (no finished) and two escalated events for sprint 2024-01,
-    GET /sprint returns points_delivered=0, first_attempt_numerator=0,
+    GET /range returns points_delivered=0, first_attempt_numerator=0,
     first_attempt_denominator=0, escalation_count=2."""
     import psycopg
 
@@ -4775,7 +4775,7 @@ def test_sprint_escalations_counted_without_completions():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["points_delivered"] == 0
         assert sprint_data["first_attempt_numerator"] == 0
         assert sprint_data["first_attempt_denominator"] == 0
@@ -5481,7 +5481,7 @@ def test_resolve_sprint_range_single_unregistered_sprint_returns_none():
 
 @requires_db
 def test_sprint_superseded_metrics_with_mixed_events():
-    """AC1: GET /sprint returns superseded_count, superseded_points,
+    """AC1: GET /range returns superseded_count, superseded_points,
     superseded_breakdown from stored superseded events; superseded card
     excluded from throughput."""
     import psycopg
@@ -5528,7 +5528,7 @@ def test_sprint_superseded_metrics_with_mixed_events():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["superseded_count"] == 1
         assert sprint_data["superseded_points"] == 5
         assert sprint_data["superseded_breakdown"] == {"sponsor": 1, "story_problem": 0}
@@ -5690,8 +5690,8 @@ def test_sprint_superseded_excluded_from_throughput():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["sprints"][0]["throughput"] == 0
-        assert body["sprints"][0]["superseded_count"] == 1
+        assert body["sprints"]["2024-01"]["throughput"] == 0
+        assert body["sprints"]["2024-01"]["superseded_count"] == 1
     finally:
         conn.close()
 
@@ -5748,7 +5748,7 @@ def test_sprint_multiple_superseded_breakdown():
             assert resp.headers.get("Content-Type", "") == "application/json"
             body = json.loads(resp.read().decode())
 
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["superseded_count"] == 2
         assert sprint_data["superseded_points"] == 8
         assert sprint_data["superseded_breakdown"] == {"sponsor": 1, "story_problem": 1}
@@ -5781,7 +5781,7 @@ def test_sprint_only_started_superseded_zeros_not_null():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["superseded_count"] == 0
         assert sprint_data["superseded_points"] == 0
         assert sprint_data["superseded_breakdown"] == {"sponsor": 0, "story_problem": 0}
@@ -5808,7 +5808,7 @@ def test_sprint_no_events_superseded_fields_null():
     try:
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-11&end=2026-11")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2026-11"]
         assert sprint_data["superseded_count"] is None
         assert sprint_data["superseded_points"] is None
         assert sprint_data["superseded_breakdown"] is None
@@ -6189,7 +6189,7 @@ def test_sprint_cycle_and_lead_time_minutes_sub_day():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["cycle_time_minutes"] == 686
         assert sprint_data["cycle_time_days"] == 0
         assert sprint_data["lead_time_minutes"] == 3686
@@ -6212,7 +6212,7 @@ def test_sprint_no_events_minute_fields_null():
     try:
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-03&end=2024-03")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-03"]
         assert sprint_data["cycle_time_minutes"] is None
         assert sprint_data["lead_time_minutes"] is None
     finally:
@@ -6310,7 +6310,7 @@ def test_sprint_same_day_card_minute_fields():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["cycle_time_days"] == 0
         assert sprint_data["lead_time_days"] == 0
         assert sprint_data["cycle_time_minutes"] == 30
@@ -6357,7 +6357,7 @@ def test_sprint_cycle_and_lead_time_minutes_rounding():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-10&end=2026-10")
         assert status == 200
-        sprint_data = body["sprints"][0]
+        sprint_data = body["sprints"]["2026-10"]
         assert sprint_data["cycle_time_minutes"] == 686
         assert sprint_data["lead_time_minutes"] == 878
     finally:
@@ -6598,7 +6598,7 @@ def test_resend_event_fills_null_points_via_service():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["sprints"][0]["points_delivered"] == 5
+        assert body["sprints"]["2024-01"]["points_delivered"] == 5
     finally:
         conn.close()
 
@@ -6639,7 +6639,7 @@ def test_resend_event_keeps_existing_points_via_service():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert body["sprints"][0]["points_delivered"] == 5
+        assert body["sprints"]["2024-01"]["points_delivered"] == 5
     finally:
         conn.close()
 
