@@ -590,7 +590,24 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     span.set_attribute("http.status_code", status)
                     span.set_status(StatusCode.OK if status < 400 else StatusCode.ERROR)
 
+        def _end_transaction(self) -> None:
+            """Roll back whatever transaction the request's reads left open.
+
+            Writes commit themselves (insert_event, upsert_sprint), so this only
+            ends read transactions, or a failed one. An idle connection then holds
+            no lock on board_events, whichever path opened it, and init_db's
+            ALTER TABLE in another session never waits on it.
+            """
+            try:
+                from psycopg.pq import TransactionStatus
+
+                if conn_holder[0].info.transaction_status != TransactionStatus.IDLE:
+                    conn_holder[0].rollback()
+            except Exception:
+                pass
+
         def _send_json(self, status: int, obj: dict) -> None:
+            self._end_transaction()
             body = json.dumps(obj)
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -857,35 +874,6 @@ def _null_sprint_response() -> dict:
     }
 
 
-def _null_range_entry() -> dict:
-    """Return the null-filled per-sprint entry for a range response."""
-    return {
-        "cycle_time_days": None,
-        "lead_time_days": None,
-        "cycle_time_minutes": None,
-        "lead_time_minutes": None,
-        "throughput": None,
-        "points_delivered": None,
-        "wip_violations": None,
-        "blocked_aging_days": None,
-        "escalation_rate_percent": None,
-        "escalation_count": None,
-        "first_attempt_rate_percent": None,
-        "first_attempt_numerator": None,
-        "first_attempt_denominator": None,
-        "failure_breakdown": None,
-        "top_failure_causes": None,
-        "superseded_count": None,
-        "superseded_points": None,
-        "superseded_breakdown": None,
-        "flags": None,
-        "prior": None,
-        "delta": None,
-        "story_costs": [],
-        "cost": None,
-    }
-
-
 def _attach_range_cost(
     result: dict,
     sprints: dict[str, list],
@@ -895,14 +883,20 @@ def _attach_range_cost(
     """Attach cost to each range entry: ``story_costs`` and ``cost`` on the entry, and
     the six flat cost names on its prior and delta.
 
-    An entry for a sprint with no events becomes the null entry (story_costs [], cost
-    None, prior/delta None). The flat names in prior and delta are null where the
+    An entry for a sprint with no events has its own values nulled (story_costs [],
+    cost None) but keeps its prior and delta, since every range entry carries the
+    prior-sprint delta (docs/service.md). The flat names in prior and delta are null where the
     corresponding sprint has no costed stories, so a cost delta is never computed
     against a missing cost.
     """
     for i, label in enumerate(labels):
         if label not in has_events:
-            result["sprints"][label] = _null_range_entry()
+            entry = result["sprints"][label]
+            for key in entry:
+                if key not in ("prior", "delta"):
+                    entry[key] = None
+            entry["story_costs"] = []
+            entry["cost"] = None
             continue
         entry = result["sprints"][label]
         story_costs, cost = _compute_cost_summary(sprints[label])

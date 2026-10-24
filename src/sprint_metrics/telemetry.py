@@ -52,6 +52,7 @@ def init_telemetry(span_exporter=None, log_exporter=None) -> None:
         from opentelemetry.exporter.otlp.proto.grpc.trace import OTLPSpanExporter
 
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+        trace.set_tracer_provider(provider)
     _tracer = provider.get_tracer("sprint-metrics")
 
     if log_exporter is not None:

@@ -51,6 +51,58 @@ def test_sprints_table_exists_with_expected_columns(conn):
     assert count == 0
 
 
+def test_init_db_adds_the_cost_columns_to_a_table_from_before_them(conn):
+    """A board_events table in the live service's 14-column shape (from before
+    the cost fields) gains the cost columns, and keeps its rows, when init_db runs."""
+    conn.execute("DROP TABLE sprint_metrics.board_events")
+    conn.execute(
+        """
+        CREATE TABLE sprint_metrics.board_events (
+            card_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            event_time TIMESTAMPTZ NOT NULL,
+            sprint TEXT NOT NULL,
+            card_created DATE NOT NULL,
+            attempts INT,
+            failure_class TEXT,
+            failure_role TEXT,
+            attempt_number INT,
+            points INT,
+            because TEXT,
+            epic TEXT,
+            replaced_by JSONB,
+            card_created_at TIMESTAMPTZ,
+            PRIMARY KEY (card_id, type, event_time)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO sprint_metrics.board_events (card_id, type, event_time, sprint, card_created) "
+        "VALUES ('c_old', 'started', '2024-01-03T10:00:00Z', '2024-01', '2024-01-01')"
+    )
+    conn.commit()
+
+    init_db(conn)
+
+    rows = conn.execute(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'board_events' AND table_schema = 'sprint_metrics'
+        """
+    ).fetchall()
+    column_names = {r[0] for r in rows}
+    assert {
+        "model_seconds",
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+    } <= column_names
+    assert len(column_names) == 19
+    count = conn.execute("SELECT COUNT(*) FROM sprint_metrics.board_events").fetchone()[0]
+    assert count == 1
+
+
 def test_upsert_sprint_inserts_row(conn):
     upsert_sprint(conn, "Sprint 18", date(2026, 10, 7), date(2026, 10, 7), "America/Chicago")
     rows = conn.execute(
