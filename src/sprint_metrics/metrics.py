@@ -240,61 +240,6 @@ def calculate_top_failure_causes(
     return [(cls, role, count) for (cls, role), count in sorted_items[:3]]
 
 
-def wip_violation_details(
-    cards: Iterable[Card | Mapping[str, object]],
-    wip_limits: Mapping[str, int] | None = None,
-) -> list[tuple[str, int, int]]:
-    """Return the breached states with their peak occupancy and configured limit.
-
-    Returns a list of (state_name, peak_occupancy, configured_limit) tuples, one
-    per state whose peak exceeded its limit, in the iteration order of
-    ``wip_limits``. Returns an empty list when no state is breached or
-    ``wip_limits`` is None or empty. Superseded cards are excluded.
-    """
-    if not wip_limits:
-        return []
-    parsed = [card for card in _as_cards(cards) if not card.superseded]
-    details: list[tuple[str, int, int]] = []
-    for state, limit in wip_limits.items():
-        peak = _peak_occupancy(parsed, state)
-        if peak > limit:
-            details.append((state, peak, limit))
-    return details
-
-
-def blocked_aging_detail(
-    cards: Iterable[Card | Mapping[str, object]],
-    as_of: date | None = None,
-) -> list[tuple[date, date]]:
-    """Return the (created, blocked_since) dates of cards producing the maximum blocked aging.
-
-    Computes each blocked card's aging the same way ``calculate_blocked_aging``
-    does: completed cards use their completion date, in-flight cards use
-    ``as_of`` (or today). Returns a list of (created, blocked_since) tuples for
-    every card at the maximum (ties included). Returns an empty list when no
-    card is blocked or the maximum aging is 0. Superseded cards are excluded.
-    """
-    reference = as_of if as_of is not None else date.today()
-    parsed = [card for card in _as_cards(cards) if not card.superseded]
-    agings: list[tuple[int, date, date]] = []
-    for card in parsed:
-        if card.blocked_since is None:
-            continue
-        if card.completed is not None:
-            aging = (card.completed - card.blocked_since).days
-        else:
-            aging = (reference - card.blocked_since).days
-        agings.append((aging, card.created, card.blocked_since))
-    if not agings:
-        return []
-    max_aging = max(a for a, _, _ in agings)
-    if max_aging == 0:
-        return []
-    return [
-        (created, blocked_since) for aging, created, blocked_since in agings if aging == max_aging
-    ]
-
-
 def metric_value(
     metric: str,
     cards: Iterable[Card | Mapping[str, object]],
