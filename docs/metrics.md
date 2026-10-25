@@ -10,8 +10,6 @@ BEGIN:metrics
 | Cached input percent | `cached_input_percent` | Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost. |
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
 | Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. |
-| Escalation count | `escalation_count` | Return the number of escalated events in the sprint. |
-| Escalation rate | `escalation_rate_percent` | Return the escalation rate as a whole-number percentage of escalations over completed cards; 0 when no cards are completed. |
 | Top causes | `failure_breakdown` | Return the returns from review or QA, grouped by (failure class, returning role), sorted by count descending. |
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. |

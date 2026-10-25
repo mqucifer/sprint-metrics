@@ -4330,6 +4330,41 @@ def test_range_flags_do_not_depend_on_escalated_events():
 
 
 @requires_db
+@pytest.mark.parametrize("metric", ["escalation_rate_percent", "escalation_count"])
+def test_trend_refuses_the_escalation_measures(metric):
+    """#776 AC1: GET /trend for either escalation measure answers 400 naming the
+    measure and saying it is no longer accepted, with no retryable flag."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric={metric}&start=2024-01&end=2024-02"
+        )
+        assert status == 400
+        assert metric in body["error"]
+        assert "no longer accepted" in body["error"]
+        assert "retryable" not in body
+    finally:
+        conn.close()
+
+
+def test_trend_accepts_no_escalation_measure():
+    """#776 AC3, AC4: neither escalation name is an accepted trend metric, and the
+    /trend endpoint description no longer lists them."""
+    from sprint_metrics.metrics import ALL_METRICS
+    from sprint_metrics.service import SERVICE_ENDPOINTS
+
+    assert "escalation_rate_percent" not in ALL_METRICS
+    assert "escalation_count" not in ALL_METRICS
+    trend = next(desc for method, path, desc in SERVICE_ENDPOINTS if path == "/trend")
+    assert "escalation" not in trend
+
+
+@requires_db
 def test_trend_points_delivered_two_sprints():
     """AC1+AC5: GET /trend?metric=points_delivered&start=2024-01&end=2024-02 with
     sprint 2024-01 having one finished card (points 5) and sprint 2024-02 having
@@ -4500,47 +4535,6 @@ def test_trend_first_attempt_denominator_two_sprints():
         assert len(body["values"]) == 2
         assert body["values"][0] == {"sprint": "2024-01", "value": 3}
         assert body["values"][1] == {"sprint": "2024-02", "value": 5}
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_trend_escalation_count_zero_fill():
-    """AC3+AC6: GET /trend?metric=escalation_count&start=2024-01&end=2024-02 with
-    sprint 2024-01 having no stored events and sprint 2024-02 having one escalated
-    event (but no finished events) returns 200 and values has 2024-01 value 0
-    (the escalation count is 0 when no escalated events are stored) and
-    2024-02 value 1."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'ac3_esc'")
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    try:
-        # Sprint 2024-02: one escalated event (no finished events)
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="ac3_esc",
-                event_type="escalated",
-                timestamp="2024-02-05T10:00:00Z",
-                sprint="2024-02",
-                created="2024-02-01",
-            ),
-        )
-        # Sprint 2024-01: no events
-
-        status, body = _get_json(
-            f"http://127.0.0.1:{port}/trend?metric=escalation_count&start=2024-01&end=2024-02"
-        )
-        assert status == 200
-        assert len(body["values"]) == 2
-        assert body["values"][0] == {"sprint": "2024-01", "value": 0}
-        assert body["values"][1] == {"sprint": "2024-02", "value": 1}
     finally:
         conn.close()
 
@@ -6004,60 +5998,10 @@ def test_resend_event_keeps_existing_points_via_service():
         conn.close()
 
 
-def test_trend_escalation_rate_percent_correct_value(monkeypatch):
-    """AC1: GET /trend?metric=escalation_rate_percent&start=2024-01&end=2024-02 with
-    sprint 2024-01 having no events and sprint 2024-02 having one card (started,
-    finished, escalated) returns 200 with values[0] = 0 (zero value for empty sprint)
-    and values[1] = 100 (one escalation over one completed card)."""
-    from datetime import date
-
-    from sprint_metrics import service
-    from sprint_metrics.card import Card
-
-    cards_2024_02 = [
-        Card(
-            created=date(2024, 2, 1),
-            started=date(2024, 2, 3),
-            completed=date(2024, 2, 7),
-        )
-    ]
-    sprints_data = {
-        "2024-01": [],
-        "2024-02": cards_2024_02,
-    }
-    escalation_counts = {"2024-01": 0, "2024-02": 1}
-    has_events = {"2024-01": False, "2024-02": True}
-
-    monkeypatch.setattr(service, "resolve_sprint_range", lambda conn, start, end: None)
-    monkeypatch.setattr(service, "query_range", lambda conn, start, end: sprints_data)
-    monkeypatch.setattr(service, "sprint_has_events", lambda conn, label: has_events[label])
-    monkeypatch.setattr(
-        service, "count_escalated_events", lambda conn, label: escalation_counts[label]
-    )
-
-    class FakeConn:
-        def execute(self, sql, params=()):
-            if "SELECT 1" in sql:
-                return _FakeSprintCursor([(1,)])
-            raise AssertionError(f"unexpected SQL: {sql}")
-
-    port = _start_service(FakeConn(), 0)
-    try:
-        status, body = _get_json(
-            f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2024-01&end=2024-02"
-        )
-        assert status == 200
-        assert len(body["values"]) == 2
-        assert body["values"][0] == {"sprint": "2024-01", "value": 0}
-        assert body["values"][1] == {"sprint": "2024-02", "value": 100}
-    finally:
-        pass
-
-
 @requires_db
 def test_service_escalation_rate_200_on_sprint_range_and_trend():
-    """AC3: sprint 2024-01 has one completed card and 2 escalated events;
-    /range and /trend both report escalation_rate_percent 200."""
+    """AC3 (#774, #776): sprint 2024-01 has one completed card and 2 escalated
+    events; /range carries no escalation rate and /trend refuses it with 400."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -6119,8 +6063,7 @@ def test_service_escalation_rate_200_on_sprint_range_and_trend():
         status, body = _get_json(
             f"http://127.0.0.1:{port}/trend?metric=escalation_rate_percent&start=2024-01&end=2024-01"
         )
-        assert status == 200
-        assert body["values"][0] == {"sprint": "2024-01", "value": 200}
+        assert status == 400
     finally:
         conn.close()
 

@@ -159,8 +159,9 @@ def test_metrics_md_first_attempt_rate_states_review_qa_semantics():
     assert "do not count as attempts" in section
 
 
-def test_metrics_contains_all_six_display_names():
-    """AC (migrated): docs/metrics.md contains all six original metric display names."""
+def test_metrics_contains_the_original_display_names():
+    """AC (migrated): docs/metrics.md contains the original metric display names
+    that survive; the escalation rate is gone (#776)."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = _extract_marked_section(text, "metrics")
     section_lower = section.lower()
@@ -170,9 +171,9 @@ def test_metrics_contains_all_six_display_names():
         "throughput",
         "wip violations",
         "blocked aging",
-        "escalation rate",
     ):
         assert name in section_lower, f"missing metric name {name!r} in docs/metrics.md"
+    assert "escalation" not in section_lower
 
 
 def test_metrics_reference_completed_cards_for_exclusion():
@@ -193,9 +194,9 @@ def test_cycle_time_entry_has_display_name_and_key():
     assert "whole days" in section.lower()
 
 
-def test_metrics_list_throughput_lead_time_blocked_aging_escalation():
-    """AC (migrated): docs/metrics.md lists throughput, lead time, blocked aging, and
-    escalation rate each with their display name and metric key."""
+def test_metrics_list_throughput_lead_time_blocked_aging():
+    """AC (migrated): docs/metrics.md lists throughput, lead time and blocked aging,
+    each with its display name and metric key, and no escalation row (#776)."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = _extract_marked_section(text, "metrics")
 
@@ -208,8 +209,8 @@ def test_metrics_list_throughput_lead_time_blocked_aging_escalation():
     assert "Blocked aging" in section
     assert "blocked_aging_days" in section
 
-    assert "Escalation rate" in section
-    assert "escalation_rate_percent" in section
+    assert "escalation_rate_percent" not in section
+    assert "escalation_count" not in section
 
 
 def test_wip_violations_entry_has_display_name_and_key():

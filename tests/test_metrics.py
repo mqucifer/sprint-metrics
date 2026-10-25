@@ -395,15 +395,17 @@ def test_calculate_points_and_first_attempt_empty():
 
 
 def test_all_metrics_grew_by_four():
-    """ALL_METRICS holds 25 entries, including the two sub-day minute metrics and the eight cost metrics."""
+    """ALL_METRICS holds 23 entries, including the two sub-day minute metrics and the eight cost
+    metrics; the escalation measures are gone (#776)."""
     from sprint_metrics.metrics import ALL_METRICS
 
-    assert len(ALL_METRICS) == 25
+    assert len(ALL_METRICS) == 23
+    assert "escalation_count" not in ALL_METRICS
+    assert "escalation_rate_percent" not in ALL_METRICS
     new_metrics = {
         "points_delivered",
         "first_attempt_numerator",
         "first_attempt_denominator",
-        "escalation_count",
         "superseded_count",
         "superseded_points",
         "superseded_breakdown",
@@ -428,7 +430,6 @@ def test_all_metrics_grew_by_four():
         "throughput",
         "wip_violations",
         "blocked_aging_days",
-        "escalation_rate_percent",
         "first_attempt_rate_percent",
         "failure_breakdown",
     }

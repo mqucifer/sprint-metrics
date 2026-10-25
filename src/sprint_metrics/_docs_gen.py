@@ -39,7 +39,6 @@ def _generate_metrics_content() -> str:
         "throughput": "calculate_throughput",
         "wip_violations": "calculate_wip_violations",
         "blocked_aging_days": "calculate_blocked_aging",
-        "escalation_rate_percent": "calculate_escalation_rate",
         "first_attempt_rate_percent": "calculate_first_attempt_rate",
         "failure_breakdown": "calculate_failure_breakdown",
         "points_delivered": "calculate_points_delivered",
@@ -59,7 +58,6 @@ def _generate_metrics_content() -> str:
     metric_descriptions: dict[str, str] = {
         "first_attempt_numerator": "Return the count of completed cards whose attempts equals 1.",
         "first_attempt_denominator": "Return the total count of completed cards.",
-        "escalation_count": "Return the number of escalated events in the sprint.",
         "superseded_count": (
             "Return the number of cards marked superseded in the sprint. "
             "Excluded from throughput and in-flight calculations."
