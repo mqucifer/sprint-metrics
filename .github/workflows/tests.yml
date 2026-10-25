@@ -188,8 +188,16 @@ jobs:
           echo "OK: POST /sprints and POST /events returned 200, GET /range returned 200"
           echo "$RANGE_BODY" | jq -e '.api_version == "4"' > /dev/null
           echo "OK: api_version is 4"
-          # api_version is pinned above; every other field must match the earlier image.
-          if ! diff <(echo "$PREVIOUS_BODY" | jq -S 'del(.api_version)') <(echo "$RANGE_BODY" | jq -S 'del(.api_version)'); then
+          # api_version is pinned above; every other field must match the earlier image,
+          # except the escalation measures this release removes (#774, #775).
+          RANGE_FILTER='del(.api_version)
+            | del(.sprints[] | .escalation_rate_percent, .escalation_count, .flags.escalation_rate_percent)
+            | del(.sprints[] | (.prior, .delta) | objects | .escalation_rate_percent, .escalation_count)'
+          if echo "$RANGE_BODY" | grep -q escalation; then
+            echo "ERROR: GET /range still carries an escalation measure"
+            exit 1
+          fi
+          if ! diff <(echo "$PREVIOUS_BODY" | jq -S "$RANGE_FILTER") <(echo "$RANGE_BODY" | jq -S "$RANGE_FILTER"); then
             echo "ERROR: GET /range differs from the image before this change"
             exit 1
           fi
