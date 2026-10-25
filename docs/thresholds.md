@@ -12,6 +12,5 @@ BEGIN:thresholds
 | `throughput` | 1 | falls below |
 | `wip_violations` | 0 | exceeds |
 | `blocked_aging_days` | 5 | exceeds |
-| `escalation_rate_percent` | 10 | exceeds |
 | `first_attempt_rate_percent` | 80 | falls below |
 END:thresholds

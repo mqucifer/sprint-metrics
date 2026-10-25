@@ -4286,6 +4286,50 @@ def test_range_carries_no_escalation_keys_in_entry_prior_or_delta():
 
 
 @requires_db
+def test_range_flags_do_not_depend_on_escalated_events():
+    """#775 AC1, AC3: two sprints identical in every kept measure, one with 3
+    escalated events, answer identical flags, each with exactly the eight kept
+    measures and no escalation key."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        events = []
+        for sprint in ("2024-01", "2024-02"):
+            card = f"f-{sprint}"
+            events.append((card, "started", f"{sprint}-03T10:00:00Z", sprint, f"{sprint}-01"))
+            events.append((card, "finished", f"{sprint}-05T10:00:00Z", sprint, f"{sprint}-01"))
+        for hour in ("11", "12", "13"):
+            timestamp = f"2024-02-04T{hour}:00:00Z"
+            events.append(("f-2024-02", "escalated", timestamp, "2024-02", "2024-02-01"))
+        for event in events:
+            status, _ = _post_events(f"http://127.0.0.1:{port}/events", _make_event(*event))
+            assert status == 200
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        quiet, escalated = body["sprints"]["2024-01"]["flags"], body["sprints"]["2024-02"]["flags"]
+        assert quiet == escalated
+        assert sorted(escalated) == sorted(
+            [
+                "cycle_time_days",
+                "lead_time_days",
+                "cycle_time_minutes",
+                "lead_time_minutes",
+                "throughput",
+                "wip_violations",
+                "blocked_aging_days",
+                "first_attempt_rate_percent",
+            ]
+        )
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_trend_points_delivered_two_sprints():
     """AC1+AC5: GET /trend?metric=points_delivered&start=2024-01&end=2024-02 with
     sprint 2024-01 having one finished card (points 5) and sprint 2024-02 having

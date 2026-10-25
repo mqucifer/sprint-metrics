@@ -10,7 +10,6 @@ from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
     calculate_cycle_time_minutes,
-    calculate_escalation_rate,
     calculate_first_attempt_rate,
     calculate_lead_time_minutes,
     calculate_throughput,
@@ -27,7 +26,6 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "throughput": 1,
     "wip_violations": 0,
     "blocked_aging_days": 5,
-    "escalation_rate_percent": 10,
     "first_attempt_rate_percent": 80,
 }
 
@@ -35,7 +33,6 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
 def calculate_flags(
     cards: Iterable[Card | Mapping[str, object]],
     wip_limits: Mapping[str, int] | None = None,
-    escalations: int = 0,
     as_of: date | None = None,
     thresholds: Mapping[str, float] | None = None,
 ) -> dict[str, bool]:
@@ -43,7 +40,8 @@ def calculate_flags(
 
     The thresholds are the user-supplied ``thresholds`` merged over
     ``DEFAULT_THRESHOLDS``: a metric the user did not specify falls back to its
-    default. A metric is flagged as breached when its value exceeds (or, for
+    default. Only the measures in ``DEFAULT_THRESHOLDS`` are judged: a threshold
+    the user names for any other measure produces no flag. A metric is flagged as breached when its value exceeds (or, for
     throughput and first_attempt_rate_percent, falls below) the threshold.
     """
     effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
@@ -54,7 +52,6 @@ def calculate_flags(
     throughput = calculate_throughput(parsed)
     wip_violations = calculate_wip_violations(parsed, wip_limits)
     blocked_aging = calculate_blocked_aging(parsed, as_of)
-    escalation_rate = calculate_escalation_rate(parsed, escalations)
     first_attempt_rate = calculate_first_attempt_rate(parsed)
 
     return {
@@ -71,6 +68,5 @@ def calculate_flags(
         "throughput": throughput < effective["throughput"],
         "wip_violations": wip_violations > effective["wip_violations"],
         "blocked_aging_days": blocked_aging > effective["blocked_aging_days"],
-        "escalation_rate_percent": escalation_rate > effective["escalation_rate_percent"],
         "first_attempt_rate_percent": first_attempt_rate < effective["first_attempt_rate_percent"],
     }

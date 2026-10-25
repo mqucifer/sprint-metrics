@@ -50,11 +50,9 @@ def format_sprint_range_json(
     sprints: Mapping[str, list[Card]],
     labels: Sequence[str],
     wip_limits: Mapping[str, int] | None = None,
-    escalations: int = 0,
     as_of: date | None = None,
     thresholds: Mapping[str, float] | None = None,
     metrics: frozenset[str] | None = None,
-    sprint_escalations: Mapping[str, int] | None = None,
 ) -> str:
     """Render one JSON object per sprint label in ``labels``, keyed by label, wrapped
     in a top-level object with ``api_version`` and a ``sprints`` key.
@@ -68,24 +66,15 @@ def format_sprint_range_json(
 
     When ``metrics`` is a non-None frozenset, only the named metric keys are
     included in each sprint entry, its prior, its delta, and its flags.
-
-    When ``sprint_escalations`` is provided, each sprint uses its own escalation
-    count from that mapping instead of the flat ``escalations`` value.
     """
     from sprint_metrics.metrics import (
         calculate_first_attempt_counts,
         calculate_points_delivered,
     )
 
-    def _esc_for(label: str) -> int:
-        if sprint_escalations is not None:
-            return sprint_escalations.get(label, 0)
-        return escalations
-
     per_sprint: dict[str, object] = {}
     for index, label in enumerate(labels):
         cards = sprints[label]
-        esc = _esc_for(label)
         cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
         cycle_time_min = calculate_cycle_time_minutes(cards)
         lead_time_min = calculate_lead_time_minutes(cards)
@@ -169,7 +158,7 @@ def format_sprint_range_json(
                     else None
                 ),
             }
-        flags = calculate_flags(cards, wip_limits, esc, as_of, thresholds)
+        flags = calculate_flags(cards, wip_limits, as_of, thresholds)
         if metrics is not None:
             sprint_metrics = {k: v for k, v in sprint_metrics.items() if k in metrics}
             if prior is not None:

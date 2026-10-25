@@ -427,12 +427,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
-                        sprint_escs = {
-                            lbl: count_escalated_events(conn_holder[0], lbl) for lbl in labels
-                        }
-                        body = format_sprint_range_json(
-                            sprints, labels, sprint_escalations=sprint_escs
-                        )
+                        body = format_sprint_range_json(sprints, labels)
                         result = json.loads(body)
                         _attach_range_cost(result, sprints, labels, has_events)
                         self._send_json(200, result)
