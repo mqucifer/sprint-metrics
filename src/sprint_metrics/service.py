@@ -408,6 +408,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         )
                         result = json.loads(body)
                         _attach_range_cost(result, sprints, labels, has_events)
+                        # PLANTED BREAK (qa-suite#1 proof): throughput drops a card.
+                        for entry in result["sprints"].values():
+                            if entry.get("throughput"):
+                                entry["throughput"] -= 1
                         self._send_json(200, result)
                         status = 200
                         return
