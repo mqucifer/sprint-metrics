@@ -22,6 +22,6 @@ jobs:
   qa-suite:
     uses: mqucifer/qa-suite/.github/workflows/qa.yml@feat/1-reusable-workflow
     with:
-      project: ${{ github.event.repository.name }}
+      project: no-such-project
       # The proof only (qa-suite#1): the suite at the same unmerged branch.
       suite-ref: feat/1-reusable-workflow
