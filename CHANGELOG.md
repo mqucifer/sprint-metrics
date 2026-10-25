@@ -6,6 +6,16 @@
 
 ### Changed
 
+### Fixed
+
+### Removed
+
+## [3.0.0] - 2026-10-25
+
+### Added
+
+### Changed
+
 - The /range and /trend responses carry `api_version` "3"; version "2" is retired with the single-sprint answers this release removes. Event intake keeps `api_version` "1"
 
 ### Fixed
