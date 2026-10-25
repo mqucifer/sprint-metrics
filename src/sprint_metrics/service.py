@@ -12,6 +12,7 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Sequence
 from datetime import date, datetime
 from urllib.parse import parse_qs, urlparse
 
@@ -101,6 +102,35 @@ def run(db_url: str | None = None, port: int = 8080) -> int:
     finally:
         conn.close()
     return 0
+
+
+USAGE = """\
+usage: sprint-metrics
+
+Start the sprint-metrics service on port 8080 against the Postgres database
+named by SPRINT_METRICS_DB. The service takes no arguments.
+"""
+
+RETIRED_MESSAGE = (
+    "sprint-metrics: the command-line report tool has been retired; "
+    "start the service with no arguments and query it over HTTP"
+)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the console script and ``python -m sprint_metrics``.
+
+    With no arguments, starts the service. ``--help`` prints the usage; any
+    other argument is a retired report option and is refused.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args in (["--help"], ["-h"]):
+        print(USAGE, end="")
+        return 0
+    if args:
+        print(RETIRED_MESSAGE, file=sys.stderr)
+        return 2
+    return run()
 
 
 def _start_service(conn, port: int, db_url: str = "") -> int:

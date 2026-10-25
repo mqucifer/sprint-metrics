@@ -15,10 +15,8 @@ def test_package_imports_resolve_to_owning_modules():
         format_json_report,
         format_performance_table,
         format_prometheus_report,
-        main,
     )
     from sprint_metrics.card import Card as CardFromCard
-    from sprint_metrics.cli import main as mainFromCli
     from sprint_metrics.metrics import (
         calculate_blocked_aging as blocked_from_metrics,
     )
@@ -46,7 +44,6 @@ def test_package_imports_resolve_to_owning_modules():
     from sprint_metrics.thresholds import calculate_flags as flags_from_thresholds
 
     assert Card is CardFromCard
-    assert main is mainFromCli
     assert calculate_cycle_time_and_lead_time is cycle_from_metrics
     assert calculate_throughput is throughput_from_metrics
     assert calculate_wip_violations is wip_from_metrics
@@ -58,30 +55,22 @@ def test_package_imports_resolve_to_owning_modules():
     assert format_prometheus_report is prom_from_report
 
 
-def test_python_minus_m_produces_table_with_current(tmp_path):
-    """AC2: python -m sprint_metrics with a valid cards file exits 0 and stdout
-    contains a table row with 'Current'."""
-    import json
-    import subprocess
-    import sys
-
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    cards_path = tmp_path / "cards.json"
-    cards_path.write_text(json.dumps(cards))
-
-    result = subprocess.run(
-        [sys.executable, "-m", "sprint_metrics", str(cards_path)],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Current" in result.stdout
-
-
 def test_crew_performance_module_is_gone():
     """AC3: importing sprint_metrics.crew_performance raises ModuleNotFoundError."""
     import pytest
 
     with pytest.raises(ModuleNotFoundError):
         import sprint_metrics.crew_performance  # noqa: F401
+
+
+def test_cli_module_is_gone():
+    """AC6: importing sprint_metrics.cli raises ModuleNotFoundError, and the
+    package no longer exports main."""
+    import pytest
+
+    import sprint_metrics
+
+    with pytest.raises(ModuleNotFoundError):
+        import sprint_metrics.cli  # noqa: F401
+    assert not hasattr(sprint_metrics, "main")
+    assert "main" not in sprint_metrics.__all__

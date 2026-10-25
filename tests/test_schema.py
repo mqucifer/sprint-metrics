@@ -1,144 +1,10 @@
 """Tests for the --schema flag on the sprint-metrics command."""
 
-import json
 
 import jsonschema
 import pytest
 
-from sprint_metrics import main
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA
-
-
-def test_schema_json_single_sprint(capsys):
-    """AC1: --schema --json without a cards file exits 0 and stdout is a valid
-    JSON Schema (draft 2020-12) whose required array includes all eight keys
-    and whose metric properties accept null."""
-    exit_code = main(["--schema", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    schema = json.loads(captured.out)
-    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    for key in (
-        "api_version",
-        "cycle_time_days",
-        "lead_time_days",
-        "throughput",
-        "wip_violations",
-        "blocked_aging_days",
-        "escalation_rate_percent",
-        "flags",
-    ):
-        assert key in schema["required"]
-    for key in (
-        "cycle_time_days",
-        "lead_time_days",
-        "throughput",
-        "wip_violations",
-        "blocked_aging_days",
-        "escalation_rate_percent",
-        "first_attempt_rate_percent",
-    ):
-        assert schema["properties"][key]["type"] == ["integer", "null"]
-
-
-def test_schema_json_sprint_range(capsys):
-    """AC2: --schema --sprint-range 2024-01..2024-02 --json exits 0 and stdout is a
-    JSON Schema whose top-level required includes api_version and sprints, and each
-    sprint value's schema includes the six metric keys, flags, prior, and delta,
-    with metric types accepting null."""
-    exit_code = main(["--schema", "--sprint-range", "2024-01..2024-02", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    schema = json.loads(captured.out)
-    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert "api_version" in schema["required"]
-    assert "sprints" in schema["required"]
-    sprint_schema = schema["properties"]["sprints"]["additionalProperties"]
-    for key in (
-        "cycle_time_days",
-        "lead_time_days",
-        "throughput",
-        "wip_violations",
-        "blocked_aging_days",
-        "escalation_rate_percent",
-        "points_delivered",
-        "first_attempt_numerator",
-        "first_attempt_denominator",
-        "escalation_count",
-        "flags",
-        "prior",
-        "delta",
-    ):
-        assert key in sprint_schema["required"]
-    for key in (
-        "cycle_time_days",
-        "lead_time_days",
-        "throughput",
-        "wip_violations",
-        "blocked_aging_days",
-        "escalation_rate_percent",
-        "first_attempt_rate_percent",
-        "points_delivered",
-        "first_attempt_numerator",
-        "first_attempt_denominator",
-        "escalation_count",
-    ):
-        assert sprint_schema["properties"][key]["type"] == ["integer", "null"]
-
-
-def test_schema_markdown_exits_2(capsys):
-    """AC3: --schema --markdown exits 2, stderr contains a message explaining that
-    --schema is only valid with --json, and stdout is empty."""
-    exit_code = main(["--schema", "--markdown"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 2
-    assert "--json" in captured.err
-    assert captured.out == ""
-
-
-def test_schema_json_required_keys_and_properties(capsys):
-    """AC2: --schema --json exits 0; stdout is JSON whose required array contains
-    the named keys and whose properties include cycle_time_days typed as [integer, null]."""
-    exit_code = main(["--schema", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    schema = json.loads(captured.out)
-    for key in (
-        "api_version",
-        "cycle_time_days",
-        "throughput",
-        "first_attempt_rate_percent",
-        "failure_breakdown",
-        "flags",
-        "points_delivered",
-        "first_attempt_numerator",
-        "first_attempt_denominator",
-        "escalation_count",
-    ):
-        assert key in schema["required"]
-    assert schema["properties"]["cycle_time_days"] == {"type": ["integer", "null"]}
-    for key in (
-        "points_delivered",
-        "first_attempt_numerator",
-        "first_attempt_denominator",
-        "escalation_count",
-    ):
-        assert schema["properties"][key] == {"type": ["integer", "null"]}
-
-
-def test_schema_without_json_exits_2(capsys):
-    """AC3: --schema without --json exits 2, stderr contains 'only valid with --json',
-    and stdout is empty."""
-    exit_code = main(["--schema"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 2
-    assert "only valid with --json" in captured.err
-    assert captured.out == ""
 
 
 def test_trend_schema_top_level_structure():
@@ -175,112 +41,6 @@ def test_trend_schema_properties_types():
     assert props["start"]["type"] == "string"
     assert props["end"]["type"] == "string"
     assert props["values"]["type"] == "array"
-
-
-def test_single_sprint_json_output_validates_against_schema(tmp_path, capsys):
-    """AC1: CLI JSON output for a completed card validates against SINGLE_SPRINT_SCHEMA
-    and api_version is the string '1'."""
-    cards = json.dumps(
-        [
-            {
-                "id": "card-1",
-                "title": "A card",
-                "created": "2024-01-01",
-                "started": "2024-01-03",
-                "completed": "2024-01-07",
-            }
-        ]
-    )
-    cards_file = tmp_path / "cards.json"
-    cards_file.write_text(cards)
-
-    exit_code = main([str(cards_file), "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
-    assert result["api_version"] == "1"
-    assert result["points_delivered"] == 0
-    assert result["first_attempt_numerator"] == 1
-    assert result["first_attempt_denominator"] == 1
-    assert result["escalation_count"] == 0
-
-
-def test_empty_sprint_json_output_validates_against_schema(tmp_path, capsys):
-    """AC2: CLI JSON output for an empty sprint validates against SINGLE_SPRINT_SCHEMA."""
-    cards_file = tmp_path / "cards.json"
-    cards_file.write_text("[]")
-
-    exit_code = main([str(cards_file), "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
-
-
-def test_schema_rejects_type_mismatched_throughput(tmp_path, capsys):
-    """AC3: A type-mismatched throughput (string instead of int) raises ValidationError."""
-    cards = json.dumps(
-        [
-            {
-                "id": "card-1",
-                "title": "A card",
-                "created": "2024-01-01",
-                "started": "2024-01-03",
-                "completed": "2024-01-07",
-            }
-        ]
-    )
-    cards_file = tmp_path / "cards.json"
-    cards_file.write_text(cards)
-
-    exit_code = main([str(cards_file), "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    result["throughput"] = "1"
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(result, SINGLE_SPRINT_SCHEMA)
-
-
-def test_sprint_range_json_output_validates_against_schema(tmp_path, capsys):
-    """AC1: CLI sprint-range JSON output validates against SPRINT_RANGE_SCHEMA and
-    top-level keys are exactly 'api_version' and 'sprints'."""
-    completed_card = {"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}
-    sprints = {"2024-01": [completed_card], "2024-02": [completed_card]}
-    path = tmp_path / "sprints.json"
-    path.write_text(json.dumps(sprints))
-
-    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    jsonschema.validate(result, SPRINT_RANGE_SCHEMA)
-    assert set(result.keys()) == {"api_version", "sprints"}
-    for label in ("2024-01", "2024-02"):
-        entry = result["sprints"][label]
-        assert entry["points_delivered"] == 0
-        assert entry["first_attempt_numerator"] == 1
-        assert entry["first_attempt_denominator"] == 1
-        assert entry["escalation_count"] == 0
-
-
-def test_sprint_range_single_sprint_empty_validates_against_schema(tmp_path, capsys):
-    """AC2: A single-sprint range with an empty sprint validates against SPRINT_RANGE_SCHEMA."""
-    sprints = {"2024-01": []}
-    path = tmp_path / "sprints.json"
-    path.write_text(json.dumps(sprints))
-
-    exit_code = main([str(path), "--sprint-range", "2024-01..2024-01", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    jsonschema.validate(result, SPRINT_RANGE_SCHEMA)
 
 
 def test_sprint_range_schema_rejects_sprints_as_array():
@@ -353,7 +113,6 @@ def test_event_intake_missing_card_created_rejected():
 
 def test_single_sprint_schema_accepts_valid_non_null_object():
     """AC1: A complete non-null JSON object validates against SINGLE_SPRINT_SCHEMA."""
-    from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
 
     valid = {
         "api_version": "1",
@@ -390,7 +149,6 @@ def test_single_sprint_schema_accepts_valid_non_null_object():
 
 def test_single_sprint_schema_rejects_string_failure_breakdown():
     """AC2: failure_breakdown as a string (not an array) fails validation."""
-    from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
 
     invalid = {
         "api_version": "1",
@@ -420,7 +178,6 @@ def test_single_sprint_schema_rejects_string_failure_breakdown():
 
 def test_single_sprint_schema_accepts_all_null_metrics():
     """AC3: Every metric property accepts null alongside its non-null type."""
-    from sprint_metrics.schema import SINGLE_SPRINT_SCHEMA
 
     all_null = {
         "api_version": "1",
@@ -480,60 +237,6 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
         },
     }
     jsonschema.validate(all_null_sprint, SPRINT_RANGE_SCHEMA)
-
-
-def test_schema_json_required_includes_four_new_fields_with_integer_null_type(capsys):
-    """AC3/AC7: --schema --json produces a schema whose required array has exactly
-    20 entries (12 METRIC_KEYS + 5 non-metric + 2 minute) and whose properties
-    define each new field with the correct type."""
-    exit_code = main(["--schema", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    schema = json.loads(captured.out)
-    assert len(schema["required"]) == 20
-    for key in (
-        "points_delivered",
-        "first_attempt_numerator",
-        "first_attempt_denominator",
-        "escalation_count",
-    ):
-        assert key in schema["required"]
-        assert schema["properties"][key] == {"type": ["integer", "null"]}
-    assert schema["properties"]["superseded_count"] == {"type": ["integer", "null"]}
-    assert schema["properties"]["superseded_points"] == {"type": ["integer", "null"]}
-    assert schema["properties"]["superseded_breakdown"] == {"type": ["object", "null"]}
-    assert schema["properties"]["cycle_time_minutes"] == {"type": ["integer", "null"]}
-    assert schema["properties"]["lead_time_minutes"] == {"type": ["integer", "null"]}
-
-
-def test_sprint_range_schema_includes_new_fields_in_prior_and_delta(capsys):
-    """AC3: --schema --sprint-range 2024-01..2024-02 --json exits 0. The schema's
-    sprints additionalProperties properties include the four new fields each with
-    type [integer, null], and the prior and delta object properties also include
-    each of those four."""
-    exit_code = main(["--schema", "--sprint-range", "2024-01..2024-02", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    schema = json.loads(captured.out)
-    sprint_schema = schema["properties"]["sprints"]["additionalProperties"]
-    new_fields = (
-        "points_delivered",
-        "first_attempt_numerator",
-        "first_attempt_denominator",
-        "escalation_count",
-    )
-    for key in new_fields:
-        assert key in sprint_schema["properties"]
-        assert sprint_schema["properties"][key]["type"] == ["integer", "null"]
-    prior_props = sprint_schema["properties"]["prior"]["properties"]
-    delta_props = sprint_schema["properties"]["delta"]["properties"]
-    for key in new_fields:
-        assert key in prior_props
-        assert prior_props[key]["type"] == ["integer", "null"]
-        assert key in delta_props
-        assert delta_props[key]["type"] == ["integer", "null"]
 
 
 def test_sprint_range_schema_declares_cost_values_as_optional():
@@ -635,108 +338,3 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
         },
     }
     jsonschema.validate(response, SPRINT_RANGE_SCHEMA)
-
-
-def test_schema_json_includes_superseded_fields(capsys):
-    """AC4: --schema --json required array includes superseded_count, superseded_points,
-    superseded_breakdown; properties define them with types [integer,null],
-    [integer,null], [object,null] respectively."""
-    exit_code = main(["--schema", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    schema = json.loads(captured.out)
-    assert "superseded_count" in schema["required"]
-    assert "superseded_points" in schema["required"]
-    assert "superseded_breakdown" in schema["required"]
-    assert schema["properties"]["superseded_count"] == {"type": ["integer", "null"]}
-    assert schema["properties"]["superseded_points"] == {"type": ["integer", "null"]}
-    assert schema["properties"]["superseded_breakdown"] == {"type": ["object", "null"]}
-
-
-def test_json_output_includes_cycle_and_lead_time_minutes(tmp_path, capsys):
-    """AC1/AC6: --json output includes cycle_time_minutes and lead_time_minutes as integers
-    alongside the existing day-level fields."""
-    cards = json.dumps(
-        [
-            {
-                "created": "2024-01-01",
-                "started": "2024-01-03",
-                "completed": "2024-01-07",
-                "created_at": "2024-01-01T08:00:00Z",
-                "started_at": "2024-01-03T10:00:00Z",
-                "completed_at": "2024-01-03T21:26:00Z",
-            }
-        ]
-    )
-    cards_file = tmp_path / "cards.json"
-    cards_file.write_text(cards)
-
-    exit_code = main([str(cards_file), "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    assert result["cycle_time_minutes"] == 686
-    assert result["lead_time_minutes"] == 3686
-    assert result["cycle_time_days"] == 4
-    assert result["lead_time_days"] == 6
-
-
-def test_json_output_null_minutes_for_empty_cards(tmp_path, capsys):
-    """AC2: empty cards file → cycle_time_minutes and lead_time_minutes are null."""
-    cards_file = tmp_path / "cards.json"
-    cards_file.write_text("[]")
-
-    exit_code = main([str(cards_file), "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    assert result["cycle_time_minutes"] is None
-    assert result["lead_time_minutes"] is None
-    assert result["cycle_time_days"] == 0
-    assert result["lead_time_days"] == 0
-
-
-def test_json_output_metrics_filter_includes_cycle_time_minutes(tmp_path, capsys):
-    """AC3: --metrics cycle_time_minutes,throughput on a date-level card →
-    cycle_time_minutes is null, throughput is 1, flags has exactly those keys."""
-    cards = json.dumps(
-        [
-            {
-                "created": "2024-01-01",
-                "started": "2024-01-03",
-                "completed": "2024-01-07",
-            }
-        ]
-    )
-    cards_file = tmp_path / "cards.json"
-    cards_file.write_text(cards)
-
-    exit_code = main([str(cards_file), "--json", "--metrics", "cycle_time_minutes,throughput"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    result = json.loads(captured.out)
-    assert result["cycle_time_minutes"] is None
-    assert result["throughput"] == 1
-    assert result["api_version"] == "1"
-    assert set(result["flags"].keys()) == {"cycle_time_minutes", "throughput"}
-
-
-def test_schema_json_required_20_entries_with_minute_fields_last(capsys):
-    """AC4/AC7: --schema --json required array has exactly 20 entries; positions 18 and 19
-    (0-indexed) are cycle_time_minutes and lead_time_minutes; properties define both
-    as {"type": ["integer", "null"]}."""
-    exit_code = main(["--schema", "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    schema = json.loads(captured.out)
-    required = schema["required"]
-    assert len(required) == 20
-    assert required[18] == "cycle_time_minutes"
-    assert required[19] == "lead_time_minutes"
-    assert schema["properties"]["cycle_time_minutes"] == {"type": ["integer", "null"]}
-    assert schema["properties"]["lead_time_minutes"] == {"type": ["integer", "null"]}

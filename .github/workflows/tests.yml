@@ -76,7 +76,42 @@ jobs:
           set -euo pipefail
           output=$(docker run --rm sprint-metrics-smoke --help)
           echo "$output"
-          echo "$output" | grep -q "usage:"
+          echo "$output" | head -1 | grep -q "^usage: sprint-metrics"
+          echo "$output" | grep -q "SPRINT_METRICS_DB"
+          for flag in --json --markdown --prometheus --scrape --service --sprint-range --prior-sprint --prior --thresholds --metrics --wip-limits --escalations --sprint-date --port --schema cards; do
+            if echo "$output" | grep -q -- "$flag"; then
+              echo "ERROR: --help names the retired report option $flag"
+              exit 1
+            fi
+          done
+          echo "OK: --help describes the service only"
+      - name: Verify report arguments are refused
+        run: |
+          set -euo pipefail
+          CARDS_FILE=$(mktemp /tmp/cards_XXXXXX.json)
+          echo '[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]' > "$CARDS_FILE"
+          chmod 644 "$CARDS_FILE"
+          check() {
+            set +e
+            stderr=$(docker run --rm -v "$CARDS_FILE":/cards.json sprint-metrics-smoke "$@" 2>&1 >/dev/null)
+            code=$?
+            set -e
+            if [ "$code" -eq 0 ]; then
+              echo "ERROR: sprint-metrics $* exited 0, expected non-zero"
+              exit 1
+            fi
+            if ! echo "$stderr" | grep -q "command-line report tool has been retired"; then
+              echo "ERROR: sprint-metrics $* did not name the retired report tool: $stderr"
+              exit 1
+            fi
+            echo "OK: sprint-metrics $* refused with exit $code"
+          }
+          check /cards.json
+          for flag in --scrape --service --json --markdown --prometheus --prior-sprint --prior --thresholds --metrics --wip-limits --escalations --sprint-date --port --schema; do
+            check "$flag"
+          done
+          check --sprint-range 2024-01..2024-02
+          rm -f "$CARDS_FILE"
       - name: Verify repeating program name fails
         run: |
           set -euo pipefail
@@ -94,91 +129,77 @@ jobs:
             echo "ERROR: Container is running as root (UID 0)"
             exit 1
           fi
-      - name: Verify scrape service is reachable
+      - name: Build the image at the previous tag
         run: |
           set -euo pipefail
-          CARDS_FILE=$(mktemp /tmp/cards_XXXXXX.json)
-          cat > "$CARDS_FILE" << 'EOF'
-          [{"title": "test card", "state": "Done", "created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-          EOF
-          chmod 644 "$CARDS_FILE"
-          CONTAINER_ID=$(docker run -d -p 9100:9100 -v "$CARDS_FILE":/cards.json sprint-metrics-smoke --scrape --port 9100 /cards.json)
-          echo "Container started: $CONTAINER_ID"
-          DEADLINE=$((SECONDS + 30))
-          response=""
-          while [ $SECONDS -lt $DEADLINE ]; do
-            if response=$(curl -sf http://localhost:9100/metrics) 2>/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          if [ $SECONDS -ge $DEADLINE ]; then
-            echo "ERROR: /metrics endpoint did not become reachable within 30 seconds"
-            docker stop "$CONTAINER_ID" 2>/dev/null || true
-            docker rm "$CONTAINER_ID" 2>/dev/null || true
-            rm -f "$CARDS_FILE"
-            exit 1
-          fi
-          echo "Scrape endpoint is up"
-          echo "$response" | grep -q '^sprint_cycle_time_days'
-          echo "OK: response contains sprint_cycle_time_days"
-          docker stop "$CONTAINER_ID"
-          docker rm "$CONTAINER_ID"
-          rm -f "$CARDS_FILE"
-          if docker ps -q --filter "publish=9100" | grep -q .; then
-            echo "ERROR: A container is still publishing port 9100"
-            exit 1
-          fi
-          echo "OK: container stopped and removed, port 9100 free"
-      - name: Verify service mode
+          git fetch --tags --quiet origin
+          PREVIOUS_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          echo "Previous tag: $PREVIOUS_TAG"
+          git worktree add --detach /tmp/previous "$PREVIOUS_TAG"
+          docker build -t sprint-metrics-previous /tmp/previous
+      - name: Verify the crew's tick against the argument-free image
         run: |
           set -euo pipefail
-          CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
-          echo "Service container started: $CONTAINER_ID"
-          DEADLINE=$((SECONDS + 30))
-          while [ $SECONDS -lt $DEADLINE ]; do
-            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
-              break
-            fi
-            sleep 1
+          POSTGRES_CONTAINER="${{ job.services.postgres.id }}"
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -c 'CREATE DATABASE previous_tag'
+          PREVIOUS_DB="${SPRINT_METRICS_DB%/*}/previous_tag"
+          CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke)
+          # The previous tag's entry point is the report tool, so start its service directly.
+          PREVIOUS_ID=$(docker run -d -p 8081:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$PREVIOUS_DB" --entrypoint python sprint-metrics-previous -c 'import sys; from sprint_metrics.service import run; sys.exit(run())')
+          cleanup() {
+            docker stop "$CONTAINER_ID" "$PREVIOUS_ID" >/dev/null 2>&1 || true
+            docker rm "$CONTAINER_ID" "$PREVIOUS_ID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for port in 8080 8081; do
+            DEADLINE=$((SECONDS + 30))
+            until curl -sf "http://localhost:$port/health" > /dev/null 2>&1; do
+              if [ $SECONDS -ge $DEADLINE ]; then
+                echo "ERROR: /health on port $port did not become reachable within 30 seconds"
+                docker logs "$CONTAINER_ID" 2>&1 || true
+                docker logs "$PREVIOUS_ID" 2>&1 || true
+                exit 1
+              fi
+              sleep 1
+            done
           done
-          if [ $SECONDS -ge $DEADLINE ]; then
-            echo "ERROR: /health did not become reachable within 30 seconds"
-            echo "Container logs:"
-            docker logs "$CONTAINER_ID" 2>&1 || true
-            docker stop "$CONTAINER_ID" 2>/dev/null || true
-            docker rm "$CONTAINER_ID" 2>/dev/null || true
+          echo "Both services are healthy"
+          tick() {
+            port=$1
+            post() {
+              status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://localhost:$port$1" \
+                -H 'Content-Type: application/json' -d "$2")
+              if [ "$status" != "200" ]; then
+                echo "ERROR: POST $1 on port $port returned $status, expected 200" >&2
+                exit 1
+              fi
+            }
+            post /sprints '{"name":"2024-01","start_date":"2024-01-01","end_date":"2024-01-31","timezone":"UTC"}'
+            post /events '{"api_version":"1","card_id":"c1","type":"started","timestamp":"2024-01-03T10:00:00Z","sprint":"2024-01","card":{"created":"2024-01-01"}}'
+            post /events '{"api_version":"1","card_id":"c1","type":"finished","timestamp":"2024-01-07T10:00:00Z","sprint":"2024-01","card":{"created":"2024-01-01"}}'
+            curl -sf "http://localhost:$port/range?start=2024-01&end=2024-01"
+          }
+          RANGE_BODY=$(tick 8080)
+          PREVIOUS_BODY=$(tick 8081)
+          echo "$RANGE_BODY"
+          echo "OK: POST /sprints and POST /events returned 200, GET /range returned 200"
+          echo "$RANGE_BODY" | jq -e '.api_version == "1"' > /dev/null
+          echo "OK: api_version is still 1"
+          if ! diff <(echo "$PREVIOUS_BODY" | jq -S .) <(echo "$RANGE_BODY" | jq -S .); then
+            echo "ERROR: GET /range differs from the image at the previous tag"
             exit 1
           fi
-          echo "Service is healthy"
-          POST_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/events \
-            -H 'Content-Type: application/json' \
-            -d '{"api_version":"1","card_id":"c1","type":"started","timestamp":"2024-01-03T10:00:00Z","sprint":"2024-01","card":{"created":"2024-01-01"}}')
-          if [ "$POST_STATUS" != "200" ]; then
-            echo "ERROR: POST /events returned $POST_STATUS, expected 200"
-            docker stop "$CONTAINER_ID" 2>/dev/null || true
-            docker rm "$CONTAINER_ID" 2>/dev/null || true
-            exit 1
-          fi
-          echo "OK: POST /events returned 200"
+          echo "OK: GET /range matches the image at the previous tag field for field"
           SPRINT_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/sprint?label=2024-01")
           if [ "$SPRINT_STATUS" != "410" ]; then
             echo "ERROR: GET /sprint returned $SPRINT_STATUS, expected 410"
-            docker stop "$CONTAINER_ID" 2>/dev/null || true
-            docker rm "$CONTAINER_ID" 2>/dev/null || true
             exit 1
           fi
           echo "OK: GET /sprint returned 410 (endpoint removed)"
-          RANGE_BODY=$(curl -sf "http://localhost:8080/range?start=2024-01&end=2024-01")
-          echo "$RANGE_BODY"
-          echo "$RANGE_BODY" | grep -q '"api_version"'
-          echo "OK: response contains api_version"
-          echo "$RANGE_BODY" | grep -q '"throughput"'
-          echo "OK: response contains throughput"
           echo "Verifying service without SPRINT_METRICS_DB exits non-zero"
           START=$SECONDS
           set +e
-          NO_DB_OUTPUT=$(docker run --rm sprint-metrics-smoke --service 2>&1)
+          NO_DB_OUTPUT=$(docker run --rm sprint-metrics-smoke 2>&1)
           NO_DB_EXIT=$?
           set -e
           ELAPSED=$((SECONDS - START))
@@ -191,14 +212,15 @@ jobs:
             echo "ERROR: service without SPRINT_METRICS_DB took ${ELAPSED}s, expected <15s"
             exit 1
           fi
-          echo "OK: service without SPRINT_METRICS_DB exited with code $NO_DB_EXIT in ${ELAPSED}s"
-          docker stop "$CONTAINER_ID"
-          docker rm "$CONTAINER_ID"
+          echo "$NO_DB_OUTPUT" | grep -q "SPRINT_METRICS_DB"
+          echo "OK: service without SPRINT_METRICS_DB exited with code $NO_DB_EXIT in ${ELAPSED}s, naming the database"
+          cleanup
+          trap - EXIT
           if docker ps -q --filter "publish=8080" | grep -q .; then
             echo "ERROR: A container is still publishing port 8080"
             exit 1
           fi
-          echo "OK: service container stopped and removed, port 8080 free"
+          echo "OK: service containers stopped and removed, port 8080 free"
       - name: Verify database recovery
         run: |
           set -euo pipefail
@@ -207,7 +229,7 @@ jobs:
             echo "ERROR: Postgres service container not found"
             exit 1
           fi
-          CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke --service)
+          CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke)
           echo "Recovery check service started: $CONTAINER_ID"
           DEADLINE=$((SECONDS + 30))
           while [ $SECONDS -lt $DEADLINE ]; do

@@ -15,6 +15,7 @@
 - GET /sprint endpoint: single-sprint queries are answered by GET /range with a range spanning one sprint; the endpoint now returns HTTP 410
 - The CLI-only doc pages: docs/usage.md, docs/cards.md, docs/formats.md, docs/scrape.md
 - The `--thresholds` section from docs/thresholds.md; the README's install and usage stories retargeted to the released image; the service's startup example no longer takes `--service`
+- The command-line report tool: the table, markdown, JSON and Prometheus report modes; the cards-file input (a path or stdin); the `--sprint-range`, `--prior-sprint` and `--prior` options; the threshold-file and metric-selection options `--thresholds`, `--metrics`, `--wip-limits`, `--escalations` and `--sprint-date`; and the `--service` flag, no longer needed because the image and the `sprint-metrics` command now start the service with no arguments and refuse any argument with a retirement message
 
 ## [1.3.3] - 2026-10-19
 

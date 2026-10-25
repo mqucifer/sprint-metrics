@@ -21,7 +21,8 @@ def test_dockerfile_is_not_pinned_to_an_architecture():
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
 def test_docker_build_and_help():
     """AC1: docker build exits 0 and docker run --rm sprint-metrics-test --help
-    exits 0 with stdout containing 'sprint-metrics'."""
+    exits 0 with a usage line naming sprint-metrics and describing the service,
+    carrying no report flag."""
     repo_root = Path(__file__).parent.parent
     build = subprocess.run(
         ["docker", "build", "-t", "sprint-metrics-test", "."],
@@ -37,14 +38,16 @@ def test_docker_build_and_help():
         text=True,
     )
     assert run.returncode == 0, f"docker run --help failed: {run.stderr}"
-    assert "sprint-metrics" in run.stdout
+    assert run.stdout.startswith("usage: sprint-metrics")
+    assert "SPRINT_METRICS_DB" in run.stdout
+    for flag in ("--json", "--markdown", "--prometheus", "--scrape", "--service", "--schema"):
+        assert flag not in run.stdout
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
 def test_docker_run_with_cards(tmp_path):
-    """AC2: docker run with a volume-mounted cards.json exits 0 and stdout
-    contains the expected table row for a card with cycle time 5 days and
-    lead time 7 days."""
+    """AC2: docker run with a volume-mounted cards.json exits non-zero and stderr
+    says the command-line report tool has been retired."""
     if not _image_available():
         pytest.skip("sprint-metrics-test image not built")
     cards_path = tmp_path / "cards.json"
@@ -65,8 +68,9 @@ def test_docker_run_with_cards(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert run.returncode == 0, f"docker run failed: {run.stderr}"
-    assert "| Current | 5 days | 7 days | 1 | 0 | 0 | 0 days | 0% | 100% | \u2014 |" in run.stdout
+    assert run.returncode != 0, f"Expected non-zero exit, got {run.returncode}"
+    assert "command-line report tool has been retired" in run.stderr
+    assert "| Current |" not in run.stdout
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
@@ -108,7 +112,7 @@ def test_dockerfile_from_line_pinned_by_digest():
 @pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
 def test_docker_run_repeating_program_name_fails():
     """AC4: docker run --rm <image> sprint-metrics --help exits non-zero
-    because the tool interprets 'sprint-metrics' as a cards file path."""
+    because the service takes no arguments and refuses them as retired."""
     if not _image_available():
         pytest.skip("sprint-metrics-test image not built")
     run = subprocess.run(
@@ -117,3 +121,4 @@ def test_docker_run_repeating_program_name_fails():
         text=True,
     )
     assert run.returncode != 0, f"Expected non-zero exit, got {run.returncode}"
+    assert "command-line report tool has been retired" in run.stderr

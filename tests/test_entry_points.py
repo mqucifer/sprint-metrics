@@ -1,61 +1,104 @@
-"""Tests that both entry points resolve main from sprint_metrics.cli."""
+"""Tests that both entry points start the service and refuse report arguments."""
+
+import os
+import subprocess
+import sys
+
+import pytest
+
+from sprint_metrics.service import RETIRED_MESSAGE
+
+RETIRED_ARGUMENTS = [
+    ["cards.json"],
+    ["--scrape"],
+    ["--service"],
+    ["--json"],
+    ["--sprint-range", "2024-01..2024-02"],
+]
 
 
-def test_console_script_produces_expected_output(tmp_path, capsys):
-    """AC1: the sprint-metrics console script resolves main from sprint_metrics.cli
-    and, given a completed card, exits 0 and prints the expected table row."""
-    import json
-    import subprocess
-    import sys
-
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    cards_path = tmp_path / "cards.json"
-    cards_path.write_text(json.dumps(cards))
-
-    result = subprocess.run(
-        [sys.executable, "-m", "sprint_metrics", str(cards_path)],
+def _run(argv, env=None):
+    return subprocess.run(
+        [sys.executable, "-m", "sprint_metrics", *argv],
         capture_output=True,
         text=True,
+        env=env,
+        timeout=30,
     )
 
-    assert result.returncode == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in result.stdout
+
+def _env_without_db():
+    env = dict(os.environ)
+    env.pop("SPRINT_METRICS_DB", None)
+    return env
 
 
-def test_python_minus_m_produces_expected_output(tmp_path, capsys):
-    """AC2: python -m sprint_metrics resolves main from sprint_metrics.cli and,
-    given a completed card, exits 0 and prints the expected table row."""
-    import json
-    import subprocess
-    import sys
+@pytest.mark.parametrize("argv", RETIRED_ARGUMENTS)
+def test_python_minus_m_refuses_report_arguments(argv):
+    """AC5: python -m sprint_metrics given a report argument exits non-zero and
+    says the command-line report tool has been retired."""
+    result = _run(argv)
 
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    cards_path = tmp_path / "cards.json"
-    cards_path.write_text(json.dumps(cards))
-
-    result = subprocess.run(
-        [sys.executable, "-m", "sprint_metrics", str(cards_path)],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in result.stdout
+    assert result.returncode != 0
+    assert RETIRED_MESSAGE in result.stderr
+    assert result.stdout == ""
 
 
-def test_import_main_from_package_produces_expected_output(tmp_path, capsys):
-    """AC3: importing main from sprint_metrics and invoking it with a completed card
-    exits 0 and prints the expected table row, identical to the other entry points."""
-    import json
+@pytest.mark.parametrize("argv", RETIRED_ARGUMENTS)
+def test_console_script_refuses_report_arguments_like_python_minus_m(argv, capsys):
+    """AC5: the console script's target rejects each argument exactly as
+    python -m sprint_metrics does: the same exit code and message."""
+    from sprint_metrics.service import main
 
-    from sprint_metrics import main
-
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    cards_path = tmp_path / "cards.json"
-    cards_path.write_text(json.dumps(cards))
-
-    exit_code = main([str(cards_path)])
+    exit_code = main(argv)
     captured = capsys.readouterr()
 
-    assert exit_code == 0
-    assert "| Current | 4 days | 6 days | 1 | 0 | 0 | 0 days | 0% |" in captured.out
+    assert exit_code == _run(argv).returncode
+    assert captured.err.strip() == RETIRED_MESSAGE
+
+
+def test_python_minus_m_without_arguments_or_database_names_the_database():
+    """AC5: with no arguments and SPRINT_METRICS_DB unset, python -m sprint_metrics
+    exits non-zero naming the missing database."""
+    result = _run([], env=_env_without_db())
+
+    assert result.returncode != 0
+    assert "SPRINT_METRICS_DB" in result.stderr
+
+
+def test_python_minus_m_help_describes_the_service_only():
+    """AC3: --help exits 0 with a usage line naming sprint-metrics, describing the
+    service and carrying no report flag."""
+    result = _run(["--help"])
+
+    assert result.returncode == 0
+    assert result.stdout.startswith("usage: sprint-metrics")
+    assert "SPRINT_METRICS_DB" in result.stdout
+    for flag in (
+        "--json",
+        "--markdown",
+        "--prometheus",
+        "--scrape",
+        "--service",
+        "--sprint-range",
+        "--prior",
+        "--thresholds",
+        "--metrics",
+        "--wip-limits",
+        "--escalations",
+        "--sprint-date",
+        "--port",
+        "--schema",
+        "cards",
+    ):
+        assert flag not in result.stdout
+
+
+def test_console_script_targets_the_service_entry():
+    """AC1: pyproject.toml's console script points at the service's entry."""
+    import tomllib
+    from pathlib import Path
+
+    pyproject = tomllib.loads((Path(__file__).parent.parent / "pyproject.toml").read_text())
+
+    assert pyproject["project"]["scripts"] == {"sprint-metrics": "sprint_metrics.service:main"}
