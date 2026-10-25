@@ -183,48 +183,42 @@ def test_metrics_reference_completed_cards_for_exclusion():
     assert "completed" in section.lower()
 
 
-def test_cycle_time_entry_has_display_name_key_and_prometheus():
-    """AC (migrated): docs/metrics.md's cycle time entry lists the display name,
-    metric key, and Prometheus name, and mentions whole days."""
+def test_cycle_time_entry_has_display_name_and_key():
+    """AC (migrated): docs/metrics.md's cycle time entry lists the display name
+    and metric key, and mentions whole days."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = _extract_marked_section(text, "metrics")
     assert "Cycle time" in section
     assert "cycle_time_days" in section
-    assert "sprint_cycle_time_days" in section
     assert "whole days" in section.lower()
 
 
 def test_metrics_list_throughput_lead_time_blocked_aging_escalation():
     """AC (migrated): docs/metrics.md lists throughput, lead time, blocked aging, and
-    escalation rate each with their display name, metric key, and Prometheus name."""
+    escalation rate each with their display name and metric key."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = _extract_marked_section(text, "metrics")
 
     assert "Throughput" in section
     assert "throughput" in section
-    assert "sprint_throughput" in section
 
     assert "Lead time" in section
     assert "lead_time_days" in section
-    assert "sprint_lead_time_days" in section
 
     assert "Blocked aging" in section
     assert "blocked_aging_days" in section
-    assert "sprint_blocked_aging_days" in section
 
     assert "Escalation rate" in section
     assert "escalation_rate_percent" in section
-    assert "sprint_escalation_rate_percent" in section
 
 
-def test_wip_violations_entry_has_display_name_key_and_prometheus():
-    """AC (migrated): docs/metrics.md's WIP violations entry lists the display name,
-    metric key, and Prometheus name."""
+def test_wip_violations_entry_has_display_name_and_key():
+    """AC (migrated): docs/metrics.md's WIP violations entry lists the display name
+    and metric key."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = _extract_marked_section(text, "metrics")
     assert "WIP violations" in section
     assert "wip_violations" in section
-    assert "sprint_wip_violations" in section
 
 
 def test_installation_shows_uv_pip_install_with_version_tag():
@@ -367,20 +361,51 @@ def test_service_md_has_handwritten_intro():
 
 def test_service_md_generated_section_contains_all_endpoints():
     """AC2: the text between BEGIN:service and END:service in docs/service.md
-    contains a line or table row for each of the six service endpoints."""
+    lists exactly the service's endpoints: GET /metrics and GET /sprint are gone."""
     path = DOCS_DIR / "service.md"
     text = path.read_text()
     section = _extract_marked_section(text, "service")
     lines = section.splitlines()
-    for method, path_part in [
+    rows = [line.split("|") for line in lines if line.startswith("| GET") or line.startswith("| POST")]
+    endpoints = [(row[1].strip(), row[2].strip()) for row in rows]
+    assert endpoints == [
+        ("POST", "/sprints"),
         ("POST", "/events"),
         ("GET", "/range"),
         ("GET", "/trend"),
-        ("GET", "/metrics"),
+        ("GET", "/schema/event"),
         ("GET", "/health"),
-    ]:
-        matching = [line for line in lines if method in line and path_part in line]
-        assert matching, f"docs/service.md marked section missing a row for {method} {path_part}"
+    ]
+
+
+def test_service_md_prose_lists_endpoints_and_documents_metrics_410():
+    """#764 AC4: the Endpoints prose names exactly the six endpoints, and the
+    error-response section documents the 410 answer for GET /metrics."""
+    text = (DOCS_DIR / "service.md").read_text()
+    before = text.split("BEGIN:service")[0]
+    prose = before[before.index("## Endpoints") :].split("\n\n")[1]
+    for endpoint in (
+        "POST /sprints",
+        "POST /events",
+        "GET /range",
+        "GET /trend",
+        "GET /schema/event",
+        "GET /health",
+    ):
+        assert endpoint in prose
+    assert "/metrics" not in prose
+    assert "Prometheus" not in prose
+    errors = before[before.index("### Error responses") :]
+    assert "GET /metrics returns HTTP 410" in errors
+
+
+def test_metrics_md_has_no_prometheus_name_column():
+    """#764 AC3: docs/metrics.md's table has display name, metric key and
+    description only, and the intro promises no Prometheus names."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    assert "Prometheus" not in text
+    section = _extract_marked_section(text, "metrics")
+    assert section.splitlines()[0] == "| Display name | Metric key | Description |"
 
 
 def test_drift_check_service_md_detects_manual_edit(tmp_path):
@@ -959,10 +984,6 @@ def test_metrics_md_cost_names_match_service_metrics():
         # The display name appears in the generated table
         display = _METRIC_COLUMNS[name]
         assert display in section, f"display name {display!r} not in metrics table"
-    # Prometheus names follow the sprint_{key} pattern
-    for name in cost_metrics:
-        prom = f"sprint_{name}"
-        assert prom in section, f"Prometheus name {prom!r} not in metrics table"
 
 
 def test_service_md_cost_example_is_complete():

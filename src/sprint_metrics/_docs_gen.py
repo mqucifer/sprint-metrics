@@ -77,20 +77,13 @@ def _generate_metrics_content() -> str:
         ),
     }
 
-    prom_overrides: dict[str, str] = {
-        "failure_breakdown": "sprint_failure_count",
-        "superseded_count": "sprint_metrics_superseded_stories",
-        "superseded_points": "sprint_metrics_superseded_points",
-        "superseded_breakdown": "sprint_metrics_superseded_by_reason",
-    }
-
     display_overrides: dict[str, str] = {
         "superseded_count": "Superseded count",
     }
 
     lines = [
-        "| Display name | Metric key | Description | Prometheus name |",
-        "|---|---|---|---|",
+        "| Display name | Metric key | Description |",
+        "|---|---|---|",
     ]
     for metric_key in sorted(ALL_METRICS):
         display_name = display_overrides.get(metric_key, _METRIC_COLUMNS.get(metric_key))
@@ -104,8 +97,7 @@ def _generate_metrics_content() -> str:
                 continue
             func = getattr(metrics_mod, func_name)
             description = _first_doc_line(func)
-        prom_name = prom_overrides.get(metric_key, f"sprint_{metric_key}")
-        lines.append(f"| {display_name} | `{metric_key}` | {description} | `{prom_name}` |")
+        lines.append(f"| {display_name} | `{metric_key}` | {description} |")
     return "\n".join(lines) + "\n"
 
 

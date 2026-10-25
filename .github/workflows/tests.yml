@@ -200,6 +200,12 @@ jobs:
             exit 1
           fi
           echo "OK: GET /sprint returned 410 (endpoint removed)"
+          METRICS_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/metrics")
+          if [ "$METRICS_STATUS" != "410" ]; then
+            echo "ERROR: GET /metrics returned $METRICS_STATUS, expected 410"
+            exit 1
+          fi
+          echo "OK: GET /metrics returned 410 (endpoint removed)"
           echo "Verifying service without SPRINT_METRICS_DB exits non-zero"
           START=$SECONDS
           set +e

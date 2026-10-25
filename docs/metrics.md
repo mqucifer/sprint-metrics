@@ -4,33 +4,33 @@ The table below lists the metrics the service's responses carry, their display
 names, and a description of what each measures.
 
 BEGIN:metrics
-| Display name | Metric key | Description | Prometheus name |
-|---|---|---|---|
-| Blocked aging | `blocked_aging_days` | Return the maximum number of days any card has been blocked in the sprint. | `sprint_blocked_aging_days` |
-| Cached input percent | `cached_input_percent` | Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost. | `sprint_cached_input_percent` |
-| Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_cycle_time_days` |
-| Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_cycle_time_minutes` |
-| Escalation count | `escalation_count` | Return the number of escalated events in the sprint. | `sprint_escalation_count` |
-| Escalation rate | `escalation_rate_percent` | Return the escalation rate as a whole-number percentage of escalations over completed cards; 0 when no cards are completed. | `sprint_escalation_rate_percent` |
-| Top causes | `failure_breakdown` | Return the returns from review or QA, grouped by (failure class, returning role), sorted by count descending. | `sprint_failure_count` |
-| First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. | `sprint_first_attempt_denominator` |
-| First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. | `sprint_first_attempt_numerator` |
-| First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt. | `sprint_first_attempt_rate_percent` |
-| Input tokens (middle) | `input_tokens_middle` | Return the median input tokens across costed stories, or None when no story carries cost. | `sprint_input_tokens_middle` |
-| Input tokens (total) | `input_tokens_total` | Return the total input tokens across costed stories, or None when no story carries cost. | `sprint_input_tokens_total` |
-| Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. | `sprint_lead_time_days` |
-| Lead time (min) | `lead_time_minutes` | Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps. | `sprint_lead_time_minutes` |
-| Model minutes (middle) | `model_minutes_middle` | Return the median whole model minutes across costed stories, or None when no story carries cost. | `sprint_model_minutes_middle` |
-| Model minutes (total) | `model_minutes_total` | Return the total whole model minutes across costed stories, or None when no story carries cost. | `sprint_model_minutes_total` |
-| Output tokens (middle) | `output_tokens_middle` | Return the median output tokens across costed stories, or None when no story carries cost. | `sprint_output_tokens_middle` |
-| Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, or None when no story carries cost. | `sprint_output_tokens_total` |
-| Points delivered | `points_delivered` | Return the sum of points values on completed cards. | `sprint_points_delivered` |
-| Reasoning output percent | `reasoning_output_percent` | Return the sprint's reasoning share of output tokens as a whole percent, or None when no story carries cost. | `sprint_reasoning_output_percent` |
-| Superseded breakdown | `superseded_breakdown` | Return the per-reason breakdown of superseded cards, keyed by 'sponsor' and 'story_problem' with their counts. Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_by_reason` |
-| Superseded count | `superseded_count` | Return the number of cards marked superseded in the sprint. Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_stories` |
-| Superseded points | `superseded_points` | Return the sum of the points value on superseded cards (0 when a superseded card carries no points value). Excluded from throughput and in-flight calculations. | `sprint_metrics_superseded_points` |
-| Throughput | `throughput` | Return the number of completed cards in the sprint. | `sprint_throughput` |
-| WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. | `sprint_wip_violations` |
+| Display name | Metric key | Description |
+|---|---|---|
+| Blocked aging | `blocked_aging_days` | Return the maximum number of days any card has been blocked in the sprint. |
+| Cached input percent | `cached_input_percent` | Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost. |
+| Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
+| Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. |
+| Escalation count | `escalation_count` | Return the number of escalated events in the sprint. |
+| Escalation rate | `escalation_rate_percent` | Return the escalation rate as a whole-number percentage of escalations over completed cards; 0 when no cards are completed. |
+| Top causes | `failure_breakdown` | Return the returns from review or QA, grouped by (failure class, returning role), sorted by count descending. |
+| First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. |
+| First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. |
+| First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt. |
+| Input tokens (middle) | `input_tokens_middle` | Return the median input tokens across costed stories, or None when no story carries cost. |
+| Input tokens (total) | `input_tokens_total` | Return the total input tokens across costed stories, or None when no story carries cost. |
+| Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
+| Lead time (min) | `lead_time_minutes` | Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps. |
+| Model minutes (middle) | `model_minutes_middle` | Return the median whole model minutes across costed stories, or None when no story carries cost. |
+| Model minutes (total) | `model_minutes_total` | Return the total whole model minutes across costed stories, or None when no story carries cost. |
+| Output tokens (middle) | `output_tokens_middle` | Return the median output tokens across costed stories, or None when no story carries cost. |
+| Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, or None when no story carries cost. |
+| Points delivered | `points_delivered` | Return the sum of points values on completed cards. |
+| Reasoning output percent | `reasoning_output_percent` | Return the sprint's reasoning share of output tokens as a whole percent, or None when no story carries cost. |
+| Superseded breakdown | `superseded_breakdown` | Return the per-reason breakdown of superseded cards, keyed by 'sponsor' and 'story_problem' with their counts. Excluded from throughput and in-flight calculations. |
+| Superseded count | `superseded_count` | Return the number of cards marked superseded in the sprint. Excluded from throughput and in-flight calculations. |
+| Superseded points | `superseded_points` | Return the sum of the points value on superseded cards (0 when a superseded card carries no points value). Excluded from throughput and in-flight calculations. |
+| Throughput | `throughput` | Return the number of completed cards in the sprint. |
+| WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. |
 END:metrics
 
 ## Computation details

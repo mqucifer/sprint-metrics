@@ -10,6 +10,8 @@
 
 ### Removed
 
+- GET /metrics endpoint: the service no longer offers its stored metrics as Prometheus text; GET /range and GET /trend answer them, and the endpoint now returns HTTP 410. docs/metrics.md drops its Prometheus-name column
+
 ## [2.0.0] - 2026-10-25
 
 ### Added

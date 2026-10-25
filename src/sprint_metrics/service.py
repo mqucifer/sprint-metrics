@@ -22,20 +22,6 @@ from opentelemetry.trace import StatusCode
 
 from sprint_metrics.metrics import (
     ALL_METRICS,
-    calculate_blocked_aging,
-    calculate_cached_input_percent,
-    calculate_cycle_time_and_lead_time,
-    calculate_escalation_rate,
-    calculate_first_attempt_rate,
-    calculate_input_tokens_middle,
-    calculate_input_tokens_total,
-    calculate_model_minutes_middle,
-    calculate_model_minutes_total,
-    calculate_output_tokens_middle,
-    calculate_output_tokens_total,
-    calculate_reasoning_output_percent,
-    calculate_throughput,
-    calculate_wip_violations,
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
@@ -45,7 +31,6 @@ from sprint_metrics.store import (
     count_escalated_events,
     init_db,
     insert_event,
-    query_all_sprints,
     query_range,
     query_sprint,
     resolve_sprint_range,
@@ -357,6 +342,18 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         )
                         status = 410
                         return
+                    elif route == "/metrics":
+                        self._send_json(
+                            410,
+                            {
+                                "error": (
+                                    "endpoint removed: GET /metrics has been removed; "
+                                    "use GET /range or GET /trend for the stored metrics"
+                                )
+                            },
+                        )
+                        status = 410
+                        return
                     elif self.path.startswith("/range?"):
                         parsed = urlparse(self.path)
                         params = parse_qs(parsed.query)
@@ -554,26 +551,6 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         self._send_json(200, response)
                         status = 200
                         return
-                    elif self.path == "/metrics":
-                        self._ensure_db()
-                        try:
-                            sprints = query_all_sprints(conn_holder[0])
-                        except Exception as exc:
-                            self._send_json(500, {"error": f"database error: {exc}"})
-                            status = 500
-                            return
-                        sprint_escs = {
-                            lbl: count_escalated_events(conn_holder[0], lbl) for lbl in sprints
-                        }
-                        body = _metrics_text(sprints, escalations=sprint_escs)
-                        encoded = body.encode("utf-8")
-                        self.send_response(200)
-                        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-                        self.send_header("Content-Length", str(len(encoded)))
-                        self.end_headers()
-                        self.wfile.write(encoded)
-                        status = 200
-                        return
                     elif self.path == "/schema/event":
                         self._send_json(200, EVENT_INTAKE_SCHEMA)
                         status = 200
@@ -720,43 +697,6 @@ def _cost_flat(cost: dict | None) -> dict[str, int | None]:
     }
 
 
-def _metrics_text(sprints: dict[str, list], escalations: dict[str, int] | None = None) -> str:
-    """Format stored sprint history as Prometheus text exposition with sprint labels."""
-    if escalations is None:
-        escalations = {}
-    lines: list[str] = []
-    for sprint_label, cards in sprints.items():
-        cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
-        throughput = calculate_throughput(cards)
-        wip_violations = calculate_wip_violations(cards, None)
-        blocked_aging = calculate_blocked_aging(cards, None)
-        escalation_rate = calculate_escalation_rate(cards, escalations.get(sprint_label, 0))
-        first_attempt_rate = calculate_first_attempt_rate(cards)
-
-        label = f'sprint="{sprint_label}"'
-        lines.append(f"sprint_cycle_time_days{{{label}}} {cycle_time}")
-        lines.append(f"sprint_lead_time_days{{{label}}} {lead_time}")
-        lines.append(f"sprint_throughput_cards{{{label}}} {throughput}")
-        lines.append(f"sprint_wip_violations{{{label}}} {wip_violations}")
-        lines.append(f"sprint_blocked_aging_days{{{label}}} {blocked_aging}")
-        lines.append(f"sprint_escalation_rate_percent{{{label}}} {escalation_rate}")
-        lines.append(f"sprint_first_attempt_rate_percent{{{label}}} {first_attempt_rate}")
-        cost_values = {
-            "model_minutes_middle": calculate_model_minutes_middle(cards),
-            "model_minutes_total": calculate_model_minutes_total(cards),
-            "input_tokens_middle": calculate_input_tokens_middle(cards),
-            "input_tokens_total": calculate_input_tokens_total(cards),
-            "output_tokens_middle": calculate_output_tokens_middle(cards),
-            "output_tokens_total": calculate_output_tokens_total(cards),
-            "cached_input_percent": calculate_cached_input_percent(cards),
-            "reasoning_output_percent": calculate_reasoning_output_percent(cards),
-        }
-        for cost_name, cost_value in cost_values.items():
-            lines.append(f"sprint_{cost_name}{{{label}}} {0 if cost_value is None else cost_value}")
-
-    return "\n".join(lines)
-
-
 SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "POST",
@@ -798,12 +738,6 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null.",
-    ),
-    (
-        "GET",
-        "/metrics",
-        "Return Prometheus text exposition format, one line per metric per sprint. "
-        "Emits lines only for sprints that have at least one finished event.",
     ),
     (
         "GET",
