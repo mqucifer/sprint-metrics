@@ -7,7 +7,6 @@ def test_package_imports_resolve_to_owning_modules():
         Card,
         calculate_blocked_aging,
         calculate_cycle_time_and_lead_time,
-        calculate_escalation_rate,
         calculate_flags,
         calculate_throughput,
         calculate_wip_violations,
@@ -18,9 +17,6 @@ def test_package_imports_resolve_to_owning_modules():
     )
     from sprint_metrics.metrics import (
         calculate_cycle_time_and_lead_time as cycle_from_metrics,
-    )
-    from sprint_metrics.metrics import (
-        calculate_escalation_rate as escalation_from_metrics,
     )
     from sprint_metrics.metrics import (
         calculate_throughput as throughput_from_metrics,
@@ -35,7 +31,6 @@ def test_package_imports_resolve_to_owning_modules():
     assert calculate_throughput is throughput_from_metrics
     assert calculate_wip_violations is wip_from_metrics
     assert calculate_blocked_aging is blocked_from_metrics
-    assert calculate_escalation_rate is escalation_from_metrics
     assert calculate_flags is flags_from_thresholds
 
 
@@ -121,3 +116,23 @@ def test_single_sprint_formatter_and_schema_are_gone():
     assert "format_json_report" not in sprint_metrics.__all__
     assert not hasattr(schema, "SINGLE_SPRINT_SCHEMA")
     assert schema.SPRINT_RANGE_SCHEMA and schema.TREND_SCHEMA and schema.EVENT_INTAKE_SCHEMA
+
+
+def test_escalation_measure_code_is_gone():
+    """#777 AC1, AC2: calculate_escalation_rate and count_escalated_events no
+    longer import from any module, and metric_value refuses both escalation names
+    while still answering the kept metrics."""
+    import pytest
+
+    from sprint_metrics.metrics import metric_value
+
+    for module in ("sprint_metrics", "sprint_metrics.metrics"):
+        with pytest.raises(ImportError):
+            exec(f"from {module} import calculate_escalation_rate")
+    with pytest.raises(ImportError):
+        from sprint_metrics.store import count_escalated_events  # noqa: F401
+    cards = [{"created": "2024-01-01", "started": "2024-01-02", "completed": "2024-01-04"}]
+    assert metric_value("throughput", cards) == 1
+    for name in ("escalation_rate_percent", "escalation_count"):
+        with pytest.raises(ValueError, match="unknown metric"):
+            metric_value(name, cards)

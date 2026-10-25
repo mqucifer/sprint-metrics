@@ -4365,6 +4365,42 @@ def test_trend_accepts_no_escalation_measure():
 
 
 @requires_db
+def test_escalated_event_is_stored_but_feeds_no_response():
+    """#777 AC3: an escalated event is accepted and stored as before, but no
+    /range field and no kept /trend value depends on it."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        for event in (
+            ("x1", "started", "2024-01-03T10:00:00Z"),
+            ("x1", "finished", "2024-01-05T10:00:00Z"),
+        ):
+            assert _post_events(f"{base}/events", _make_event(*event))[0] == 200
+        _, range_before = _get_json(f"{base}/range?start=2024-01&end=2024-01")
+        _, trend_before = _get_json(f"{base}/trend?metric=throughput&start=2024-01&end=2024-01")
+
+        escalated = _make_event("x1", "escalated", "2024-01-04T10:00:00Z")
+        assert _post_events(f"{base}/events", escalated) == (200, {})
+        stored = conn.execute(
+            "SELECT COUNT(*) FROM sprint_metrics.board_events WHERE type = 'escalated'"
+        ).fetchone()[0]
+        assert stored == 1
+
+        _, range_after = _get_json(f"{base}/range?start=2024-01&end=2024-01")
+        _, trend_after = _get_json(f"{base}/trend?metric=throughput&start=2024-01&end=2024-01")
+        assert range_after == range_before
+        assert trend_after == trend_before
+        assert "escalation_count" not in range_after["sprints"]["2024-01"]
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_trend_points_delivered_two_sprints():
     """AC1+AC5: GET /trend?metric=points_delivered&start=2024-01&end=2024-02 with
     sprint 2024-01 having one finished card (points 5) and sprint 2024-02 having

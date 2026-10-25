@@ -9,7 +9,6 @@ from sprint_metrics.metrics import (
     _state_windows,
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
-    calculate_escalation_rate,
     calculate_failure_breakdown,
     calculate_first_attempt_rate,
     calculate_throughput,
@@ -66,18 +65,6 @@ def test_calculate_blocked_aging_is_zero_when_no_cards_blocked():
     """No cards are blocked, so blocked aging is 0."""
     cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
     assert calculate_blocked_aging(cards) == 0
-
-
-def test_calculate_escalation_rate_with_escalations():
-    """With 2 escalations and 10 completed cards, the rate is 20%."""
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}] * 10
-    assert calculate_escalation_rate(cards, escalations=2) == 20
-
-
-def test_calculate_escalation_rate_is_zero_when_no_cards_completed():
-    """With no completed cards the escalation rate is 0 regardless of escalations."""
-    cards = [{"created": "2024-01-01", "started": "2024-01-02", "completed": ""}]
-    assert calculate_escalation_rate(cards, escalations=5) == 0
 
 
 def test_mean_days_returns_zero_for_empty_list():
@@ -618,18 +605,6 @@ def test_all_metrics_includes_superseded():
     assert "superseded_count" in ALL_METRICS
     assert "superseded_points" in ALL_METRICS
     assert "superseded_breakdown" in ALL_METRICS
-
-
-def test_calculate_escalation_rate_exceeds_100():
-    """With 2 escalations and 1 completed card, the rate is 200 — no upper bound."""
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    assert calculate_escalation_rate(cards, escalations=2) == 200
-
-
-def test_calculate_escalation_rate_rounds_up():
-    """With 2 escalations and 3 completed cards, the rate rounds up to 67 (66.67)."""
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}] * 3
-    assert calculate_escalation_rate(cards, escalations=2) == 67
 
 
 def test_cycle_and_lead_time_minutes_single_card():

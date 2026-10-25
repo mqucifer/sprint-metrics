@@ -1,6 +1,6 @@
 # sprint-metrics
 
-Reports how the crew is performing: cycle time, lead time, throughput per sprint, WIP-limit violations, blocked-card aging, escalation rate, first-attempt rate, and failure breakdown. The service accepts board events over HTTP and answers sprint, range, and trend queries from that history.
+Reports how the crew is performing: cycle time, lead time, throughput per sprint, WIP-limit violations, blocked-card aging, first-attempt rate, failure breakdown, superseded stories, and cost. The service accepts board events over HTTP and answers range and trend queries from that history.
 
 ## Installation
 

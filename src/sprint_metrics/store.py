@@ -473,12 +473,3 @@ def sprint_has_events(conn: Connection, label: str) -> bool:
         (label,),
     ).fetchone()
     return row is not None
-
-
-def count_escalated_events(conn: Connection, label: str) -> int:
-    """Return the count of 'escalated' events stored for the given sprint label."""
-    row = conn.execute(
-        "SELECT COUNT(*) FROM sprint_metrics.board_events WHERE type = 'escalated' AND sprint = %s",
-        (label,),
-    ).fetchone()
-    return row[0] if row else 0

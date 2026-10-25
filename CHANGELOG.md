@@ -13,6 +13,7 @@
 - The escalation measures from GET /range: no sprint entry, `prior` or `delta` carries `escalation_rate_percent` or `escalation_count`, and the published range schema (`schemas/sprint-range.json`) no longer requires or describes them
 - The escalation rate as a judged measure: it is no longer a default threshold (docs/thresholds.md drops its row), the range response's `flags` no longer carry `escalation_rate_percent`, and a thresholds override naming it produces no flag
 - The escalation measures from GET /trend: asking for `escalation_rate_percent` or `escalation_count` now answers HTTP 400 saying the measure is no longer accepted; docs/metrics.md drops their rows and docs/service.md's valid-metrics list no longer names them
+- The escalation measure code with its last consumer: `calculate_escalation_rate` (no longer re-exported by `sprint_metrics`) and the store's `count_escalated_events`; `metric_value` refuses both escalation names. docs/metrics.md drops its escalation boundary conditions and the README no longer lists the escalation rate. The `escalated` event type stays accepted and stored, unchanged
 
 ## [3.0.0] - 2026-10-25
 

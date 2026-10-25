@@ -62,7 +62,7 @@ C4Component
     Boundary(pkg, "sprint_metrics package") {
         Component(svc, "service.py", "Stateful HTTP service and the entry point (main) of the sprint-metrics script and python -m: event intake, sprint registration, range and trend queries, and /health.")
         Component(card, "card.py", "Card dataclass and card parsing.")
-        Component(metrics, "metrics.py", "Pure metric calculations: cycle time, lead time, throughput, WIP violations, blocked aging, escalation rate, first-attempt rate, failure breakdown and its top causes, cost metrics.")
+        Component(metrics, "metrics.py", "Pure metric calculations: cycle time, lead time, throughput, WIP violations, blocked aging, first-attempt rate, failure breakdown and its top causes, cost metrics.")
         Component(thresholds, "thresholds.py", "Built-in default thresholds and flag calculation.")
         Component(report, "report.py", "API_VERSION and the metric display names.")
         Component(sr, "sprint_range.py", "Sprint-label parsing and the per-sprint range JSON.")

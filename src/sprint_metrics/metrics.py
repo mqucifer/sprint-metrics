@@ -126,21 +126,6 @@ def calculate_blocked_aging(
     return max_aging
 
 
-def calculate_escalation_rate(
-    cards: Iterable[Card | Mapping[str, object]],
-    escalations: int = 0,
-) -> int:
-    """Return the escalation rate as a whole-number percentage of escalations over completed cards; 0 when no cards are completed.
-
-    The rate is the number of escalations divided by the number of completed
-    cards, expressed as a whole-number percentage.
-    """
-    completed = sum(1 for card in _as_cards(cards) if card.is_completed)
-    if completed == 0:
-        return 0
-    return round(escalations / completed * 100)
-
-
 ALL_METRICS: frozenset[str] = frozenset(
     {
         "cycle_time_days",
@@ -241,7 +226,6 @@ def calculate_top_failure_causes(
 def metric_value(
     metric: str,
     cards: Iterable[Card | Mapping[str, object]],
-    escalations: int = 0,
 ) -> int | None:
     """Return the value of the named metric for the given cards.
 
@@ -261,8 +245,6 @@ def metric_value(
         return calculate_wip_violations(cards, None)
     if metric == "blocked_aging_days":
         return calculate_blocked_aging(cards, None)
-    if metric == "escalation_rate_percent":
-        return calculate_escalation_rate(cards, escalations)
     if metric == "first_attempt_rate_percent":
         return calculate_first_attempt_rate(cards)
     if metric == "points_delivered":
@@ -271,8 +253,6 @@ def metric_value(
         return calculate_first_attempt_counts(cards)[0]
     if metric == "first_attempt_denominator":
         return calculate_first_attempt_counts(cards)[1]
-    if metric == "escalation_count":
-        return escalations
     if metric == "superseded_count":
         return calculate_superseded_count(cards)
     if metric == "superseded_points":

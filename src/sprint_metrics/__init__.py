@@ -4,7 +4,6 @@ from sprint_metrics.card import Card
 from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
-    calculate_escalation_rate,
     calculate_failure_breakdown,
     calculate_first_attempt_rate,
     calculate_throughput,
@@ -16,7 +15,6 @@ __all__ = [
     "Card",
     "calculate_blocked_aging",
     "calculate_cycle_time_and_lead_time",
-    "calculate_escalation_rate",
     "calculate_failure_breakdown",
     "calculate_first_attempt_rate",
     "calculate_flags",

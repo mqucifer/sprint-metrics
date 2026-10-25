@@ -267,8 +267,8 @@ def test_first_paragraph_includes_first_attempt_rate_and_failure_breakdown():
 
 def test_first_paragraph_names_cycle_time_lead_time_throughput_wip_and_blocked_aging():
     """AC1: the first paragraph of the README names every measure it computes:
-    cycle time, lead time, throughput, WIP-limit violations, blocked-card aging,
-    and escalation rate."""
+    cycle time, lead time, throughput, WIP-limit violations and blocked-card aging,
+    and no longer the escalation rate (#777)."""
     text = README.read_text()
     lines = text.splitlines()
     title_idx = next(i for i, line in enumerate(lines) if line.startswith("# "))
@@ -287,7 +287,7 @@ def test_first_paragraph_names_cycle_time_lead_time_throughput_wip_and_blocked_a
     assert "throughput" in paragraph
     assert "WIP-limit violations" in paragraph
     assert "blocked-card aging" in paragraph
-    assert "escalation rate" in paragraph
+    assert "escalation" not in paragraph
 
 
 def test_readme_trimmed_has_no_removed_sections():
