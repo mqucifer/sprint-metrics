@@ -186,9 +186,10 @@ jobs:
           PREVIOUS_BODY=$(tick 8081)
           echo "$RANGE_BODY"
           echo "OK: POST /sprints and POST /events returned 200, GET /range returned 200"
-          echo "$RANGE_BODY" | jq -e '.api_version == "1"' > /dev/null
-          echo "OK: api_version is still 1"
-          if ! diff <(echo "$PREVIOUS_BODY" | jq -S .) <(echo "$RANGE_BODY" | jq -S .); then
+          echo "$RANGE_BODY" | jq -e '.api_version == "2"' > /dev/null
+          echo "OK: api_version is 2"
+          # api_version is pinned above; every other field must match the earlier image.
+          if ! diff <(echo "$PREVIOUS_BODY" | jq -S 'del(.api_version)') <(echo "$RANGE_BODY" | jq -S 'del(.api_version)'); then
             echo "ERROR: GET /range differs from the image before this change"
             exit 1
           fi

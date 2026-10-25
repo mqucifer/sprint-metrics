@@ -59,6 +59,8 @@ The service exposes the following HTTP endpoints: POST /sprints for sprint regis
 
 GET /range returns metrics for a range of sprints in chronological order. Each entry includes the prior-sprint delta. Its failure_breakdown and top_failure_causes count returns — one entry per return, by (failure class, returning role) — not one entry per failed story. Sprints with no events return all-null values.
 
+The /range and /trend responses carry their own `api_version`, separate from the intake's: it is "2" from release 2.0.0. Version "1" is retired: 2.0.0 changed what /range returns (each sprint carries `cost` and `story_costs`, and `top_failure_causes` is a list of `{class, role, count}` entries rather than an object), and the response version moves with any such change. Event intake keeps version "1".
+
 GET /trend answers the question 'what was this metric in each of these sprints?' by returning a value for every sprint label in the requested calendar range, with null for a sprint that has no events, so a gap reads as no data rather than zero (escalation_count and escalation_rate_percent give 0 there). The range is specified by explicit start and end labels consistent with /range: `GET /trend?metric=throughput&start=2024-01&end=2024-04`.
 
 ### Error responses

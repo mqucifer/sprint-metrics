@@ -158,7 +158,7 @@ def format_json_report(
     return json.dumps(report)
 
 
-API_VERSION = "1"
+API_VERSION = "2"
 
 
 _METRIC_COLUMNS: dict[str, str] = {

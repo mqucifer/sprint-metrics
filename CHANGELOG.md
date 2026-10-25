@@ -14,9 +14,14 @@
 
 ### Added
 
+- The finished event accepts a cost payload on its card (`model_seconds`, `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`, sent together or not at all), and the service stores it on the finished row (#713, #726)
+- GET /range carries each sprint's `cost` (the cost middle and total) and `story_costs` (each finished story's cost); GET /trend and the service's GET /metrics carry the cost measures (#731, #733, #745); the generated docs describe them (#736)
 - CI now validates CHANGELOG.md by rules that hold for every release: pyproject version matches the newest section, sections run newest-first by version with dates in order, [Unreleased] is first with standard subheadings, and every released heading is dated YYYY-MM-DD
 
 ### Changed
+
+- GET /range's `top_failure_causes` is a list of `{"class", "role", "count"}` entries, empty as `[]`, where it was an object mapping cause to count, empty as `{}`; it and `failure_breakdown` count returns, one per return, by failure class and returning role, rather than failed stories (#734, #737)
+- The /range and /trend responses carry `api_version` "2"; version "1" is retired because /range's shape changed. Event intake keeps `api_version` "1"
 
 ### Fixed
 

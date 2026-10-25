@@ -105,7 +105,7 @@ def test_cli_formatters_and_loaders_are_gone():
     assert not hasattr(thresholds, "_load_thresholds")
     assert not hasattr(sprint_metrics, "format_performance_table")
     assert callable(report.format_json_report)
-    assert report.API_VERSION == "1"
+    assert report.API_VERSION == "2"
     assert report._METRIC_COLUMNS
     assert callable(sprint_range._parse_sprint_label)
     assert callable(sprint_range.format_sprint_range_json)
