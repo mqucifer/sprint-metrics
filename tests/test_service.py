@@ -695,7 +695,7 @@ def test_range_response_metrics_and_keys():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
-        assert body["api_version"] == "3"
+        assert body["api_version"] == "4"
         assert set(body["sprints"].keys()) == {"2024-01", "2024-02"}
         assert body["sprints"]["2024-01"]["throughput"] == 1
         assert body["sprints"]["2024-01"]["cycle_time_days"] == 4
@@ -1486,7 +1486,7 @@ def test_trend_cycle_time_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "3"
+        assert body["api_version"] == "4"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-02", "value": 3}
         assert body["values"][1] == {"sprint": "2024-03", "value": None}
@@ -1512,7 +1512,7 @@ def test_trend_empty_db_all_zeros():
             f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-03"
         )
         assert status == 200
-        assert body["api_version"] == "3"
+        assert body["api_version"] == "4"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": None}
         assert body["values"][1] == {"sprint": "2024-02", "value": None}
@@ -1629,7 +1629,7 @@ def test_trend_first_attempt_rate_two_sprints():
             f"&start=2024-01&end=2024-02"
         )
         assert status == 200
-        assert body["api_version"] == "3"
+        assert body["api_version"] == "4"
         assert len(body["values"]) == 2
         assert body["values"][0]["sprint"] == "2024-01"
         assert body["values"][0]["value"] == 100
@@ -4352,6 +4352,36 @@ def test_trend_refuses_the_escalation_measures(metric):
         conn.close()
 
 
+@requires_db
+def test_trend_answers_api_version_4_and_still_refuses_escalation_count():
+    """#778 AC2: a kept-metric /trend answers 200 with api_version "4" and null
+    for an event-free sprint, and escalation_count still answers 400."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        for event in (
+            ("v1", "started", "2024-01-03T10:00:00Z"),
+            ("v1", "finished", "2024-01-05T10:00:00Z"),
+        ):
+            assert _post_events(f"{base}/events", _make_event(*event))[0] == 200
+        status, body = _get_json(f"{base}/trend?metric=throughput&start=2024-01&end=2024-02")
+        assert status == 200
+        assert body["api_version"] == "4"
+        assert body["values"] == [
+            {"sprint": "2024-01", "value": 1},
+            {"sprint": "2024-02", "value": None},
+        ]
+        status, _ = _get_json(f"{base}/trend?metric=escalation_count&start=2024-01&end=2024-02")
+        assert status == 400
+    finally:
+        conn.close()
+
+
 def test_trend_accepts_no_escalation_measure():
     """#776 AC3, AC4: neither escalation name is an accepted trend metric, and the
     /trend endpoint description no longer lists them."""
@@ -4493,7 +4523,7 @@ def test_trend_points_delivered_two_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "3"
+        assert body["api_version"] == "4"
         assert len(body["values"]) == 2
         assert body["values"][0] == {"sprint": "2024-01", "value": 5}
         assert body["values"][1] == {"sprint": "2024-02", "value": 7}
@@ -5262,7 +5292,7 @@ def test_trend_superseded_count_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "3"
+        assert body["api_version"] == "4"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": 1}
         assert body["values"][1] == {"sprint": "2024-02", "value": 1}

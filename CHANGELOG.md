@@ -6,6 +6,8 @@
 
 ### Changed
 
+- The /range and /trend responses carry `api_version` "4", the value that ships with the escalation removals; version "3" is retired. Event intake keeps `api_version` "1"
+
 ### Fixed
 
 ### Removed
