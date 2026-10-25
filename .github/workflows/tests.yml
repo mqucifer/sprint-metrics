@@ -129,13 +129,16 @@ jobs:
             echo "ERROR: Container is running as root (UID 0)"
             exit 1
           fi
-      - name: Build the image at the previous tag
+      - name: Build the image before this change
         run: |
           set -euo pipefail
-          git fetch --tags --quiet origin
-          PREVIOUS_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
-          echo "Previous tag: $PREVIOUS_TAG"
-          git worktree add --detach /tmp/previous "$PREVIOUS_TAG"
+          # The checked-out commit's first parent is the code before this change:
+          # the base branch for a pull request's merge commit, the previous main
+          # for a push. GET /range is compared against that image, not the last
+          # tag, because main can carry unreleased /range changes of its own.
+          git fetch --quiet --depth=2 origin "$GITHUB_SHA"
+          echo "Comparing against $(git rev-parse HEAD^1)"
+          git worktree add --detach /tmp/previous HEAD^1
           docker build -t sprint-metrics-previous /tmp/previous
       - name: Verify the crew's tick against the argument-free image
         run: |
@@ -144,7 +147,7 @@ jobs:
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -c 'CREATE DATABASE previous_tag'
           PREVIOUS_DB="${SPRINT_METRICS_DB%/*}/previous_tag"
           CONTAINER_ID=$(docker run -d -p 8080:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$SPRINT_METRICS_DB" sprint-metrics-smoke)
-          # The previous tag's entry point is the report tool, so start its service directly.
+          # Start the earlier image's service directly: before #771 its entry point was the report tool.
           PREVIOUS_ID=$(docker run -d -p 8081:8080 --add-host=host.docker.internal:host-gateway -e SPRINT_METRICS_DB="$PREVIOUS_DB" --entrypoint python sprint-metrics-previous -c 'import sys; from sprint_metrics.service import run; sys.exit(run())')
           cleanup() {
             docker stop "$CONTAINER_ID" "$PREVIOUS_ID" >/dev/null 2>&1 || true
@@ -186,10 +189,10 @@ jobs:
           echo "$RANGE_BODY" | jq -e '.api_version == "1"' > /dev/null
           echo "OK: api_version is still 1"
           if ! diff <(echo "$PREVIOUS_BODY" | jq -S .) <(echo "$RANGE_BODY" | jq -S .); then
-            echo "ERROR: GET /range differs from the image at the previous tag"
+            echo "ERROR: GET /range differs from the image before this change"
             exit 1
           fi
-          echo "OK: GET /range matches the image at the previous tag field for field"
+          echo "OK: GET /range matches the image before this change field for field"
           SPRINT_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/sprint?label=2024-01")
           if [ "$SPRINT_STATUS" != "410" ]; then
             echo "ERROR: GET /sprint returned $SPRINT_STATUS, expected 410"
