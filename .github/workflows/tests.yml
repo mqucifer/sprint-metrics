@@ -22,6 +22,8 @@ jobs:
           POSTGRES_USER: sprint_metrics
           POSTGRES_PASSWORD: sprint_metrics
           POSTGRES_DB: sprint_metrics
+        ports:
+          - 5432:5432
         options: >-
           --tmpfs /var/lib/postgresql/data
           --tmpfs /var/run/postgresql
@@ -30,7 +32,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      SPRINT_METRICS_DB: postgresql://sprint_metrics:sprint_metrics@postgres:5432/sprint_metrics
+      SPRINT_METRICS_DB: postgresql://sprint_metrics:sprint_metrics@localhost:5432/sprint_metrics
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
