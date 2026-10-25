@@ -208,18 +208,23 @@ def test_get_metrics_returns_410_with_or_without_query_string(path):
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.close()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
-    _post_events(f"{base}/events", _make_event("c1", "started", "2024-01-03T10:00:00Z"))
-    _post_events(f"{base}/events", _make_event("c1", "finished", "2024-01-05T10:00:00Z"))
+    try:
+        for event in (
+            _make_event("c1", "started", "2024-01-03T10:00:00Z"),
+            _make_event("c1", "finished", "2024-01-05T10:00:00Z"),
+        ):
+            assert _post_events(f"{base}/events", event)[0] == 200
 
-    status, body = _get_json(f"{base}{path}")
-    assert status == 410
-    assert status not in (200, 400, 404, 500, 503)
-    assert "endpoint removed" in body["error"]
-    assert "/metrics" in body["error"]
+        status, body = _get_json(f"{base}{path}")
+        assert status == 410
+        assert status not in (200, 400, 404, 500, 503)
+        assert "endpoint removed" in body["error"]
+        assert "/metrics" in body["error"]
+    finally:
+        conn.close()
 
 
 @requires_db
