@@ -199,7 +199,9 @@ def test_rule_released_sections_newest_first_and_dates_ordered():
     """AC2/AC3: released sections run newest-first by version; no date is later
     than the section above it or later than the check day."""
     content = CHANGELOG.read_text()
-    check_day = date(2026, 10, 20)
+    # Judge the mutations on the day of the newest release, so each release
+    # cut on a later day does not itself read as future-dated.
+    check_day = max(s["date"] for s in _parse_released_sections(content))
 
     # The real changelog passes (using today's date so a future release doesn't trigger a spurious violation)
     assert check_released_order_and_dates(content) == []
