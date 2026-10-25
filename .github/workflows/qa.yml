@@ -1,0 +1,27 @@
+# QA's functional tests on every pull request (ADR 0006 in mqucifer/project-print).
+#
+# The tests live in mqucifer/qa-suite, one folder per project, where only QA
+# writes; its reusable workflow builds this pull request as this project's CI
+# does and runs them. Until qa-suite has a folder for this project, it passes
+# and says so. The check is `qa-suite / qa`: making it required is the Sponsor's
+# step, since branch protection needs admin. A test the Developer thinks is
+# wrong is disputed, not edited.
+
+name: qa
+
+on:
+  pull_request:
+  # A merge queue waits for every required check on the queued combination.
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  # Keep this job's id: it is half of the required check's name.
+  qa-suite:
+    uses: mqucifer/qa-suite/.github/workflows/qa.yml@feat/1-reusable-workflow
+    with:
+      project: ${{ github.event.repository.name }}
+      # The proof only (qa-suite#1): the suite at the same unmerged branch.
+      suite-ref: feat/1-reusable-workflow
