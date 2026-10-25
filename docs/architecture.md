@@ -133,13 +133,13 @@ C4Component
   `ghcr.io/mqucifer/sprint-metrics:X.Y.Z` (plus `X.Y` and `latest`); see
   ADR 0002 and 0003 in [docs/decisions](decisions/).
 - **`_docs_gen.py` is a dev tool.** It keeps the marked sections of
-  `docs/metrics.md`, `docs/cards.md`, `docs/formats.md`, `docs/usage.md`,
-  `docs/thresholds.md`, `docs/scrape.md`, and `docs/service.md` in step with
-  the code; it takes no part in any runtime mode.
+  `docs/metrics.md`, `docs/thresholds.md`, and `docs/service.md` in step with
+  the code, and rewrites the four JSON Schema files in `schemas/`; it takes
+  no part in any runtime mode.
 - **GET /trend is built but unused today.** Comparing sprints across a range
   is what this project is for, so the endpoint is to be made good, not
   retired.
 
 User-facing documentation lives in [README](../README.md) and
-[docs/](cards.md); decisions that apply to every Goal live in
+[docs/](metrics.md); decisions that apply to every Goal live in
 [docs/decisions/](decisions/README.md).
