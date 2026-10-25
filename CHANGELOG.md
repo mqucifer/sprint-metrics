@@ -10,6 +10,8 @@
 
 ### Removed
 
+- The escalation measures from GET /range: no sprint entry, `prior` or `delta` carries `escalation_rate_percent` or `escalation_count`, and the published range schema (`schemas/sprint-range.json`) no longer requires or describes them
+
 ## [3.0.0] - 2026-10-25
 
 ### Added

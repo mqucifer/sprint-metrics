@@ -54,7 +54,6 @@ def test_sprint_range_schema_rejects_sprints_as_array():
                 "throughput": 1,
                 "wip_violations": 0,
                 "blocked_aging_days": 0,
-                "escalation_rate_percent": 0,
                 "first_attempt_rate_percent": 100,
                 "top_failure_causes": {},
                 "flags": {},
@@ -123,11 +122,9 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
                 "throughput": None,
                 "wip_violations": None,
                 "blocked_aging_days": None,
-                "escalation_rate_percent": None,
                 "points_delivered": None,
                 "first_attempt_numerator": None,
                 "first_attempt_denominator": None,
-                "escalation_count": None,
                 "superseded_count": None,
                 "superseded_points": None,
                 "first_attempt_rate_percent": None,
@@ -180,8 +177,6 @@ def _range_entry(**extra):
         "points_delivered": 10,
         "wip_violations": 0,
         "blocked_aging_days": 0,
-        "escalation_rate_percent": 0,
-        "escalation_count": 0,
         "first_attempt_rate_percent": 100,
         "first_attempt_numerator": 3,
         "first_attempt_denominator": 3,
@@ -244,3 +239,13 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
         },
     }
     jsonschema.validate(response, SPRINT_RANGE_SCHEMA)
+
+
+def test_sprint_range_schema_names_no_escalation_measure():
+    """#774 AC4: no required list or property anywhere in the range schema names
+    escalation_rate_percent or escalation_count."""
+    import json
+
+    text = json.dumps(SPRINT_RANGE_SCHEMA)
+    assert "escalation_rate_percent" not in text
+    assert "escalation_count" not in text

@@ -8,11 +8,9 @@ METRIC_KEYS = [
     "throughput",
     "wip_violations",
     "blocked_aging_days",
-    "escalation_rate_percent",
     "points_delivered",
     "first_attempt_numerator",
     "first_attempt_denominator",
-    "escalation_count",
     "superseded_count",
     "superseded_points",
 ]
