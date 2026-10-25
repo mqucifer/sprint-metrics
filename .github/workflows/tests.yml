@@ -139,11 +139,19 @@ jobs:
             exit 1
           fi
           echo "OK: POST /events returned 200"
-          SPRINT_BODY=$(curl -sf http://localhost:8080/sprint?label=2024-01)
-          echo "$SPRINT_BODY"
-          echo "$SPRINT_BODY" | grep -q '"api_version"'
+          SPRINT_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/sprint?label=2024-01")
+          if [ "$SPRINT_STATUS" != "410" ]; then
+            echo "ERROR: GET /sprint returned $SPRINT_STATUS, expected 410"
+            docker stop "$CONTAINER_ID" 2>/dev/null || true
+            docker rm "$CONTAINER_ID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "OK: GET /sprint returned 410 (endpoint removed)"
+          RANGE_BODY=$(curl -sf "http://localhost:8080/range?start=2024-01&end=2024-01")
+          echo "$RANGE_BODY"
+          echo "$RANGE_BODY" | grep -q '"api_version"'
           echo "OK: response contains api_version"
-          echo "$SPRINT_BODY" | grep -q '"throughput"'
+          echo "$RANGE_BODY" | grep -q '"throughput"'
           echo "OK: response contains throughput"
           echo "Verifying service without SPRINT_METRICS_DB exits non-zero"
           START=$SECONDS
