@@ -1,5 +1,4 @@
-"""Tests for the --schema flag on the sprint-metrics command."""
-
+"""Tests for the JSON schema documents the service publishes."""
 
 import jsonschema
 import pytest

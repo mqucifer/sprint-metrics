@@ -1,9 +1,6 @@
-"""Tests for threshold flagging in the markdown report."""
+"""Tests for the built-in threshold flags the service reports."""
 
-
-import pytest
-
-from sprint_metrics.thresholds import _load_thresholds, calculate_flags
+from sprint_metrics.thresholds import calculate_flags
 
 
 def test_calculate_flags_cycle_time_breached_lead_time_not():
@@ -14,12 +11,6 @@ def test_calculate_flags_cycle_time_breached_lead_time_not():
     flags = calculate_flags(cards)
     assert flags["cycle_time_days"] is True
     assert flags["lead_time_days"] is False
-
-
-def test_load_thresholds_raises_type_error_for_list():
-    """AC2: a JSON list instead of an object raises TypeError mentioning thresholds."""
-    with pytest.raises(TypeError, match="thresholds"):
-        _load_thresholds('["cycle_time_days", 3]')
 
 
 def test_calculate_flags_first_attempt_rate_below_threshold():

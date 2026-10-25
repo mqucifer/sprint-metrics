@@ -1,6 +1,5 @@
 """Tests that the package-level imports resolve to the owning modules."""
 
-
 def test_package_imports_resolve_to_owning_modules():
     """AC1: importing the public API from sprint_metrics yields the same objects
     as importing them from their owning modules."""
@@ -13,7 +12,6 @@ def test_package_imports_resolve_to_owning_modules():
         calculate_throughput,
         calculate_wip_violations,
         format_json_report,
-        format_performance_table,
     )
     from sprint_metrics.card import Card as CardFromCard
     from sprint_metrics.metrics import (
@@ -34,9 +32,6 @@ def test_package_imports_resolve_to_owning_modules():
     from sprint_metrics.report import (
         format_json_report as json_from_report,
     )
-    from sprint_metrics.report import (
-        format_performance_table as table_from_report,
-    )
     from sprint_metrics.thresholds import calculate_flags as flags_from_thresholds
 
     assert Card is CardFromCard
@@ -46,7 +41,6 @@ def test_package_imports_resolve_to_owning_modules():
     assert calculate_blocked_aging is blocked_from_metrics
     assert calculate_escalation_rate is escalation_from_metrics
     assert calculate_flags is flags_from_thresholds
-    assert format_performance_table is table_from_report
     assert format_json_report is json_from_report
 
 
@@ -90,3 +84,30 @@ def test_scrape_only_loaders_and_formatter_are_gone():
     assert not hasattr(report, "format_prometheus_report")
     assert not hasattr(sprint_metrics, "format_prometheus_report")
     assert callable(report.format_json_report)
+
+
+def test_cli_formatters_and_loaders_are_gone():
+    """AC1, AC2: the table and markdown formatters, the CLI-only sprint-range
+    parser and sprints-file loader, and the thresholds-file loader are gone,
+    while the names the service and the docs consume survive."""
+    import sprint_metrics
+    from sprint_metrics import report, sprint_range, thresholds
+
+    for name in ("format_performance_table", "format_markdown_report"):
+        assert not hasattr(report, name)
+    for name in (
+        "format_sprint_range_table",
+        "format_sprint_range_markdown",
+        "_parse_sprint_range",
+        "_load_sprints",
+    ):
+        assert not hasattr(sprint_range, name)
+    assert not hasattr(thresholds, "_load_thresholds")
+    assert not hasattr(sprint_metrics, "format_performance_table")
+    assert callable(report.format_json_report)
+    assert report.API_VERSION == "1"
+    assert report._METRIC_COLUMNS
+    assert callable(sprint_range._parse_sprint_label)
+    assert callable(sprint_range.format_sprint_range_json)
+    assert thresholds.DEFAULT_THRESHOLDS
+    assert callable(thresholds.calculate_flags)

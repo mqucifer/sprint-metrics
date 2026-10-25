@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import date
 
-from sprint_metrics.card import Card, _as_cards
+from sprint_metrics.card import Card
 from sprint_metrics.metrics import (
     calculate_blocked_aging,
     calculate_cycle_time_and_lead_time,
@@ -22,8 +22,8 @@ from sprint_metrics.metrics import (
     calculate_top_failure_causes,
     calculate_wip_violations,
 )
-from sprint_metrics.report import API_VERSION, _summary_section
-from sprint_metrics.thresholds import _flag, calculate_flags
+from sprint_metrics.report import API_VERSION
+from sprint_metrics.thresholds import calculate_flags
 
 
 def _parse_sprint_label(label: str) -> tuple[int, int]:
@@ -45,93 +45,6 @@ def _parse_sprint_label(label: str) -> tuple[int, int]:
     if month < 1 or month > 12:
         raise ValueError(f"sprint label {label!r} has an invalid month: {month}")
     return year, month
-
-
-def _parse_sprint_range(value: str) -> list[str]:
-    """Parse an inclusive ``START..END`` sprint range into a list of ``YYYY-MM`` labels.
-
-    Raises ``ValueError`` if the value is not in ``START..END`` form or if either
-    endpoint is not a valid ``YYYY-MM`` label.
-    """
-    parts = value.split("..")
-    if len(parts) != 2:
-        raise ValueError(f"sprint range {value!r} is not in START..END format")
-    start_label, end_label = parts
-    start_year, start_month = _parse_sprint_label(start_label)
-    end_year, end_month = _parse_sprint_label(end_label)
-    if (start_year, start_month) > (end_year, end_month):
-        raise ValueError(f"sprint range start {start_label!r} is after end {end_label!r}")
-    labels: list[str] = []
-    year, month = start_year, start_month
-    while (year, month) <= (end_year, end_month):
-        labels.append(f"{year:04d}-{month:02d}")
-        month += 1
-        if month > 12:
-            month = 1
-            year += 1
-    return labels
-
-
-def _load_sprints(source: str) -> dict[str, list[Card]]:
-    """Parse a JSON object keyed by sprint label, each value a list of cards.
-
-    Raises ``TypeError`` if the top-level JSON value is not an object.
-    """
-    raw = json.loads(source) if source.strip() else {}
-    if not isinstance(raw, dict):
-        raise TypeError("expected a JSON object keyed by sprint label")
-    sprints: dict[str, list[Card]] = {}
-    for label, cards in raw.items():
-        if not isinstance(cards, list):
-            raise TypeError(f"sprint {label!r} must map to a JSON list of cards")
-        sprints[str(label)] = _as_cards(cards)
-    return sprints
-
-
-def format_sprint_range_table(
-    sprints: Mapping[str, list[Card]],
-    labels: Sequence[str],
-    wip_limits: Mapping[str, int] | None = None,
-    escalations: int = 0,
-    as_of: date | None = None,
-    thresholds: Mapping[str, float] | None = None,
-) -> str:
-    """Render one table row per sprint label in ``labels``, in order.
-
-    Each row uses the same WIP limits, escalation count, and reference date.
-
-    A ⚠️ marker is appended to any metric cell whose value breaches its
-    effective threshold (the caller's ``thresholds`` merged over
-    ``DEFAULT_THRESHOLDS``; strict greater-than for most metrics, strict
-    less-than for throughput; meeting the threshold exactly is not a breach).
-    """
-    rows = [
-        "| Sprint | Cycle time | Lead time | Throughput | Superseded | WIP violations | Blocked aging | Escalation rate | First-attempt | Top failure causes |",
-        "|--------|------------|-----------|------------|------------|----------------|---------------|-----------------|---------------|------------------|",
-    ]
-    for label in labels:
-        cards = sprints[label]
-        cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
-        throughput = calculate_throughput(cards)
-        sup_count = calculate_superseded_count(cards)
-        sup_points = calculate_superseded_points(cards)
-        sup_cell = f"{sup_count} ({sup_points} pts)" if sup_count > 0 else "0"
-        wip_violations = calculate_wip_violations(cards, wip_limits)
-        blocked_aging = calculate_blocked_aging(cards, as_of)
-        escalation_rate = calculate_escalation_rate(cards, escalations)
-        first_attempt_rate = calculate_first_attempt_rate(cards)
-        failure_breakdown = calculate_failure_breakdown(cards)
-        rows.append(
-            f"| {label} | {cycle_time} days{_flag(cycle_time, thresholds, 'cycle_time_days')} "
-            f"| {lead_time} days{_flag(lead_time, thresholds, 'lead_time_days')} "
-            f"| {throughput}{_flag(throughput, thresholds, 'throughput')} "
-            f"| {sup_cell} "
-            f"| {wip_violations}{_flag(wip_violations, thresholds, 'wip_violations')} "
-            f"| {blocked_aging} days{_flag(blocked_aging, thresholds, 'blocked_aging_days')} "
-            f"| {escalation_rate}%{_flag(escalation_rate, thresholds, 'escalation_rate_percent')} "
-            f"| {first_attempt_rate}% | {_format_top_causes(failure_breakdown)} |"
-        )
-    return "\n".join(rows)
 
 
 def format_sprint_range_json(
@@ -165,9 +78,6 @@ def format_sprint_range_json(
     from sprint_metrics.metrics import (
         calculate_first_attempt_counts,
         calculate_points_delivered,
-        calculate_superseded_breakdown,
-        calculate_superseded_count,
-        calculate_superseded_points,
     )
 
     def _esc_for(label: str) -> int:
@@ -298,81 +208,3 @@ def format_sprint_range_json(
         "sprints": per_sprint,
     }
     return json.dumps(report)
-
-
-def format_sprint_range_markdown(
-    sprints: Mapping[str, list[Card]],
-    labels: Sequence[str],
-    wip_limits: Mapping[str, int] | None = None,
-    escalations: int = 0,
-    as_of: date | None = None,
-) -> str:
-    """Render one markdown section per sprint label in ``labels``, in order.
-
-    The report opens with the same heading and report date as the single-sprint
-    markdown report, then carries one ``## Sprint <label>`` section per sprint so
-    a Scrum Master can paste a comparable record of past sprints into the
-    standup issue. Each section shows the sprint's delivery metrics when it has
-    cards, or ``No performance data available`` when it does not, and always
-    closes with the summary of work in each state.
-    """
-    report_date = as_of if as_of is not None else date.today()
-    lines: list[str] = [
-        "# Crew Performance Report",
-        "",
-        f"Report date: {report_date.isoformat()}",
-    ]
-    for label in labels:
-        cards = sprints[label]
-        lines.append("")
-        lines.append(f"## Sprint {label}")
-        lines.append("")
-        if not cards:
-            lines.append("No performance data available")
-        else:
-            cycle_time, lead_time = calculate_cycle_time_and_lead_time(cards)
-            lines.append(f"- **Cycle time**: {cycle_time} days")
-            lines.append(f"- **Lead time**: {lead_time} days")
-            lines.append(f"- **Throughput**: {calculate_throughput(cards)} cards")
-            sup_count = calculate_superseded_count(cards)
-            sup_points = calculate_superseded_points(cards)
-            lines.append(f"- **Superseded stories**: {sup_count} ({sup_points} pts)")
-            if sup_count > 0:
-                breakdown = calculate_superseded_breakdown(cards)
-                parts = []
-                if breakdown["sponsor"] > 0:
-                    parts.append(f"{breakdown['sponsor']} by sponsor request")
-                if breakdown["story_problem"] > 0:
-                    parts.append(f"{breakdown['story_problem']} after story problem")
-                lines.append(f"  - {', '.join(parts)}")
-            lines.append(f"- **WIP violations**: {calculate_wip_violations(cards, wip_limits)}")
-            lines.append(f"- **Blocked aging**: {calculate_blocked_aging(cards, as_of)} days")
-            lines.append(f"- **Escalation rate**: {calculate_escalation_rate(cards, escalations)}%")
-            lines.append(f"- **First-attempt rate**: {calculate_first_attempt_rate(cards)}%")
-            top_causes = calculate_top_failure_causes(cards)
-            if top_causes:
-                parts = []
-                for cls, role, count in top_causes:
-                    if role:
-                        parts.append(f"{cls} ({role}) ({count})")
-                    else:
-                        parts.append(f"{cls} ({count})")
-                lines.append(f"- **Top failure causes**: {', '.join(parts)}")
-            else:
-                lines.append("- **Top failure causes**: \u2014")
-        lines.append("")
-        lines.extend(_summary_section(cards))
-    return "\n".join(lines)
-
-
-def _format_top_causes(breakdown: list[tuple[str, str, int]]) -> str:
-    """Format the top 3 failure causes as 'class (role) (N), …' or '—' when empty."""
-    if not breakdown:
-        return "\u2014"
-    parts = []
-    for cls, role, count in breakdown[:3]:
-        if role:
-            parts.append(f"{cls} ({role}) ({count})")
-        else:
-            parts.append(f"{cls} ({count})")
-    return ", ".join(parts)

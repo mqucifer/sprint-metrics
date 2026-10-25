@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Mapping
 from datetime import date
 
@@ -75,67 +74,3 @@ def calculate_flags(
         "escalation_rate_percent": escalation_rate > effective["escalation_rate_percent"],
         "first_attempt_rate_percent": first_attempt_rate < effective["first_attempt_rate_percent"],
     }
-
-
-def _load_thresholds(source: str) -> dict[str, float]:
-    """Parse the JSON object of metric thresholds the command was given."""
-    raw = json.loads(source) if source.strip() else {}
-    if not isinstance(raw, Mapping):
-        raise TypeError("expected a JSON object of thresholds, keyed by metric name")
-    return {str(key): float(value) for key, value in raw.items()}
-
-
-def _is_breached(value: int, threshold: float, metric: str) -> bool:
-    """Whether value breaches threshold for the given metric.
-
-    For metrics where lower is worse (throughput, first_attempt_rate_percent)
-    the breach is when value is strictly less than the threshold; for all
-    others it is when value is strictly greater.
-    """
-    if metric in ("throughput", "first_attempt_rate_percent"):
-        return value < threshold
-    return value > threshold
-
-
-def _threshold_display(metric: str, threshold: float) -> str:
-    """The threshold value formatted with its display unit."""
-    if metric in ("cycle_time_days", "lead_time_days", "blocked_aging_days"):
-        return f"{threshold:g} days"
-    if metric in ("escalation_rate_percent", "first_attempt_rate_percent"):
-        return f"{threshold:g}%"
-    return f"{threshold:g}"
-
-
-def _threshold_context(value: int, thresholds: Mapping[str, float] | None, metric: str) -> str:
-    """Return ' ⚠️ (threshold: <value><unit>)' when the metric breaches, else ''.
-
-    The effective threshold is the caller's ``thresholds`` merged over
-    ``DEFAULT_THRESHOLDS``: a metric the caller did not specify falls back to
-    its default. Same breach logic as _flag, but includes the threshold value
-    with the metric's display unit in a parenthetical after the marker. Used
-    in markdown output where the reader benefits from seeing the target.
-    """
-    effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
-    threshold = effective.get(metric)
-    if threshold is None:
-        return ""
-    if not _is_breached(value, threshold, metric):
-        return ""
-    return f" \u26a0\ufe0f (threshold: {_threshold_display(metric, threshold)})"
-
-
-def _flag(value: int, thresholds: Mapping[str, float] | None, metric: str) -> str:
-    """Return ' ⚠️' when the metric breaches its threshold, else ''.
-
-    The effective threshold is the caller's ``thresholds`` merged over
-    ``DEFAULT_THRESHOLDS``: a metric the caller did not specify falls back to
-    its default. For metrics where lower is worse (throughput,
-    first_attempt_rate_percent) the flag fires when value is strictly less
-    than the threshold; for all others it fires when value is strictly
-    greater.
-    """
-    effective = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
-    threshold = effective.get(metric)
-    if threshold is None:
-        return ""
-    return " \u26a0\ufe0f" if _is_breached(value, threshold, metric) else ""
