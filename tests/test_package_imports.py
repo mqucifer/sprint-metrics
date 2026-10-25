@@ -14,7 +14,6 @@ def test_package_imports_resolve_to_owning_modules():
         calculate_wip_violations,
         format_json_report,
         format_performance_table,
-        format_prometheus_report,
     )
     from sprint_metrics.card import Card as CardFromCard
     from sprint_metrics.metrics import (
@@ -38,9 +37,6 @@ def test_package_imports_resolve_to_owning_modules():
     from sprint_metrics.report import (
         format_performance_table as table_from_report,
     )
-    from sprint_metrics.report import (
-        format_prometheus_report as prom_from_report,
-    )
     from sprint_metrics.thresholds import calculate_flags as flags_from_thresholds
 
     assert Card is CardFromCard
@@ -52,7 +48,6 @@ def test_package_imports_resolve_to_owning_modules():
     assert calculate_flags is flags_from_thresholds
     assert format_performance_table is table_from_report
     assert format_json_report is json_from_report
-    assert format_prometheus_report is prom_from_report
 
 
 def test_crew_performance_module_is_gone():
@@ -74,3 +69,24 @@ def test_cli_module_is_gone():
         import sprint_metrics.cli  # noqa: F401
     assert not hasattr(sprint_metrics, "main")
     assert "main" not in sprint_metrics.__all__
+
+
+def test_scrape_server_module_is_gone():
+    """AC1: importing sprint_metrics.serve raises ModuleNotFoundError."""
+    import pytest
+
+    with pytest.raises(ModuleNotFoundError):
+        import sprint_metrics.serve  # noqa: F401
+
+
+def test_scrape_only_loaders_and_formatter_are_gone():
+    """AC2: the cards-file loader, the WIP-limits-file loader and the Prometheus
+    formatter are gone, while format_json_report survives for the service."""
+    import sprint_metrics
+    from sprint_metrics import card, metrics, report
+
+    assert not hasattr(card, "_load_cards")
+    assert not hasattr(metrics, "_load_wip_limits")
+    assert not hasattr(report, "format_prometheus_report")
+    assert not hasattr(sprint_metrics, "format_prometheus_report")
+    assert callable(report.format_json_report)

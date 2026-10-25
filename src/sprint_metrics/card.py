@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -138,14 +137,6 @@ def parse_card(raw: Mapping[str, object]) -> Card:
 def _as_cards(cards: Iterable[Card | Mapping[str, object]]) -> list[Card]:
     """Accept cards either already parsed or still in their serialised form."""
     return [card if isinstance(card, Card) else parse_card(card) for card in cards]
-
-
-def _load_cards(source: str) -> list[Card]:
-    """Parse the JSON list of cards the command was given."""
-    raw = json.loads(source) if source.strip() else []
-    if not isinstance(raw, list):
-        raise TypeError("expected a JSON list of cards")
-    return _as_cards(raw)
 
 
 def _parse_datetime(value: object, field: str) -> datetime | None:

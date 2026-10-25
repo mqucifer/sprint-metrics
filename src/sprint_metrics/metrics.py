@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date
 
@@ -140,14 +139,6 @@ def calculate_escalation_rate(
     if completed == 0:
         return 0
     return round(escalations / completed * 100)
-
-
-def _load_wip_limits(source: str) -> dict[str, int]:
-    """Parse the JSON object of state names to WIP limits the command was given."""
-    raw = json.loads(source) if source.strip() else {}
-    if not isinstance(raw, Mapping):
-        raise TypeError("expected a JSON object of WIP limits, keyed by state")
-    return {str(state): int(limit) for state, limit in raw.items()}
 
 
 ALL_METRICS: frozenset[str] = frozenset(

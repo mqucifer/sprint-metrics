@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from sprint_metrics.card import Card, _as_cards, _load_cards, _parse_date, parse_card
+from sprint_metrics.card import Card, _as_cards, _parse_date, parse_card
 
 
 def test_card_properties():
@@ -30,35 +30,6 @@ def test_card_completed_without_start():
     assert card.is_completed is True
     assert card.cycle_time == 0
     assert card.lead_time == 6
-
-
-def test_load_cards_invalid_date():
-    """AC2: _load_cards raises ValueError containing the bad date string."""
-    with pytest.raises(ValueError, match="not-a-date"):
-        _load_cards('[{"created": "not-a-date"}]')
-
-
-def test_load_cards_valid():
-    """_load_cards parses a valid JSON list of cards."""
-    cards = _load_cards(
-        '[{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]'
-    )
-    assert len(cards) == 1
-    assert cards[0].created == date(2024, 1, 1)
-    assert cards[0].started == date(2024, 1, 3)
-    assert cards[0].completed == date(2024, 1, 7)
-    assert cards[0].is_completed is True
-
-
-def test_load_cards_empty_string():
-    """An empty string produces an empty list."""
-    assert _load_cards("") == []
-
-
-def test_load_cards_not_a_list():
-    """A JSON object instead of a list raises TypeError."""
-    with pytest.raises(TypeError, match="JSON list"):
-        _load_cards('{"created": "2024-01-01"}')
 
 
 def test_parse_card_missing_created():

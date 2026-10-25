@@ -13,7 +13,6 @@ from sprint_metrics.metrics import (
 from sprint_metrics.report import (
     format_json_report,
     format_performance_table,
-    format_prometheus_report,
 )
 from sprint_metrics.thresholds import calculate_flags
 
@@ -29,5 +28,4 @@ __all__ = [
     "calculate_wip_violations",
     "format_json_report",
     "format_performance_table",
-    "format_prometheus_report",
 ]
