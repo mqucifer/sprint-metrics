@@ -5,7 +5,6 @@ from pathlib import Path
 
 from sprint_metrics.schema import (
     EVENT_INTAKE_SCHEMA,
-    SINGLE_SPRINT_SCHEMA,
     SPRINT_RANGE_SCHEMA,
     TREND_SCHEMA,
 )
@@ -13,7 +12,6 @@ from sprint_metrics.schema import (
 SCHEMAS_DIR = Path(__file__).resolve().parent.parent / "schemas"
 
 SCHEMA_FILES = [
-    (SINGLE_SPRINT_SCHEMA, "single-sprint.json"),
     (SPRINT_RANGE_SCHEMA, "sprint-range.json"),
     (EVENT_INTAKE_SCHEMA, "event-intake.json"),
     (TREND_SCHEMA, "trend.json"),

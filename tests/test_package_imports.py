@@ -11,7 +11,6 @@ def test_package_imports_resolve_to_owning_modules():
         calculate_flags,
         calculate_throughput,
         calculate_wip_violations,
-        format_json_report,
     )
     from sprint_metrics.card import Card as CardFromCard
     from sprint_metrics.metrics import (
@@ -29,9 +28,6 @@ def test_package_imports_resolve_to_owning_modules():
     from sprint_metrics.metrics import (
         calculate_wip_violations as wip_from_metrics,
     )
-    from sprint_metrics.report import (
-        format_json_report as json_from_report,
-    )
     from sprint_metrics.thresholds import calculate_flags as flags_from_thresholds
 
     assert Card is CardFromCard
@@ -41,7 +37,6 @@ def test_package_imports_resolve_to_owning_modules():
     assert calculate_blocked_aging is blocked_from_metrics
     assert calculate_escalation_rate is escalation_from_metrics
     assert calculate_flags is flags_from_thresholds
-    assert format_json_report is json_from_report
 
 
 def test_crew_performance_module_is_gone():
@@ -75,7 +70,7 @@ def test_scrape_server_module_is_gone():
 
 def test_scrape_only_loaders_and_formatter_are_gone():
     """AC2: the cards-file loader, the WIP-limits-file loader and the Prometheus
-    formatter are gone, while format_json_report survives for the service."""
+    formatter are gone."""
     import sprint_metrics
     from sprint_metrics import card, metrics, report
 
@@ -83,7 +78,6 @@ def test_scrape_only_loaders_and_formatter_are_gone():
     assert not hasattr(metrics, "_load_wip_limits")
     assert not hasattr(report, "format_prometheus_report")
     assert not hasattr(sprint_metrics, "format_prometheus_report")
-    assert callable(report.format_json_report)
 
 
 def test_cli_formatters_and_loaders_are_gone():
@@ -104,10 +98,26 @@ def test_cli_formatters_and_loaders_are_gone():
         assert not hasattr(sprint_range, name)
     assert not hasattr(thresholds, "_load_thresholds")
     assert not hasattr(sprint_metrics, "format_performance_table")
-    assert callable(report.format_json_report)
     assert report.API_VERSION == "2"
     assert report._METRIC_COLUMNS
     assert callable(sprint_range._parse_sprint_label)
     assert callable(sprint_range.format_sprint_range_json)
     assert thresholds.DEFAULT_THRESHOLDS
     assert callable(thresholds.calculate_flags)
+
+
+def test_single_sprint_formatter_and_schema_are_gone():
+    """#765 AC1: the single-sprint JSON formatter and its response schema are
+    gone, the package no longer re-exports the formatter, and the range and
+    trend code the service uses still imports."""
+    import pytest
+
+    import sprint_metrics
+    from sprint_metrics import report, schema
+
+    with pytest.raises(ImportError):
+        from sprint_metrics import format_json_report  # noqa: F401
+    assert not hasattr(report, "format_json_report")
+    assert "format_json_report" not in sprint_metrics.__all__
+    assert not hasattr(schema, "SINGLE_SPRINT_SCHEMA")
+    assert schema.SPRINT_RANGE_SCHEMA and schema.TREND_SCHEMA and schema.EVENT_INTAKE_SCHEMA

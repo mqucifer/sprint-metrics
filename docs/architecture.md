@@ -68,9 +68,9 @@ C4Component
         Component(card, "card.py", "Card dataclass and card parsing.")
         Component(metrics, "metrics.py", "Pure metric calculations: cycle time, lead time, throughput, WIP violations, blocked aging, escalation rate, first-attempt rate, failure breakdown and its top causes, cost metrics.")
         Component(thresholds, "thresholds.py", "Built-in default thresholds and flag calculation.")
-        Component(report, "report.py", "API_VERSION, the single-sprint JSON formatter, and the metric display names.")
+        Component(report, "report.py", "API_VERSION and the metric display names.")
         Component(sr, "sprint_range.py", "Sprint-label parsing and the per-sprint range JSON.")
-        Component(schema, "schema.py", "JSON Schema documents for the API: single-sprint, sprint-range, trend, and event intake.")
+        Component(schema, "schema.py", "JSON Schema documents for the API: sprint-range, trend, and event intake.")
         Component(store, "store.py", "Postgres persistence: the sprint_metrics schema DDL, idempotent event upsert, and the query functions. All SQL lives here.")
         Component(otel, "telemetry.py", "OpenTelemetry setup: tracer, logger, OTLP exporter, from OTEL_* environment variables.")
         Component(docgen, "_docs_gen.py", "Dev tool, not part of the public API: regenerates the marked (generated) sections of the docs/ files from the code.")
@@ -116,7 +116,7 @@ C4Component
   ADR 0002 and 0003 in [docs/decisions](decisions/).
 - **`_docs_gen.py` is a dev tool.** It keeps the marked sections of
   `docs/metrics.md`, `docs/thresholds.md`, and `docs/service.md` in step with
-  the code, and rewrites the four JSON Schema files in `schemas/`; it takes
+  the code, and rewrites the three JSON Schema files in `schemas/`; it takes
   no part in the running service.
 - **GET /trend is built but unused today.** Comparing sprints across a range
   is what this project is for, so the endpoint is to be made good, not

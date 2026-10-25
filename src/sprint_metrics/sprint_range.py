@@ -60,10 +60,8 @@ def format_sprint_range_json(
     """Render one JSON object per sprint label in ``labels``, keyed by label, wrapped
     in a top-level object with ``api_version`` and a ``sprints`` key.
 
-    Each value under ``sprints`` carries the same six metrics the table and
-    single-sprint JSON reports produce, plus a flags object computed with the same
-    thresholds as the single-sprint report, so a script can process the range without
-    parsing a table. Each sprint also includes a ``prior`` key holding the six metrics
+    Each value under ``sprints`` carries the sprint's metrics plus a flags object
+    computed against the built-in default thresholds. Each sprint also includes a ``prior`` key holding the six metrics
     computed from the immediately preceding sprint label in the range, or
     ``null`` for the first sprint, and a ``delta`` key holding the signed change
     in each metric from the prior period to the current period, or ``null`` for

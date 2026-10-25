@@ -10,7 +10,6 @@ from sprint_metrics.metrics import ALL_METRICS
 from sprint_metrics.report import _METRIC_COLUMNS
 from sprint_metrics.schema import (
     EVENT_INTAKE_SCHEMA,
-    SINGLE_SPRINT_SCHEMA,
     SPRINT_RANGE_SCHEMA,
     TREND_SCHEMA,
 )
@@ -207,10 +206,9 @@ def main() -> int:
 
 
 def _generate_schema_files(output_dir: Path) -> None:
-    """Write the four JSON Schema files to the given directory."""
+    """Write the three JSON Schema files to the given directory."""
     output_dir.mkdir(parents=True, exist_ok=True)
     schemas = {
-        "single-sprint.json": SINGLE_SPRINT_SCHEMA,
         "sprint-range.json": SPRINT_RANGE_SCHEMA,
         "trend.json": TREND_SCHEMA,
         "event-intake.json": EVENT_INTAKE_SCHEMA,

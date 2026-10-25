@@ -3,7 +3,7 @@
 import jsonschema
 import pytest
 
-from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA
+from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, SPRINT_RANGE_SCHEMA
 
 
 def test_trend_schema_top_level_structure():
@@ -108,99 +108,6 @@ def test_event_intake_missing_card_created_rejected():
     with pytest.raises(jsonschema.ValidationError) as exc_info:
         jsonschema.validate(event, EVENT_INTAKE_SCHEMA)
     assert "created" in str(exc_info.value)
-
-
-def test_single_sprint_schema_accepts_valid_non_null_object():
-    """AC1: A complete non-null JSON object validates against SINGLE_SPRINT_SCHEMA."""
-
-    valid = {
-        "api_version": "1",
-        "throughput": 1,
-        "cycle_time_days": 4,
-        "lead_time_days": 6,
-        "wip_violations": 0,
-        "blocked_aging_days": 0,
-        "escalation_rate_percent": 0,
-        "points_delivered": 0,
-        "first_attempt_numerator": 1,
-        "first_attempt_denominator": 1,
-        "escalation_count": 0,
-        "first_attempt_rate_percent": 100,
-        "failure_breakdown": [{"class": "parse", "role": "Developer", "count": 2}],
-        "top_failure_causes": [{"class": "parse", "count": 2}],
-        "superseded_count": 0,
-        "superseded_points": 0,
-        "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
-        "cycle_time_minutes": 686,
-        "lead_time_minutes": 3686,
-        "flags": {
-            "cycle_time_days": False,
-            "lead_time_days": False,
-            "throughput": False,
-            "wip_violations": False,
-            "blocked_aging_days": False,
-            "escalation_rate_percent": False,
-            "first_attempt_rate_percent": False,
-        },
-    }
-    jsonschema.validate(valid, SINGLE_SPRINT_SCHEMA)
-
-
-def test_single_sprint_schema_rejects_string_failure_breakdown():
-    """AC2: failure_breakdown as a string (not an array) fails validation."""
-
-    invalid = {
-        "api_version": "1",
-        "throughput": 1,
-        "cycle_time_days": 4,
-        "lead_time_days": 6,
-        "wip_violations": 0,
-        "blocked_aging_days": 0,
-        "escalation_rate_percent": 0,
-        "first_attempt_rate_percent": 100,
-        "failure_breakdown": "not_an_array",
-        "top_failure_causes": {},
-        "flags": {
-            "cycle_time_days": False,
-            "lead_time_days": False,
-            "throughput": False,
-            "wip_violations": False,
-            "blocked_aging_days": False,
-            "escalation_rate_percent": False,
-            "first_attempt_rate_percent": False,
-        },
-    }
-    with pytest.raises(jsonschema.ValidationError) as exc_info:
-        jsonschema.validate(invalid, SINGLE_SPRINT_SCHEMA)
-    assert "failure_breakdown" in str(exc_info.value)
-
-
-def test_single_sprint_schema_accepts_all_null_metrics():
-    """AC3: Every metric property accepts null alongside its non-null type."""
-
-    all_null = {
-        "api_version": "1",
-        "throughput": None,
-        "cycle_time_days": None,
-        "lead_time_days": None,
-        "wip_violations": None,
-        "blocked_aging_days": None,
-        "escalation_rate_percent": None,
-        "points_delivered": None,
-        "first_attempt_numerator": None,
-        "first_attempt_denominator": None,
-        "escalation_count": None,
-        "first_attempt_rate_percent": None,
-        "failure_breakdown": None,
-        "top_failure_causes": None,
-        "superseded_count": None,
-        "superseded_points": None,
-        "superseded_breakdown": None,
-        "cycle_time_minutes": None,
-        "lead_time_minutes": None,
-        "flags": None,
-    }
-    jsonschema.validate(all_null, SINGLE_SPRINT_SCHEMA)
 
 
 def test_sprint_range_schema_accepts_all_null_sprint_entry():

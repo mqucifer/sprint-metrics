@@ -10,7 +10,6 @@ from sprint_metrics.metrics import (
     calculate_throughput,
     calculate_wip_violations,
 )
-from sprint_metrics.report import format_json_report
 from sprint_metrics.thresholds import calculate_flags
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     "calculate_flags",
     "calculate_throughput",
     "calculate_wip_violations",
-    "format_json_report",
 ]
