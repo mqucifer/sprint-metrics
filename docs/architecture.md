@@ -1,6 +1,6 @@
 # Architecture
 
-The system as the code has it (2026-10-25, 3.0.0), drawn as a C4 diagram in
+The system as the code has it (2026-10-25, 4.0.0), drawn as a C4 diagram in
 Mermaid: context, containers, and components. This file is the repository's
 diagram of record: each Goal's target diagram is drawn from it, and becomes it
 once the Goal is done (ADR 0036). Update it when the code changes.
