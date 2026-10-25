@@ -34,11 +34,14 @@ env:
   # no Todo column — which is why the built-in "Item added to project" could
   # never have worked here.
   ARRIVAL_STATUS: Needs Refinement
+  GOAL_STATUS: Inbox (Goals)
   FINISHED_STATUS: Done
   # mqucifer-crew's Client ID — public, unlike the private key, and readable
   # from `gh api /apps/mqucifer-crew`. create-github-app-token deprecated
   # `app-id` in favour of it.
   BOARD_APP_CLIENT_ID: Iv23lirf0uh3m9vl1vjm
+  # The crew's App, as the author of the issues it opens.
+  CREW_BOT: mqucifer-crew[bot]
 
 jobs:
   move:
@@ -84,7 +87,7 @@ jobs:
 
           # A missing option is fatal rather than skipped. A silent no-op here
           # is exactly the failure mode the built-in workflows have.
-          for name in "$ARRIVAL_STATUS" "$FINISHED_STATUS"; do
+          for name in "$ARRIVAL_STATUS" "$GOAL_STATUS" "$FINISHED_STATUS"; do
             if ! jq -e --arg n "$name" \
                  '.data.organization.projectV2.field.options[] | select(.name==$n)' \
                  board.json > /dev/null; then
@@ -99,6 +102,8 @@ jobs:
             echo "field_id=$field_id"
             echo "arrival_option=$(jq -r --arg n "$ARRIVAL_STATUS" \
               '.data.organization.projectV2.field.options[]|select(.name==$n).id' board.json)"
+            echo "goal_option=$(jq -r --arg n "$GOAL_STATUS" \
+              '.data.organization.projectV2.field.options[]|select(.name==$n).id' board.json)"
             echo "finished_option=$(jq -r --arg n "$FINISHED_STATUS" \
               '.data.organization.projectV2.field.options[]|select(.name==$n).id' board.json)"
           } >> "$GITHUB_OUTPUT"
@@ -109,14 +114,13 @@ jobs:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           NODE_ID: ${{ github.event.issue.node_id || github.event.pull_request.node_id }}
           ACTION: ${{ github.event.action }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          IS_GOAL: ${{ contains(github.event.issue.labels.*.name, 'goal') }}
         run: |
           set -euo pipefail
-          # An item the board does not hold is not an error: the crew works
-          # repositories whose issues are not all tracked.
-          # $number is deliberately not a GraphQL variable: the project is
-          # picked out of the result by jq below, and GraphQL refuses a
-          # declared variable the query does not use. Passing it here failed
-          # every pull_request run while the sweep, which does use it, passed.
+          # An item the board does not hold is not an error: the crew keeps
+          # some of its own issues off it, such as its onboarding and design
+          # records. An issue a person opens is added below.
           # $number is deliberately not a GraphQL variable: the project is
           # picked out of the result by jq below, and GraphQL refuses a
           # declared variable the query does not use. Passing it here failed
@@ -146,11 +150,29 @@ jobs:
               '[.data.node.projectItems.nodes[]? | select(.project.number==$n)][0] // empty')
 
           if [ -z "$item" ]; then
-            echo "not on the board — nothing to do"
-            exit 0
+            # A person's issue, such as a Goal or a bug, reached the board only
+            # if the board's built-in auto-add covered its repository, and it
+            # covered sprint-metrics but not crew-presentation (crew-presentation
+            # bug 98 sat off the board, unseen). The crew adds its own issues.
+            if [ "$ACTION" != opened ] || [ "$AUTHOR" = "$CREW_BOT" ]; then
+              echo "not on the board — nothing to do"
+              exit 0
+            fi
+            item_id=$(gh api graphql -f query='
+              mutation($project:ID!, $content:ID!) {
+                addProjectV2ItemById(input:{projectId:$project, contentId:$content}) {
+                  item { id }
+                }
+              }' \
+              -F project="${{ steps.board.outputs.project_id }}" \
+              -F content="$NODE_ID" \
+              --jq '.data.addProjectV2ItemById.item.id')
+            echo "added $NODE_ID to the board"
+            current=""
+          else
+            item_id=$(jq -r '.id' <<<"$item")
+            current=$(jq -r '.fieldValueByName.name // ""' <<<"$item")
           fi
-          item_id=$(jq -r '.id' <<<"$item")
-          current=$(jq -r '.fieldValueByName.name // ""' <<<"$item")
 
           case "$ACTION" in
             opened)
@@ -163,7 +185,14 @@ jobs:
                 echo "already in '$current' — leaving it"
                 exit 0
               fi
-              option='${{ steps.board.outputs.arrival_option }}' ;;
+              # A Goal waits for the crew in Inbox (Goals), the only column
+              # the Product Owner reads Goals from. One filed parked, with
+              # needs:human and no `goal` label, arrives as any other issue.
+              if [ "$IS_GOAL" = true ]; then
+                option='${{ steps.board.outputs.goal_option }}'
+              else
+                option='${{ steps.board.outputs.arrival_option }}'
+              fi ;;
             closed) option='${{ steps.board.outputs.finished_option }}' ;;
             *)      echo "no rule for '$ACTION'"; exit 0 ;;
           esac

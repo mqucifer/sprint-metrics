@@ -1,36 +1,32 @@
 """Tests for the docs/ files structure and content."""
 
-import json
 import re
-from datetime import date
 from pathlib import Path
 
 import pytest
 
 from sprint_metrics._docs_gen import _generate_section_content
-from sprint_metrics.cli import main
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 
 DOCS_DIR = Path(__file__).parent.parent / "docs"
 README = Path(__file__).parent.parent / "README.md"
 
 ALL_DOCS = [
-    "usage.md",
-    "cards.md",
     "metrics.md",
-    "formats.md",
     "thresholds.md",
-    "scrape.md",
     "service.md",
 ]
 
+REMOVED_DOCS = [
+    "usage.md",
+    "cards.md",
+    "formats.md",
+    "scrape.md",
+]
+
 MARKER_IDS: dict[str, list[str]] = {
-    "usage.md": ["cli-args"],
-    "cards.md": ["input-format"],
     "metrics.md": ["metrics"],
-    "formats.md": ["formats", "trend-format"],
     "thresholds.md": ["thresholds"],
-    "scrape.md": ["scrape"],
     "service.md": ["service"],
 }
 
@@ -46,8 +42,9 @@ def _extract_marked_section(text: str, marker_id: str) -> str:
 
 
 def test_all_docs_files_exist_with_markers():
-    """AC1: each of the six docs/ files is non-empty, contains a BEGIN/END marker
-    pair with a matching identifier, and the content between the markers is non-empty."""
+    """AC1: the three surviving docs/ files are non-empty, contain a BEGIN/END marker
+    pair with a matching identifier, and the content between the markers is non-empty;
+    the four removed pages are absent."""
     for filename in ALL_DOCS:
         path = DOCS_DIR / filename
         assert path.exists(), f"docs/{filename} does not exist"
@@ -60,41 +57,9 @@ def test_all_docs_files_exist_with_markers():
             assert end in text, f"docs/{filename} missing {end}"
             section = _extract_marked_section(text, marker_id)
             assert section.strip(), f"docs/{filename} marked section {marker_id!r} is empty"
-
-
-def test_usage_md_lists_all_arguments():
-    """AC2: docs/usage.md marked section lists every positional and optional argument
-    from the cli argparse parser with its help text, and outside the markers there is
-    a paragraph explaining how to invoke the command."""
-    path = DOCS_DIR / "usage.md"
-    text = path.read_text()
-    section = _extract_marked_section(text, "cli-args")
-
-    expected_args = [
-        "cards",
-        "--wip-limits",
-        "--escalations",
-        "--sprint-date",
-        "--sprint-range",
-        "--prior-sprint",
-        "--prior",
-        "--markdown",
-        "--prometheus",
-        "--json",
-        "--schema",
-        "--scrape",
-        "--port",
-        "--thresholds",
-        "--metrics",
-    ]
-    for arg in expected_args:
-        assert arg in section, f"docs/usage.md marked section missing argument {arg!r}"
-
-    before = text.split("BEGIN:cli-args")[0]
-    assert before.strip(), "docs/usage.md has no hand-written content before BEGIN marker"
-    assert "sprint-metrics" in before, (
-        "hand-written content does not explain how to invoke the command"
-    )
+    for filename in REMOVED_DOCS:
+        path = DOCS_DIR / filename
+        assert not path.exists(), f"docs/{filename} should have been removed"
 
 
 def test_thresholds_md_contains_all_defaults_with_direction():
@@ -162,67 +127,6 @@ def test_drift_check_detects_empty_section(tmp_path):
         _check_no_drift(doc_path, "metrics", "test_doc.md")
 
 
-def _extract_json_block(text: str) -> list[dict]:
-    """Extract the first ```json code block from markdown text."""
-    match = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
-    assert match is not None, "no ```json code block found"
-    return json.loads(match.group(1))
-
-
-def test_worked_example_output_matches_doc(tmp_path, capsys):
-    """AC1: the worked-example JSON in docs/cards.md, run through cli.main(),
-    produces a Current row byte-identical to the expected table output."""
-    cards_text = (DOCS_DIR / "cards.md").read_text()
-    cards = _extract_json_block(cards_text)
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path)])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
-    assert current_row == "| Current | 5 days | 7 days | 1 | 0 | 0 | 4 days | 0% | 100% | \u2014 |"
-
-
-def test_input_format_example_produces_valid_table(tmp_path, capsys):
-    """AC2: the input-format example in docs/cards.md, run through cli.main() with
-    default output, exits 0 and stdout contains a table header with 'Sprint' and
-    a data row with 'Current'."""
-    cards_text = (DOCS_DIR / "cards.md").read_text()
-    cards = _extract_json_block(cards_text)
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path)])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    header_rows = [line for line in captured.out.splitlines() if line.startswith("| Sprint")]
-    assert header_rows, "no header row starting with '| Sprint' found"
-    assert "Sprint" in header_rows[0]
-    data_rows = [line for line in captured.out.splitlines() if "Current" in line]
-    assert data_rows, "no data row containing 'Current' found"
-
-
-def test_completed_card_excluded_from_throughput_and_cycle_time(tmp_path, capsys):
-    """AC3: the worked-example input has one completed card and one in-flight card.
-    The throughput cell reads '1' (not 2) and the cycle time cell reads '5 days',
-    confirming the in-flight card is excluded."""
-    cards_text = (DOCS_DIR / "cards.md").read_text()
-    cards = _extract_json_block(cards_text)
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path)])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
-    cells = [c.strip() for c in current_row.split("|") if c.strip()]
-    assert cells[3] == "1", (
-        f"throughput cell is {cells[3]!r}, expected '1' (in-flight card excluded)"
-    )
-    assert cells[1] == "5 days", f"cycle time cell is {cells[1]!r}, expected '5 days'"
-
-
 def _readme_section(text: str, heading: str) -> str:
     """Return the body of a level-2 section in README.md, up to the next level-2 heading or EOF."""
     pattern = rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)"
@@ -240,105 +144,6 @@ def test_installation_states_python_312_and_no_third_party_packages():
     assert "psycopg" in section
     assert "opentelemetry-sdk" in section
     assert "opentelemetry-exporter-otlp" in section
-
-
-def test_input_format_shows_json_array_with_complete_and_partial_cards():
-    """AC3 (migrated): docs/cards.md's marked section shows a JSON array of card objects
-    with at least one complete example card and at least one card showing an omitted key."""
-    text = (DOCS_DIR / "cards.md").read_text()
-    section = _extract_marked_section(text, "input-format")
-    assert '"created"' in section
-    assert '"started"' in section
-    assert '"completed"' in section
-    assert '"blocked_since"' in section
-    assert section.count('"created"') >= 2
-
-
-def test_input_format_states_empty_array_is_valid():
-    """AC3 (migrated): docs/cards.md states that an empty JSON array ([]) is valid input
-    and produces a report in which every metric is zero."""
-    text = (DOCS_DIR / "cards.md").read_text()
-    before = text.split("BEGIN:input-format")[0]
-    assert "[]" in before
-    assert "zero" in before
-
-
-def test_worked_example_incomplete_card_excluded_from_metrics(tmp_path, capsys):
-    """AC (migrated): the docs/cards.md example has an incomplete card that does not
-    appear in the throughput count."""
-    cards_text = (DOCS_DIR / "cards.md").read_text()
-    cards = _extract_json_block(cards_text)
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path)])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    incomplete = [c for c in cards if not c.get("completed")]
-    assert incomplete, "no card without completed field in docs/cards.md example"
-    completed_count = sum(1 for c in cards if c.get("completed"))
-    total_count = len(cards)
-    assert completed_count < total_count
-    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
-    cells = [c.strip() for c in current_row.split("|") if c.strip()]
-    assert cells[3] == str(completed_count)
-
-
-def test_worked_example_shows_input_json_and_produces_table(tmp_path, capsys):
-    """AC (migrated): the docs/cards.md worked-example JSON, run through cli.main(),
-    produces a table with a header row and a Current data row."""
-    cards_text = (DOCS_DIR / "cards.md").read_text()
-    cards = _extract_json_block(cards_text)
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path)])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    assert "| Sprint |" in captured.out
-    assert "| Current |" in captured.out
-
-
-def test_worked_example_throughput_and_cycle_time_are_correct(tmp_path, capsys):
-    """AC (migrated): the throughput value equals the count of completed cards in the
-    docs/cards.md example, and cycle time equals the average over completed cards."""
-    cards_text = (DOCS_DIR / "cards.md").read_text()
-    cards = _extract_json_block(cards_text)
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path)])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    completed_cards = [c for c in cards if c.get("completed") and c.get("started")]
-    expected_throughput = len([c for c in cards if c.get("completed")])
-    current_row = [line for line in captured.out.splitlines() if line.startswith("| Current |")][0]
-    cells = [c.strip() for c in current_row.split("|") if c.strip()]
-    assert cells[3] == str(expected_throughput)
-    cycle_times = [
-        (date.fromisoformat(c["completed"]) - date.fromisoformat(c["started"])).days
-        for c in completed_cards
-    ]
-    if cycle_times:
-        expected_cycle = round(sum(cycle_times) / len(cycle_times))
-        assert cells[1] == f"{expected_cycle} days"
-
-
-def test_cards_md_json_example_includes_failures_field():
-    """AC6: the JSON example in docs/cards.md's input-format section contains a card
-    carrying both an 'attempts' value and a 'failures' array whose entries are objects
-    each holding 'failure_class' and 'failure_role'."""
-    text = (DOCS_DIR / "cards.md").read_text()
-    cards = _extract_json_block(text)
-    cards_with_failures = [c for c in cards if "attempts" in c and "failures" in c]
-    assert cards_with_failures, (
-        "no card in docs/cards.md example carries both 'attempts' and 'failures'"
-    )
-    card = cards_with_failures[0]
-    assert isinstance(card["failures"], list)
-    for entry in card["failures"]:
-        assert "failure_class" in entry
-        assert "failure_role" in entry
 
 
 def test_metrics_md_first_attempt_rate_states_review_qa_semantics():
@@ -471,17 +276,6 @@ def test_readme_trimmed_has_no_removed_sections():
     assert "## Worked example" not in text
 
 
-def test_input_format_states_created_only_required_and_top_level_array():
-    """AC3 (migrated): docs/cards.md states that created is the only required field per card
-    and that the top-level JSON value must be an array."""
-    text = (DOCS_DIR / "cards.md").read_text()
-    before = text.split("BEGIN:input-format")[0]
-    assert "only" in before.lower()
-    assert "created" in before
-    assert "required" in before
-    assert "array" in before.lower()
-
-
 def test_readme_has_changelog_pointer_outside_code_blocks():
     """README.md has a line outside fenced code blocks that names CHANGELOG.md
     and tells the reader where to find version-to-version change history."""
@@ -528,335 +322,6 @@ def test_readme_unchanged_by_docs_gen():
 
     after = readme_path.read_bytes()
     assert before == after, "_docs_gen modified README.md"
-
-
-def _extract_formats_cards() -> list[dict]:
-    """Extract the input cards JSON from the Worked examples section of docs/formats.md."""
-    text = (DOCS_DIR / "formats.md").read_text()
-    section_start = text.index("## Worked examples")
-    section_text = text[section_start:]
-    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
-    assert match is not None, "no input cards JSON block found in docs/formats.md Worked examples"
-    return json.loads(match.group(1))
-
-
-def test_formats_worked_example_table_output(tmp_path, capsys):
-    """AC2: the cards JSON in docs/formats.md, run with default table output,
-    exits 0 and stdout contains the header row and a Current data row whose
-    cells match the values shown in the doc's fenced block."""
-    cards = _extract_formats_cards()
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path)])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    lines = captured.out.splitlines()
-    assert any(line.startswith("| Sprint |") for line in lines), (
-        "no header row starting with '| Sprint |'"
-    )
-    current_rows = [line for line in lines if line.startswith("| Current |")]
-    assert len(current_rows) == 1, f"expected exactly one Current row, got {len(current_rows)}"
-    cells = [c.strip() for c in current_rows[0].split("|") if c.strip()]
-    assert cells == [
-        "Current",
-        "4 days",
-        "6 days",
-        "1",
-        "0",
-        "0",
-        "0 days",
-        "0%",
-        "100%",
-        "1\u00d7 VERIFY (Review)",
-    ]
-
-
-def test_formats_worked_example_json_output(tmp_path, capsys):
-    """AC3: the same cards JSON with --json exits 0 and stdout parses as a JSON
-    object with the expected top-level keys and values matching the doc's sample."""
-    cards = _extract_formats_cards()
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path), "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    data = json.loads(captured.out)
-    assert data["api_version"] == "1"
-    assert data["cycle_time_days"] == 4
-    assert data["lead_time_days"] == 6
-    assert data["throughput"] == 1
-    assert data["wip_violations"] == 0
-    assert data["blocked_aging_days"] == 0
-    assert data["escalation_rate_percent"] == 0
-    assert data["first_attempt_rate_percent"] == 100
-    assert data["failure_breakdown"] == [{"class": "VERIFY", "role": "Review", "count": 1}]
-    assert data["top_failure_causes"] == [{"class": "VERIFY", "role": "Review", "count": 1}]
-    assert all(v is False for v in data["flags"].values())
-
-
-def test_formats_worked_example_markdown_output(tmp_path, capsys):
-    """AC4: the same cards JSON with --markdown exits 0 and stdout contains the
-    expected structural elements: heading, report date, sprint section,
-    summary section with Completed/In progress/Blocked lines, and the
-    Definitions section's 'Top causes' line stating returns grouped by
-    (failure class, returning role)."""
-    cards = _extract_formats_cards()
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path), "--markdown"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    assert "# Crew Performance Report" in captured.out
-    assert "Report date:" in captured.out
-    assert "## Current Sprint" in captured.out
-    assert "## Crew Performance Summary" in captured.out
-    assert "- **Completed**: 1" in captured.out
-    assert "- **In progress**: 0" in captured.out
-    assert "- **Blocked**: 0" in captured.out
-    assert (
-        "- Top causes: Returns from review or QA, grouped by (failure class, "
-        "returning role), most frequent first" in captured.out
-    )
-
-
-def test_formats_worked_example_prometheus_output(tmp_path, capsys):
-    """AC5: the same cards JSON with --prometheus exits 0 and stdout contains
-    the expected metric lines with numeric values matching the doc's sample."""
-    cards = _extract_formats_cards()
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path), "--prometheus"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    lines = captured.out.splitlines()
-    assert "sprint_cycle_time_days 4" in lines
-    assert "sprint_lead_time_days 6" in lines
-    assert "sprint_throughput_cards 1" in lines
-    assert "sprint_wip_violations 0" in lines
-    assert "sprint_blocked_aging_days 0" in lines
-    assert "sprint_escalation_rate_percent 0" in lines
-    assert "sprint_first_attempt_rate_percent 100" in lines
-    assert 'sprint_failure_count{class="VERIFY",role="Review"} 1' in lines
-
-
-def test_sprint_range_doc_output_matches(tmp_path, capsys):
-    """AC2: the sprints JSON in the --sprint-range section of docs/usage.md, run through
-    cli.main() with --sprint-range 2024-01..2024-02, exits 0 and stdout contains a row
-    for each sprint label whose cells match the doc's fenced table."""
-    text = (DOCS_DIR / "usage.md").read_text()
-    section_start = text.index("## --sprint-range")
-    section_text = text[section_start:]
-    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
-    assert match is not None, "no sprints JSON block found in --sprint-range section"
-    sprints = json.loads(match.group(1))
-    path = tmp_path / "sprints.json"
-    path.write_text(json.dumps(sprints))
-    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    lines = captured.out.splitlines()
-    row_01 = [line for line in lines if line.startswith("| 2024-01 |")][0]
-    row_02 = [line for line in lines if line.startswith("| 2024-02 |")][0]
-    cells_01 = [c.strip() for c in row_01.split("|") if c.strip()]
-    cells_02 = [c.strip() for c in row_02.split("|") if c.strip()]
-    assert cells_01 == [
-        "2024-01",
-        "4 days",
-        "6 days",
-        "1",
-        "0",
-        "0",
-        "0 days",
-        "0%",
-        "100%",
-        "\u2014",
-    ]
-    assert cells_02 == [
-        "2024-02",
-        "4 days",
-        "6 days",
-        "1",
-        "0",
-        "0",
-        "0 days",
-        "0%",
-        "100%",
-        "\u2014",
-    ]
-
-
-def test_sprint_range_doc_error_missing_sprint(tmp_path, capsys):
-    """AC3: a sprints file with data only for 2024-01, run with --sprint-range
-    2024-01..2024-02, exits 2, stderr contains '2024-02', and stdout is empty."""
-    sprints = {
-        "2024-01": [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    }
-    path = tmp_path / "sprints.json"
-    path.write_text(json.dumps(sprints))
-    exit_code = main([str(path), "--sprint-range", "2024-01..2024-02"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 2
-    assert "2024-02" in captured.err
-    assert captured.out == ""
-
-
-def test_prior_sprint_doc_output_matches(tmp_path, capsys):
-    """AC2: the sprints JSON in the --prior-sprint section of docs/usage.md, run through
-    cli.main() with --prior-sprint 2024-01 and --markdown, exits 0 and stdout contains
-    the expected comparison line for cycle time with a trend arrow."""
-    text = (DOCS_DIR / "usage.md").read_text()
-    section_start = text.index("## --prior-sprint")
-    section_text = text[section_start:]
-    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
-    assert match is not None, "no sprints JSON block found in --prior-sprint section"
-    sprints = json.loads(match.group(1))
-    path = tmp_path / "sprints.json"
-    path.write_text(json.dumps(sprints))
-    exit_code = main([str(path), "--prior-sprint", "2024-01", "--markdown"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    assert "- **Cycle time**: 4 days \u2193 (was 6 days, -2)" in captured.out
-
-
-def test_prior_doc_output_matches(tmp_path, capsys):
-    """AC2: the --prior doc example produces the documented table rows."""
-    current = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    prior = [{"created": "2023-12-01", "started": "2023-12-03", "completed": "2023-12-09"}]
-    current_path = tmp_path / "current.json"
-    current_path.write_text(json.dumps(current))
-    prior_path = tmp_path / "prior.json"
-    prior_path.write_text(json.dumps(prior))
-    exit_code = main([str(current_path), "--prior", str(prior_path)])
-    captured = capsys.readouterr()
-    assert exit_code == 0
-    lines = captured.out.splitlines()
-    current_line = next(line for line in lines if line.startswith("| Current |"))
-    prior_line = next(line for line in lines if line.startswith("| Prior |"))
-    delta_line = next(line for line in lines if line.startswith("| Delta |"))
-    assert "4 days" in current_line
-    assert "6 days" in prior_line
-    assert "-2 days" in delta_line
-
-
-def test_prior_doc_error_invalid_json(tmp_path, capsys):
-    """AC3: invalid JSON in the --prior file exits 2 with sprint-metrics on stderr."""
-    current = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    current_path = tmp_path / "current.json"
-    current_path.write_text(json.dumps(current))
-    bad_prior = tmp_path / "bad_prior.json"
-    bad_prior.write_text("not valid json")
-    exit_code = main([str(current_path), "--prior", str(bad_prior)])
-    captured = capsys.readouterr()
-    assert exit_code == 2
-    assert "sprint-metrics" in captured.err
-    assert captured.out == ""
-
-
-def test_formats_metrics_json_filtered_output(tmp_path, capsys):
-    """AC2: --metrics 'throughput,cycle_time_days' with --json shows only requested keys."""
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path), "--json", "--metrics", "throughput,cycle_time_days"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    data = json.loads(captured.out)
-    assert data["throughput"] == 1
-    assert data["cycle_time_days"] == 4
-    assert "api_version" in data
-    assert "flags" in data
-    assert "top_failure_causes" in data
-    assert "lead_time_days" not in data
-    assert "wip_violations" not in data
-    assert "blocked_aging_days" not in data
-    assert "escalation_rate_percent" not in data
-
-
-def test_formats_metrics_unknown_metric_error(tmp_path, capsys):
-    """AC3: --metrics with an unknown name exits 2, stderr contains the name, stdout empty."""
-    cards = [{"created": "2024-01-01", "started": "2024-01-03", "completed": "2024-01-07"}]
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path), "--json", "--metrics", "throughput,bogus_metric"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 2
-    assert "bogus_metric" in captured.err
-    assert captured.out == ""
-
-
-def test_scrape_doc_shows_command_startup_and_response_formats():
-    """AC1: docs/scrape.md hand-written section (after END:scrape) shows a command
-    with --scrape and --port, the startup message containing 'serving metrics at
-    http://127.0.0.1:', a fenced /metrics block in Prometheus text format, and a
-    fenced /json block with api_version and metric keys."""
-    doc_path = Path(__file__).parent.parent / "docs" / "scrape.md"
-    content = doc_path.read_text()
-
-    end_marker = "END:scrape"
-    assert end_marker in content
-    section = content.split(end_marker, 1)[1]
-
-    # Command line with --scrape and --port
-    assert "--scrape" in section
-    assert "--port" in section
-
-    # Startup message printed to stdout
-    assert "serving metrics at http://127.0.0.1:" in section
-
-    # Fenced block of /metrics in Prometheus text format
-    assert "sprint_cycle_time_days" in section
-    assert "sprint_throughput_cards" in section
-
-    # Fenced block of /json with api_version and metric keys
-    assert "api_version" in section
-    assert "cycle_time_days" in section
-
-
-def test_formats_empty_sprint_json_output(tmp_path, capsys):
-    """AC2: the empty-sprint cards input in docs/formats.md, run with --json,
-    exits 0 and stdout parses as JSON with all metrics zero and the expected
-    flag values for an empty sprint."""
-    text = (DOCS_DIR / "formats.md").read_text()
-    section_start = text.index("## Empty sprint")
-    section_text = text[section_start:]
-    match = re.search(r"```json\n(.*?)\n```", section_text, re.DOTALL)
-    assert match is not None, "no cards JSON block found in docs/formats.md Empty sprint section"
-    cards = json.loads(match.group(1))
-    assert cards == [], "expected empty array in docs/formats.md empty-sprint example"
-    path = tmp_path / "cards.json"
-    path.write_text(json.dumps(cards))
-    exit_code = main([str(path), "--json"])
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    data = json.loads(captured.out)
-    assert data["api_version"] == "1"
-    assert data["cycle_time_days"] == 0
-    assert data["lead_time_days"] == 0
-    assert data["throughput"] == 0
-    assert data["wip_violations"] == 0
-    assert data["blocked_aging_days"] == 0
-    assert data["escalation_rate_percent"] == 0
-    assert data["first_attempt_rate_percent"] == 0
-    assert data["failure_breakdown"] == []
-    assert data["top_failure_causes"] == []
-    flags = data["flags"]
-    assert flags["throughput"] is True
-    assert flags["first_attempt_rate_percent"] is True
-    assert flags["cycle_time_days"] is False
-    assert flags["lead_time_days"] is False
-    assert flags["wip_violations"] is False
-    assert flags["blocked_aging_days"] is False
-    assert flags["escalation_rate_percent"] is False
 
 
 def test_service_md_has_handwritten_intro():
@@ -1236,19 +701,6 @@ def test_service_md_resend_paragraph_starts_at_column_zero():
     assert line[0] == "R", f"re-send paragraph first line starts with {line[0]!r}, expected 'R'"
 
 
-def test_thresholds_md_parenthetical_names_threshold_in_effect():
-    """AC5: the '--thresholds (custom thresholds)' section of docs/thresholds.md
-    states that the parenthetical names the threshold in effect for that metric —
-    the built-in default when no --thresholds file is given, and a configured
-    override when one is."""
-    path = DOCS_DIR / "thresholds.md"
-    text = path.read_text()
-    section = text.split("## --thresholds")[1]
-    assert "threshold in effect for that metric" in section
-    assert "built-in default when no --thresholds" in section
-    assert "configured override when one is" in section
-
-
 def test_thresholds_md_default_section_covers_table_marker():
     """AC4: the opening 'Default thresholds' section of docs/thresholds.md states the
     built-in thresholds determine when a warning marker appears in table output, which
@@ -1326,8 +778,8 @@ def test_readme_versioning_states_released_heading_date_format():
 
 
 def test_readme_versioning_states_content_not_checked_by_tests():
-    """AC5: the Versioning section states a section's content is not checked by
-    tests, and entries are checked by review, not by CI."""
+    """AC5: the Versioning section states a section's content is not checked by tests,
+    and entries are checked by review, not by CI."""
     section = _versioning_section()
     assert "not checked by tests" in section
     assert "review, not by CI" in section
@@ -1483,40 +935,6 @@ def test_service_md_trend_row_lists_cost_metrics():
         "reasoning_output_percent",
     ):
         assert name in section, f"missing cost metric {name!r} in /trend row"
-
-
-def test_formats_md_names_story_costs_and_cost():
-    """AC4: docs/formats.md's top-level field list names story_costs and cost as
-    optional response properties, and the generated schema block shows them."""
-    text = (DOCS_DIR / "formats.md").read_text()
-    # Top-level field list names them
-    before = text.split("BEGIN:formats")[0]
-    assert "story_costs" in before
-    assert "cost" in before
-    # Generated schema block shows them
-    section = _extract_marked_section(text, "formats")
-    assert '"story_costs"' in section
-    assert '"cost"' in section
-
-
-def test_cards_and_usage_md_have_no_cost_content():
-    """AC5: docs/cards.md and docs/usage.md are unchanged — cost is service-only,
-    so the CLI's documented card input takes no cost field and the CLI documents
-    no cost measure."""
-    cards_text = (DOCS_DIR / "cards.md").read_text()
-    usage_text = (DOCS_DIR / "usage.md").read_text()
-    for cost_name in (
-        "model_minutes",
-        "input_tokens",
-        "output_tokens",
-        "cached_input_percent",
-        "reasoning_output_percent",
-        "model_seconds",
-        "cached_input_tokens",
-        "reasoning_output_tokens",
-    ):
-        assert cost_name not in cards_text, f"docs/cards.md mentions {cost_name!r}"
-        assert cost_name not in usage_text, f"docs/usage.md mentions {cost_name!r}"
 
 
 def test_metrics_md_cost_names_match_service_metrics():

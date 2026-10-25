@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import argparse
-import inspect
 import json
 import sys
 from pathlib import Path
 
-from sprint_metrics.cli import build_parser
 from sprint_metrics.metrics import ALL_METRICS
 from sprint_metrics.report import _METRIC_COLUMNS
 from sprint_metrics.schema import (
@@ -17,7 +14,6 @@ from sprint_metrics.schema import (
     SPRINT_RANGE_SCHEMA,
     TREND_SCHEMA,
 )
-from sprint_metrics.serve import serve_metrics
 from sprint_metrics.service import SERVICE_ENDPOINTS
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 
@@ -113,75 +109,6 @@ def _generate_metrics_content() -> str:
     return "\n".join(lines) + "\n"
 
 
-def _generate_cli_args_content() -> str:
-    """Generate the text for the 'cli-args' marked section."""
-    parser = build_parser()
-    lines: list[str] = []
-    for action in parser._actions:
-        if action.dest == "help":
-            continue
-        names = ", ".join(action.option_strings) if action.option_strings else action.dest
-        help_text = action.help or ""
-        default = action.default
-        if default is None or default is argparse.SUPPRESS:
-            default_str = ""
-        elif isinstance(action.type, argparse.FileType):
-            default_str = " (default: <_io.TextIOWrapper name='<stdin>' mode='r' encoding='utf-8'>)"
-        else:
-            default_str = f" (default: {default!r})"
-        lines.append(f"- `{names}`: {help_text}{default_str}")
-    return "\n".join(lines) + "\n"
-
-
-def _generate_input_format_content() -> str:
-    """Generate the text for the 'input-format' marked section."""
-    lines = [
-        "| Field | Required | Type | Description |",
-        "|---|---|---|---|",
-        "| `created` | Yes | ISO-8601 date | When the card was created |",
-        "| `started` | No | ISO-8601 date | When work started on the card |",
-        "| `completed` | No | ISO-8601 date | When the card was completed |",
-        "| `created_at` | No | ISO-8601 datetime | When the card was created (sub-day precision) |",
-        "| `started_at` | No | ISO-8601 datetime | When work started on the card (sub-day precision) |",
-        "| `completed_at` | No | ISO-8601 datetime | When the card was completed (sub-day precision) |",
-        "| `blocked_since` | No | ISO-8601 date | When the card was blocked |",
-        "| `attempts` | No | integer | Number of hands to review or QA (default: 1) |",
-        "| `failures` | No | array of objects | One entry per return by review or QA; each entry has `failure_class` and `failure_role` |",
-        "| `failure_class` | No | string | Classification of the failure |",
-        "| `failure_role` | No | string | Role responsible for the failure |",
-        "",
-        "```json",
-        json.dumps(
-            [
-                {
-                    "created": "2024-01-03",
-                    "started": "2024-01-05",
-                    "completed": "2024-01-10",
-                    "blocked_since": "2024-01-06",
-                },
-                {
-                    "created": "2024-01-04",
-                    "attempts": 2,
-                    "failures": [
-                        {
-                            "failure_class": "VERIFY",
-                            "failure_role": "Review",
-                        }
-                    ],
-                },
-            ],
-            indent=2,
-        ),
-        "```",
-    ]
-    return "\n".join(lines) + "\n"
-
-
-def _generate_formats_content() -> str:
-    """Generate the text for the 'formats' marked section."""
-    return "```json\n" + json.dumps(SINGLE_SPRINT_SCHEMA, indent=2) + "\n```\n"
-
-
 def _generate_thresholds_content() -> str:
     """Generate the text for the 'thresholds' marked section."""
     lines = [
@@ -197,16 +124,16 @@ def _generate_thresholds_content() -> str:
     return "\n".join(lines) + "\n"
 
 
-def _generate_scrape_content() -> str:
-    """Generate the text for the 'scrape' marked section."""
-    doc = inspect.cleandoc(serve_metrics.__doc__ or "")
+def _generate_service_content() -> str:
+    """Generate the text for the 'service' marked section."""
     lines = [
-        doc,
+        "Long-lived HTTP service that accepts board events and answers sprint, range, and trend queries from Postgres.",
         "",
-        "Endpoints:",
-        "- `/metrics` — Prometheus text exposition format",
-        "- `/json` — JSON API response",
+        "| Method | Path | Description |",
+        "|---|---|---|",
     ]
+    for method, path, description in SERVICE_ENDPOINTS:
+        lines.append(f"| {method} | {path} | {description} |")
     return "\n".join(lines) + "\n"
 
 
@@ -214,13 +141,8 @@ def _generate_section_content(marker_id: str) -> str:
     """Generate the marked section text for the given marker ID."""
     generators = {
         "metrics": _generate_metrics_content,
-        "cli-args": _generate_cli_args_content,
-        "input-format": _generate_input_format_content,
-        "formats": _generate_formats_content,
         "thresholds": _generate_thresholds_content,
-        "scrape": _generate_scrape_content,
         "service": _generate_service_content,
-        "trend-format": _generate_trend_format_content,
     }
     gen = generators.get(marker_id)
     if gen is None:
@@ -272,12 +194,8 @@ def generate_all() -> None:
     repo_root = Path(__file__).parent.parent.parent
     _generate_schema_files(repo_root / "schemas")
     for relative_path in (
-        "docs/usage.md",
-        "docs/cards.md",
         "docs/metrics.md",
-        "docs/formats.md",
         "docs/thresholds.md",
-        "docs/scrape.md",
         "docs/service.md",
     ):
         path = repo_root / relative_path
@@ -294,59 +212,6 @@ def main() -> int:
     except SystemExit as e:
         return e.code if isinstance(e.code, int) else 1
     return 0
-
-
-def _generate_service_content() -> str:
-    """Generate the text for the 'service' marked section."""
-    lines = [
-        "Long-lived HTTP service that accepts board events and answers sprint, range, and trend queries from Postgres.",
-        "",
-        "| Method | Path | Description |",
-        "|---|---|---|",
-    ]
-    for method, path, description in SERVICE_ENDPOINTS:
-        lines.append(f"| {method} | {path} | {description} |")
-    return "\n".join(lines) + "\n"
-
-
-def _generate_trend_format_content() -> str:
-    """Generate the text for the 'trend-format' marked section in docs/formats.md."""
-    example = {
-        "api_version": "1",
-        "metric": "throughput",
-        "start": "2024-01",
-        "end": "2024-04",
-        "values": [
-            {"sprint": "2024-01", "value": 2},
-            {"sprint": "2024-02", "value": 1},
-            {"sprint": "2024-03", "value": None},
-            {"sprint": "2024-04", "value": 3},
-        ],
-    }
-    lines = [
-        "The /trend response is a JSON object with the following top-level fields:",
-        "",
-        '- `api_version` \u2014 string, currently `"1"`',
-        "- `metric` \u2014 the metric name requested",
-        "- `start` \u2014 the start sprint label (YYYY-MM)",
-        "- `end` \u2014 the end sprint label (YYYY-MM)",
-        "- `values` \u2014 an ordered array of objects, one per sprint in the inclusive range, each with:",
-        "  - `sprint` \u2014 the sprint label (YYYY-MM)",
-        "  - `value` \u2014 the metric's integer value for that sprint; null when no events are stored",
-        "",
-        "### Worked example",
-        "",
-        "Request: `GET /trend?metric=throughput&start=2024-01&end=2024-04`",
-        "",
-        "Response:",
-        "",
-        "```json",
-        json.dumps(example, indent=2),
-        "```",
-        "",
-        "Sprint 2024-03 has no stored events and appears with value null rather than being omitted.",
-    ]
-    return "\n".join(lines) + "\n"
 
 
 def _generate_schema_files(output_dir: Path) -> None:

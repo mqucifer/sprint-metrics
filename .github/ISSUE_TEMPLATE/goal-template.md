@@ -13,6 +13,12 @@ assignees: ''
   what's out. Don't list the measures, fields or features: the Product
   Owner chooses what serves the reader, and the stories carry the
   specifics. The crew proposes the epics; you approve them.
+
+  Filed from this template, the Goal is parked: it has `needs:human` and
+  not `goal`, so the crew doesn't work it yet. When it's ready, add the
+  `goal` label. That's the one step: the next tick moves it to
+  Inbox (Goals), clears `needs:human` and proposes its epics
+  (mqucifer/crew#829).
 -->
 
 ## Who reads it
