@@ -9,7 +9,7 @@ The service reads its database connection string from the `SPRINT_METRICS_DB` en
 ```
 docker run -d -p 8080:8080 \
   -e SPRINT_METRICS_DB=postgresql://sprint:secret@db.internal:5432/sprint_metrics \
-  ghcr.io/mqucifer/sprint-metrics:1.0.0 --service
+  ghcr.io/mqucifer/sprint-metrics:1.0.0
 ```
 
 The service creates and migrates its schema at startup. It listens on port 8080 inside the container.

@@ -1,8 +1,7 @@
 # Metrics
 
-The table below lists every metric the tool computes, its display name, a
-description of what it measures, and the Prometheus metric name used in
-scrape mode.
+The table below lists the metrics the service's responses carry, their display
+names, and a description of what each measures.
 
 BEGIN:metrics
 | Display name | Metric key | Description | Prometheus name |

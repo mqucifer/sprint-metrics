@@ -236,16 +236,18 @@ def test_installation_shows_uv_pip_install_with_version_tag():
     assert "git+https://github.com/mqucifer/sprint-metrics.git@" in section
     match = re.search(r"sprint-metrics\.git@v\d+\.\d+\.\d+", section)
     assert match is not None, "expected a version tag like v0.1.0 after the git URL"
-    assert "PATH" in section
 
 
 def test_basic_usage_shows_minimal_invocation_and_stdin():
-    """AC1 (migrated): the README's basic-usage section shows sprint-metrics cards.json
-    and states that omitting the file argument makes the tool read JSON from standard input."""
+    """AC1 (migrated): the README's basic-usage section shows the service start
+    (docker run with SPRINT_METRICS_DB) and contains no cards file or stdin."""
     text = README.read_text()
     section = _readme_section(text, "Basic usage")
-    assert "sprint-metrics cards.json" in section
-    assert "standard input" in section.lower()
+    assert "docker run" in section
+    assert "SPRINT_METRICS_DB" in section
+    assert "ghcr.io/mqucifer/sprint-metrics" in section
+    assert "cards.json" not in section
+    assert "standard input" not in section.lower()
 
 
 def test_first_paragraph_includes_first_attempt_rate_and_failure_breakdown():
@@ -266,6 +268,31 @@ def test_first_paragraph_includes_first_attempt_rate_and_failure_breakdown():
     paragraph = "\n".join(lines[start_idx : end_idx + 1])
     assert "first-attempt rate" in paragraph
     assert "failure breakdown" in paragraph
+
+
+def test_first_paragraph_names_cycle_time_lead_time_throughput_wip_and_blocked_aging():
+    """AC1: the first paragraph of the README names every measure it computes:
+    cycle time, lead time, throughput, WIP-limit violations, blocked-card aging,
+    and escalation rate."""
+    text = README.read_text()
+    lines = text.splitlines()
+    title_idx = next(i for i, line in enumerate(lines) if line.startswith("# "))
+    start_idx = None
+    for j in range(title_idx + 1, len(lines)):
+        if lines[j].strip():
+            start_idx = j
+            break
+    assert start_idx is not None, "no content after title in README.md"
+    end_idx = start_idx
+    while end_idx + 1 < len(lines) and lines[end_idx + 1].strip():
+        end_idx += 1
+    paragraph = "\n".join(lines[start_idx : end_idx + 1])
+    assert "cycle time" in paragraph
+    assert "lead time" in paragraph
+    assert "throughput" in paragraph
+    assert "WIP-limit violations" in paragraph
+    assert "blocked-card aging" in paragraph
+    assert "escalation rate" in paragraph
 
 
 def test_readme_trimmed_has_no_removed_sections():
@@ -686,22 +713,6 @@ def test_service_md_resend_paragraph_starts_at_column_zero():
     assert line[0] == "R", f"re-send paragraph first line starts with {line[0]!r}, expected 'R'"
 
 
-def test_thresholds_md_default_section_covers_table_marker():
-    """AC4: the opening 'Default thresholds' section of docs/thresholds.md states the
-    built-in thresholds determine when a warning marker appears in table output, which
-    covers the sprint-range table; no doc demonstrates the sprint-range markdown, which
-    never renders a flag, so no doc describes markers in it."""
-    text = (DOCS_DIR / "thresholds.md").read_text()
-    opening = text.split("## --thresholds")[0]
-    assert "Default thresholds" in opening
-    # The built-in thresholds drive the table-output warning marker (range table included).
-    assert "a warning marker appears in table" in opening
-    # No doc demonstrates the sprint-range markdown, so no doc can describe markers in it.
-    for doc in ALL_DOCS:
-        for line in (DOCS_DIR / doc).read_text().splitlines():
-            assert not ("--sprint-range" in line and "--markdown" in line)
-
-
 # --- Changelog-rules release-cut docs (epic #692) ---
 
 
@@ -980,3 +991,19 @@ def test_service_md_cost_example_is_complete():
         assert field in example, f"cost example missing field {field!r}"
         assert isinstance(example[field], int)
         assert example[field] >= 0, f"cost example field {field!r} is negative"
+
+
+def test_no_documentation_shows_a_cli_flag():
+    """AC6: no surviving doc page carries a sprint-metrics command line taking a
+    file argument, a cards-file input (cards.json or a cards-file mount), or a
+    table/markdown/Prometheus report flag."""
+    pages = [(README, "README.md")] + [(DOCS_DIR / doc, doc) for doc in ALL_DOCS]
+    for path, name in pages:
+        text = path.read_text()
+        assert "cards.json" not in text, f"{name}: references cards.json"
+        for flag in ("--markdown", "--json", "--scrape"):
+            assert flag not in text, f"{name}: contains report flag {flag!r}"
+        for line in text.splitlines():
+            stripped = line.strip()
+            if re.match(r"^sprint-metrics\s+\S+", stripped):
+                pytest.fail(f"{name}: {line!r} looks like a sprint-metrics command with a file argument")
