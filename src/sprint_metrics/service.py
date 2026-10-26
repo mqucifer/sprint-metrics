@@ -25,7 +25,7 @@ from sprint_metrics.metrics import (
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
-from sprint_metrics.rework import calculate_rework, extract_qa_returns
+from sprint_metrics.rework import calculate_rework, calculate_sent_backs_count, extract_qa_returns
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
@@ -540,15 +540,16 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
-                        values = [
-                            {
-                                "sprint": label,
-                                "value": metric_value(metric, sprints[label])
-                                if label in has_events
-                                else None,
-                            }
-                            for label in sprints
-                        ]
+                        values = []
+                        for label in sprints:
+                            if label not in has_events:
+                                value = None
+                            elif metric == "sent_backs_count":
+                                returned = query_returned_events(conn_holder[0], label)
+                                value = calculate_sent_backs_count(returned)
+                            else:
+                                value = metric_value(metric, sprints[label])
+                            values.append({"sprint": label, "value": value})
                         response = {
                             "api_version": API_VERSION,
                             "metric": metric,
@@ -754,7 +755,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "model_minutes_middle, model_minutes_total, "
         "input_tokens_middle, input_tokens_total, "
         "output_tokens_middle, output_tokens_total, "
-        "cached_input_percent, reasoning_output_percent. "
+        "cached_input_percent, reasoning_output_percent, "
+        "sent_backs_count. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null.",

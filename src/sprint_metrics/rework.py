@@ -64,6 +64,20 @@ def extract_qa_returns(cards: Iterable) -> list[tuple[str, str | None, str | Non
     return results
 
 
+def calculate_sent_backs_count(
+    returned: list[tuple[str, str | None, str | None]],
+) -> int | None:
+    """Return the count of distinct stories sent back to the Business Analyst in the sprint, or None when no returned events are stored.
+
+    A story is counted once regardless of how many times it was sent back.
+    ``None`` when the sprint holds no 'returned' events, so a pre-rollout
+    sprint reads as no data, not zero.
+    """
+    if not returned:
+        return None
+    return len(set(card_id for card_id, _, _ in returned))
+
+
 def calculate_rework(
     started: int,
     returned: list[tuple[str, str | None, str | None]],

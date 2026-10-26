@@ -7590,3 +7590,253 @@ def test_schema_event_model_time_split_declared():
         assert split["properties"]["delivery"] == {"type": "integer", "minimum": 0}
     finally:
         conn.close()
+
+
+@requires_db
+def test_trend_sent_backs_count_two_sprints():
+    """AC1: GET /trend?metric=sent_backs_count returns 200 with the count of
+    distinct stories sent back per sprint; a story sent back twice counts once."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('sb_trend_a', 'sb_trend_b', 'sb_trend_c', 'sb_trend_d')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: one started event and two returned events on the same story
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_a",
+                event_type="started",
+                timestamp="2024-01-02T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_a",
+                event_type="returned",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_a",
+                event_type="returned",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # 2024-02: two distinct stories sent back
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_b",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_b",
+                event_type="returned",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_c",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_c",
+                event_type="returned",
+                timestamp="2024-02-04T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=sent_backs_count&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["api_version"] == "4"
+        assert body["metric"] == "sent_backs_count"
+        assert body["start"] == "2024-01"
+        assert body["end"] == "2024-02"
+        assert len(body["values"]) == 2
+        assert body["values"][0] == {"sprint": "2024-01", "value": 1}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 2}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_sent_backs_count_null_when_no_returned_events():
+    """AC2: a sprint with events but no stored 'returned' events reads null,
+    not zero — the service does not claim zero send-backs from an absence."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN "
+        "('sb_trend_e', 'sb_trend_f')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: a sprint with events but no returned events
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_e",
+                event_type="started",
+                timestamp="2024-01-02T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_e",
+                event_type="finished",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # 2024-02: one story sent back
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_f",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_f",
+                event_type="returned",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=sent_backs_count&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["values"][0] == {"sprint": "2024-01", "value": None}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 1}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_sent_backs_count_response_shape():
+    """AC3: the response carries api_version, metric, start, end, and a values
+    array of sprint-and-value pairs with the value a whole number or null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('sb_trend_g')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_g",
+                event_type="started",
+                timestamp="2024-03-02T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="sb_trend_g",
+                event_type="returned",
+                timestamp="2024-03-03T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=sent_backs_count&start=2024-03&end=2024-04"
+        )
+        assert status == 200
+        assert "api_version" in body
+        assert "metric" in body
+        assert "start" in body
+        assert "end" in body
+        assert "values" in body
+        assert isinstance(body["values"], list)
+        for entry in body["values"]:
+            assert "sprint" in entry
+            assert "value" in entry
+            assert entry["value"] is None or isinstance(entry["value"], int)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_sent_backs_count_empty_db_returns_nulls():
+    """AC1/AC2: on an empty DB, all sprints read null (no events means no data)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=sent_backs_count&start=2024-01&end=2024-03"
+        )
+        assert status == 200
+        assert len(body["values"]) == 3
+        for entry in body["values"]:
+            assert entry["value"] is None
+    finally:
+        conn.close()

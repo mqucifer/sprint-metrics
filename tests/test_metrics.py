@@ -382,11 +382,11 @@ def test_calculate_points_and_first_attempt_empty():
 
 
 def test_all_metrics_grew_by_four():
-    """ALL_METRICS holds 23 entries, including the two sub-day minute metrics and the eight cost
-    metrics; the escalation measures are gone (#776)."""
+    """ALL_METRICS holds 24 entries, including the two sub-day minute metrics, the eight cost
+    metrics, and the rework sent-backs count; the escalation measures are gone (#776)."""
     from sprint_metrics.metrics import ALL_METRICS
 
-    assert len(ALL_METRICS) == 23
+    assert len(ALL_METRICS) == 24
     assert "escalation_count" not in ALL_METRICS
     assert "escalation_rate_percent" not in ALL_METRICS
     new_metrics = {
@@ -396,6 +396,7 @@ def test_all_metrics_grew_by_four():
         "superseded_count",
         "superseded_points",
         "superseded_breakdown",
+        "sent_backs_count",
     }
     minute_metrics = {"cycle_time_minutes", "lead_time_minutes"}
     cost_metrics = {
