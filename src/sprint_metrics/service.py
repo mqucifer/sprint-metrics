@@ -25,13 +25,16 @@ from sprint_metrics.metrics import (
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
+from sprint_metrics.rework import calculate_rework
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
     init_db,
     insert_event,
     query_range,
+    query_returned_events,
     query_sprint,
+    query_started_count,
     resolve_sprint_range,
     sprint_has_events,
     upsert_sprint,
@@ -433,6 +436,13 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             for label in labels:
                                 if sprint_has_events(conn_holder[0], label):
                                     has_events.add(label)
+                            rework: dict[str, dict] = {}
+                            for label in labels:
+                                if label in has_events:
+                                    rework[label] = calculate_rework(
+                                        query_started_count(conn_holder[0], label),
+                                        query_returned_events(conn_holder[0], label),
+                                    )
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -440,6 +450,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         body = format_sprint_range_json(sprints, labels)
                         result = json.loads(body)
                         _attach_range_cost(result, sprints, labels, has_events)
+                        _attach_range_rework(result, labels, rework)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -709,7 +720,12 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
-        "Sprints with no events return all-null values.",
+        "Each entry also carries rework: the stories sent back to the "
+        "Business Analyst (its returned events), out of the stories started "
+        "that sprint; each sent-back story is named by its identifier, and "
+        "each send-back carries the step it was sent back from and the "
+        "reason. A send-back counts in the sprint of the returned event. "
+        "Sprints with no events return all-null values, rework included.",
     ),
     (
         "GET",
@@ -802,6 +818,18 @@ def _attach_range_cost(
                 entry["prior"][name] = prior_flat[name]
                 cur, pri = current_flat[name], prior_flat[name]
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+def _attach_range_rework(result: dict, labels: list[str], rework: dict[str, dict]) -> None:
+    """Attach the rework answer to each range entry.
+
+    An entry for a sprint with no events carries rework null, so pre-rollout
+    history reads as no data, not zero. An entry for a sprint with events
+    carries its started count and its sent-backs, or null sent-backs when the
+    sprint holds no 'returned' events.
+    """
+    for label in labels:
+        result["sprints"][label]["rework"] = rework.get(label)
 
 
 def _validate_cost_fields(card: dict) -> str | None:
