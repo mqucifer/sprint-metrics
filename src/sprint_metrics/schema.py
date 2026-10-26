@@ -167,6 +167,14 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "cached_input_tokens": {"type": "integer", "minimum": 0},
                 "output_tokens": {"type": "integer", "minimum": 0},
                 "reasoning_output_tokens": {"type": "integer", "minimum": 0},
+                "model_time_split": {
+                    "type": "object",
+                    "properties": {
+                        "refinement": {"type": "integer", "minimum": 0},
+                        "delivery": {"type": "integer", "minimum": 0},
+                    },
+                    "required": ["refinement", "delivery"],
+                },
             },
         },
         "attempt_number": {"type": "integer"},

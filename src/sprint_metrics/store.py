@@ -50,6 +50,8 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS input_tokens BI
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS cached_input_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS reasoning_output_tokens BIGINT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_time_split_refinement INT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_time_split_delivery INT;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
     type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
@@ -120,14 +122,23 @@ def insert_event(conn: Connection, event: dict) -> None:
     ev_output_tokens = card.get("output_tokens") if is_finished else None
     ev_reasoning_output_tokens = card.get("reasoning_output_tokens") if is_finished else None
 
+    ev_model_time_split_refinement = None
+    ev_model_time_split_delivery = None
+    if is_finished:
+        split = card.get("model_time_split")
+        if isinstance(split, dict):
+            ev_model_time_split_refinement = split.get("refinement")
+            ev_model_time_split_delivery = split.get("delivery")
+
     conn.execute(
         """
         INSERT INTO sprint_metrics.board_events
             (card_id, type, event_time, sprint, card_created,
              attempts, failure_class, failure_role, attempt_number, points,
              because, epic, replaced_by, card_created_at,
-             model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens,
+             model_time_split_refinement, model_time_split_delivery)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO UPDATE SET
             attempts = COALESCE(board_events.attempts, EXCLUDED.attempts),
             failure_class = COALESCE(board_events.failure_class, EXCLUDED.failure_class),
@@ -142,7 +153,9 @@ def insert_event(conn: Connection, event: dict) -> None:
             input_tokens = COALESCE(board_events.input_tokens, EXCLUDED.input_tokens),
             cached_input_tokens = COALESCE(board_events.cached_input_tokens, EXCLUDED.cached_input_tokens),
             output_tokens = COALESCE(board_events.output_tokens, EXCLUDED.output_tokens),
-            reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens)
+            reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens),
+            model_time_split_refinement = COALESCE(board_events.model_time_split_refinement, EXCLUDED.model_time_split_refinement),
+            model_time_split_delivery = COALESCE(board_events.model_time_split_delivery, EXCLUDED.model_time_split_delivery)
         """,
         (
             event["card_id"],
@@ -164,6 +177,8 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_cached_input_tokens,
             ev_output_tokens,
             ev_reasoning_output_tokens,
+            ev_model_time_split_refinement,
+            ev_model_time_split_delivery,
         ),
     )
     conn.commit()

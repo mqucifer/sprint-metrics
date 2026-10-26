@@ -95,6 +95,18 @@ non-negative integer:
 All five fields are sent together or not at all; a partial payload is
 rejected at intake.
 
+The cost payload may also carry an optional `model_time_split` sub-object
+that splits the story's model time between refinement and delivery. Its two
+fields are each a non-negative integer (model seconds):
+
+- `refinement` — model seconds spent in refinement
+- `delivery` — model seconds spent in delivery
+
+The two fields are sent together or not at all; a partial sub-object is
+rejected at intake. The sub-object is independent of the five cost fields:
+a finished event may carry the split without the five fields, or the five
+fields without the split.
+
 The report's display unit for model cost is whole minutes. The crew sends
 model seconds on the event; the report shows `round(model_seconds / 60)`
 as `model_minutes`.

@@ -6358,3 +6358,299 @@ def test_schema_event_card_required_unchanged():
         assert card["required"] == ["created"]
     finally:
         conn.close()
+
+
+@requires_db
+def test_finished_event_with_model_time_split_stores_values():
+    """AC1: POST a finished event carrying the five cost fields plus a
+    model-time split sub-object with refinement 1800 and delivery 3600.
+    The response is 200 and the stored row carries the split values."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-a'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-a",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=5400,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+            model_time_split={"refinement": 1800, "delivery": 3600},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+        rows = conn.execute(
+            "SELECT model_time_split_refinement, model_time_split_delivery "
+            "FROM sprint_metrics.board_events "
+            "WHERE card_id = 'split-a' AND type = 'finished'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0] == (1800, 3600)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_partial_model_time_split_rejected():
+    """AC2: POST a finished event with a model-time split sub-object carrying
+    only one of the two values returns 400, and the error identifies the
+    model-time split as sent partially."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-b'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-b",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_time_split={"refinement": 1800},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "model-time split" in body["error"]
+        assert "partial" in body["error"]
+        assert "delivery" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_model_time_split_string_value_rejected():
+    """AC3a: POST a finished event with a model-time split value that is a
+    string returns 400, and the error names the offending field."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-c'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-c",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_time_split={"refinement": "abc", "delivery": 3600},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "refinement" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_model_time_split_negative_value_rejected():
+    """AC3b: POST a finished event with a negative model-time split value
+    returns 400, and the error names the offending field."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-d'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-d",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_time_split={"refinement": -1, "delivery": 3600},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "refinement" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_finished_event_cost_without_split_stores_null_split():
+    """AC4a: POST a finished event with the five cost fields but no split
+    sub-object returns 200, api_version stays '1', and the stored row has
+    a null split."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-e'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-e",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_seconds=5400,
+            input_tokens=4000,
+            cached_input_tokens=1400,
+            output_tokens=900,
+            reasoning_output_tokens=300,
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+        assert event["api_version"] == "1"
+        rows = conn.execute(
+            "SELECT model_time_split_refinement, model_time_split_delivery "
+            "FROM sprint_metrics.board_events "
+            "WHERE card_id = 'split-e' AND type = 'finished'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0] == (None, None)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_finished_event_split_without_cost_fields_accepted():
+    """AC4b: POST a finished event carrying the split sub-object but none of
+    the five cost fields is accepted (the split rides under its own
+    all-or-nothing rule, separate from the five fields)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-f'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-f",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_time_split={"refinement": 1800, "delivery": 3600},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_started_event_with_split_not_stored():
+    """AC5: POST a started event whose card carries a split sub-object
+    returns 200 and the split is not stored."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-g'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-g",
+            event_type="started",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_time_split={"refinement": 1800, "delivery": 3600},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+        rows = conn.execute(
+            "SELECT model_time_split_refinement, model_time_split_delivery "
+            "FROM sprint_metrics.board_events "
+            "WHERE card_id = 'split-g' AND type = 'started'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0] == (None, None)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_resend_finished_event_split_unchanged():
+    """AC6: re-sending a stored finished event carrying a split with the same
+    card_id, type and timestamp returns 200 and the stored split values are
+    unchanged."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'split-h'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(
+            card_id="split-h",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_time_split={"refinement": 1800, "delivery": 3600},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+
+        # Re-send the same event with different split values
+        resend = _make_event(
+            card_id="split-h",
+            event_type="finished",
+            timestamp="2024-01-10T12:00:00Z",
+            sprint="2024-01",
+            model_time_split={"refinement": 9999, "delivery": 9999},
+        )
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", resend)
+        assert status == 200
+
+        rows = conn.execute(
+            "SELECT model_time_split_refinement, model_time_split_delivery "
+            "FROM sprint_metrics.board_events "
+            "WHERE card_id = 'split-h' AND type = 'finished'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0] == (1800, 3600)
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_schema_event_model_time_split_declared():
+    """AC7: GET /schema/event declares the model_time_split sub-object with
+    its two fields as required integers with minimum 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/schema/event")
+        assert status == 200
+        card_props = body["properties"]["card"]["properties"]
+        assert "model_time_split" in card_props
+        split = card_props["model_time_split"]
+        assert split["type"] == "object"
+        assert split["required"] == ["refinement", "delivery"]
+        assert split["properties"]["refinement"] == {"type": "integer", "minimum": 0}
+        assert split["properties"]["delivery"] == {"type": "integer", "minimum": 0}
+    finally:
+        conn.close()

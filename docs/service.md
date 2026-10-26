@@ -41,6 +41,13 @@ A `finished` event may carry a cost payload on its card object. The cost payload
 - `output_tokens` — total output tokens produced
 - `reasoning_output_tokens` — output tokens spent on reasoning
 
+The cost payload may also carry an optional `model_time_split` sub-object that splits the story's model time between refinement and delivery. Its two fields are each a non-negative integer (model seconds), and the fields are sent together or not at all — a partial sub-object is rejected:
+
+- `refinement` — model seconds spent in refinement
+- `delivery` — model seconds spent in delivery
+
+The `model_time_split` sub-object is independent of the five cost fields: a finished event may carry the split without the five fields, or the five fields without the split.
+
 Example cost payload on a finished event's card:
 
 ```json
@@ -49,7 +56,11 @@ Example cost payload on a finished event's card:
   "input_tokens": 4000,
   "cached_input_tokens": 1800,
   "output_tokens": 900,
-  "reasoning_output_tokens": 207
+  "reasoning_output_tokens": 207,
+  "model_time_split": {
+    "refinement": 1200,
+    "delivery": 2280
+  }
 }
 ```
 

@@ -286,6 +286,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     if error:
                         status, response_body = 400, {"error": error}
                         return
+                    error = _validate_model_time_split(card)
+                    if error:
+                        status, response_body = 400, {"error": error}
+                        return
 
                 if event_type == "superseded":
                     error = _validate_superseded_event(event)
@@ -819,6 +823,32 @@ def _validate_cost_fields(card: dict) -> str | None:
             return f"invalid cost payload on finished event: {key} must be a non-negative integer"
         if value < 0:
             return f"invalid cost payload on finished event: {key} must be a non-negative integer"
+    return None
+
+
+def _validate_model_time_split(card: dict) -> str | None:
+    """Validate all-or-nothing model-time split sub-object on a finished event's card payload.
+
+    Returns an error string on failure, None on success or when no split key is present.
+    """
+    if "model_time_split" not in card:
+        return None
+    split = card["model_time_split"]
+    if not isinstance(split, dict):
+        return "invalid model-time split on finished event: must be an object"
+    split_keys = ("refinement", "delivery")
+    present = [k for k in split_keys if k in split]
+    if not present:
+        return None
+    missing = [k for k in split_keys if k not in split]
+    if missing:
+        return f"partial model-time split on finished event: missing {', '.join(missing)}"
+    for key in split_keys:
+        value = split[key]
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"invalid model-time split on finished event: {key} must be a non-negative integer"
+        if value < 0:
+            return f"invalid model-time split on finished event: {key} must be a non-negative integer"
     return None
 
 
