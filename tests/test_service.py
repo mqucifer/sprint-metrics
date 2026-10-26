@@ -1027,7 +1027,7 @@ def test_schema_event_get_returns_200_json_schema():
 @requires_db
 def test_schema_event_card_and_type_constraints():
     """AC2: schema's properties include a card object whose required includes 'created',
-    and the schema constrains type to the seven accepted values."""
+    and the schema constrains type to the eight accepted values."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1048,6 +1048,7 @@ def test_schema_event_card_and_type_constraints():
             "escalated",
             "attempt_failed",
             "superseded",
+            "returned",
         }
     finally:
         conn.close()
@@ -1103,8 +1104,9 @@ def test_schema_event_top_level_structure():
 
 @requires_db
 def test_schema_event_type_enum_exact():
-    """AC3+UX4: properties.type.enum is an array of exactly seven strings in order:
-    started, blocked, unblocked, finished, escalated, attempt_failed, superseded."""
+    """AC3+UX4: properties.type.enum is an array of exactly eight strings in order:
+    started, blocked, unblocked, finished, escalated, attempt_failed, superseded,
+    returned."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1122,6 +1124,7 @@ def test_schema_event_type_enum_exact():
             "escalated",
             "attempt_failed",
             "superseded",
+            "returned",
         ]
     finally:
         conn.close()
@@ -4772,6 +4775,158 @@ def test_post_superseded_no_prior_events_returns_200():
         status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
         assert status == 200
         assert "error" not in body
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_stores_failure_class_role_and_epic():
+    """AC1: POST /events with type='returned' carrying failure_class, failure_role,
+    and epic answers 200 and the stored returned row carries all three values."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'r1'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "r1",
+            "type": "returned",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "failure_class": "blocked_session",
+            "failure_role": "review",
+            "epic": "epic-7",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT failure_class, failure_role, epic FROM sprint_metrics.board_events "
+            "WHERE card_id = 'r1' AND type = 'returned'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "blocked_session"
+        assert rows[0][1] == "review"
+        assert rows[0][2] == "epic-7"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_without_optional_fields_stores_null():
+    """AC2: POST /events with type='returned' and no failure_class, failure_role, or
+    epic answers 200 and stores those columns as NULL."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'r2'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "r2",
+            "type": "returned",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT failure_class, failure_role, epic FROM sprint_metrics.board_events "
+            "WHERE card_id = 'r2' AND type = 'returned'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] is None
+        assert rows[0][1] is None
+        assert rows[0][2] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_returned_resend_fills_null_keeps_existing():
+    """AC3: re-sending a stored 'returned' event with a failure_class the first send
+    left NULL answers 200; the NULL field takes the supplied value and fields that
+    already hold a value are not changed."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'r3'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        first = {
+            "api_version": "1",
+            "card_id": "r3",
+            "type": "returned",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "failure_role": "review",
+            "epic": "epic-7",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", first)
+        assert status == 200
+        assert "error" not in body
+
+        resend = {
+            "api_version": "1",
+            "card_id": "r3",
+            "type": "returned",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "failure_class": "blocked_session",
+            "failure_role": "qa",
+            "epic": "epic-9",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", resend)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT failure_class, failure_role, epic FROM sprint_metrics.board_events "
+            "WHERE card_id = 'r3' AND type = 'returned'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "blocked_session"
+        assert rows[0][1] == "review"
+        assert rows[0][2] == "epic-7"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_unknown_event_type_returns_400_naming_type():
+    """AC4: POST /events with a type that is not one of the eight accepted event
+    types answers 400 naming the unknown type."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(card_id="r4", event_type="reopened")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert "reopened" in body["error"]
     finally:
         conn.close()
 

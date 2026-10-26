@@ -20,7 +20,7 @@ The service accepts sprint definitions via POST /sprints. Each sprint is registe
 
 ## Event intake
 
-The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, and superseded. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
+The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, superseded, and returned. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
 
 A `superseded` event marks a card that was replaced by other stories. It carries two fields beyond the common event fields:
 
@@ -28,6 +28,14 @@ A `superseded` event marks a card that was replaced by other stories. It carries
 - `replaced_by` (optional): an array of story identifiers that replaced the card. Absent when the crew does not know the replacements.
 
 No prior event on the card is required for a `superseded` event to be accepted.
+
+A `returned` event marks a story that was handed back to the Business Analyst (for example, from review or QA back to refinement). Beyond the common event fields it carries three fields, all optional:
+
+- `failure_role`: the step or role that sent the story back.
+- `failure_class`: the reason the story was sent back.
+- `epic`: the story's epic link.
+
+No prior event on the card is required for a `returned` event to be accepted, and re-sending one is as safe as re-sending any other event.
 
 Re-sending an event the service already holds (the same `card_id`, `type`, and `timestamp`) is safe. Fields that are currently NULL in the stored row receive the value supplied by the re-sent event; fields that already hold a value are not changed. You can replay your event log or upgrade your event payload without risking data corruption.
 
@@ -81,7 +89,7 @@ Long-lived HTTP service that accepts board events and answers range and trend qu
 | Method | Path | Description |
 |---|---|---|
 | POST | /sprints | Register or update a sprint definition (name, start date, end date, timezone). |
-| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded). The service validates the card's created date and event type. |
+| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned). The service validates the card's created date and event type. |
 | GET | /range | Return metrics for a range of sprints in chronological order. Each entry includes the prior-sprint delta. failure_breakdown and top_failure_causes count returns, one per return, by (failure class, returning role). Sprints with no events return all-null values. |
 | GET | /trend | Return a single metric across a sprint range. Returns a JSON object with api_version and an ordered sequence of sprint-label-to-value pairs (the values array). Valid metrics: cycle_time_days, lead_time_days, throughput, wip_violations, blocked_aging_days, first_attempt_rate_percent, points_delivered, first_attempt_numerator, first_attempt_denominator, superseded_count, superseded_points, superseded_breakdown, cycle_time_minutes, lead_time_minutes, model_minutes_middle, model_minutes_total, input_tokens_middle, input_tokens_total, output_tokens_middle, output_tokens_total, cached_input_percent, reasoning_output_percent. Minute-based metrics (cycle_time_minutes, lead_time_minutes) return JSON integer values in minutes (rounded); sprints with no events return JSON null. |
 | GET | /schema/event | Return the JSON Schema for the event intake body. |

@@ -547,6 +547,35 @@ def test_service_md_documents_superseded_event():
     )
 
 
+def test_service_md_documents_returned_event():
+    """AC6: the hand-written Event intake content in docs/service.md names 'returned'
+    as an accepted event type, documents its three fields — failure_role (the step
+    the story was sent back from), failure_class (the reason), and epic (the story's
+    epic link) — as optional, and states re-sending one is as safe as re-sending any
+    other; the generated endpoints table names 'returned' among the accepted types."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "returned" in before, (
+        "hand-written content does not name 'returned' as an accepted event type"
+    )
+    anchor = before.index("A `returned` event")
+    returned_text = before[anchor : anchor + 700]
+    for field in ("failure_role", "failure_class", "epic"):
+        assert field in returned_text, f"returned-event documentation does not name {field!r}"
+    assert "optional" in returned_text.lower(), (
+        "returned-event documentation does not state the fields are optional"
+    )
+    assert "re-sending" in returned_text.lower(), (
+        "returned-event documentation does not state re-sending is safe"
+    )
+    section = _extract_marked_section(text, "service")
+    events_rows = [line for line in section.splitlines() if "/events" in line]
+    assert any("returned" in row for row in events_rows), (
+        "generated endpoints table does not name 'returned' among the accepted event types"
+    )
+
+
 def test_service_md_sprint_range_descriptions_state_per_return_semantics():
     """AC5: the hand-written /range endpoint description in
     docs/service.md states that failure_breakdown and top_failure_causes count

@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     replaced_by JSONB,
     PRIMARY KEY (card_id, type, event_time),
     CONSTRAINT board_events_type_check CHECK (
-        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
     ),
     CONSTRAINT board_events_because_check CHECK (
         because IS NULL OR because IN ('sponsor', 'story_problem')
@@ -52,7 +52,7 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS output_tokens B
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS reasoning_output_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
-    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
 );
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_because_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_because_check CHECK (
@@ -81,8 +81,10 @@ def insert_event(conn: Connection, event: dict) -> None:
     points (stored on every event row that carries it; NULL when absent),
     created_at (stored on every event row that carries it; NULL when absent).
     Optional top-level fields: attempt_number, failure_class, failure_role
-    (stored only on 'attempt_failed' rows).
-    Optional top-level fields: because, epic, replaced_by (stored only on 'superseded' rows).
+    (stored only on 'attempt_failed' rows); failure_class and failure_role are
+    also stored on 'returned' rows.
+    Optional top-level fields: because, replaced_by (stored only on 'superseded' rows);
+    epic is stored on 'superseded' and 'returned' rows that carry it.
 
     On re-send (conflict on the primary key), NULL columns receive the new value;
     columns that already hold a value are left unchanged (epic R1).
@@ -92,6 +94,7 @@ def insert_event(conn: Connection, event: dict) -> None:
     is_finished = event_type == "finished"
     is_attempt_failed = event_type == "attempt_failed"
     is_superseded = event_type == "superseded"
+    is_returned = event_type == "returned"
 
     if is_finished:
         ev_failure_class = card.get("failure_class")
@@ -101,13 +104,17 @@ def insert_event(conn: Connection, event: dict) -> None:
         ev_failure_class = event.get("failure_class")
         ev_failure_role = event.get("failure_role")
         ev_attempt_number = event.get("attempt_number")
+    elif is_returned:
+        ev_failure_class = event.get("failure_class")
+        ev_failure_role = event.get("failure_role")
+        ev_attempt_number = None
     else:
         ev_failure_class = None
         ev_failure_role = None
         ev_attempt_number = None
 
     ev_because = event.get("because") if is_superseded else None
-    ev_epic = event.get("epic") if is_superseded else None
+    ev_epic = event.get("epic") if (is_superseded or is_returned) else None
     ev_replaced_by = (
         json.dumps(event["replaced_by"]) if is_superseded and "replaced_by" in event else None
     )

@@ -148,6 +148,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "escalated",
                 "attempt_failed",
                 "superseded",
+                "returned",
             ],
         },
         "timestamp": {"type": "string", "format": "date-time"},
