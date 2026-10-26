@@ -4323,7 +4323,373 @@ def test_range_rework_changes_no_other_metric():
 
 
 @requires_db
-def test_sprint_response_includes_points_first_attempt_and_escalation_count():
+def test_range_rework_qa_returns_named_separately_from_sent_backs():
+    """AC1: a sprint in which one story was sent back to refinement and another
+    was bounced at review (an attempt_failed on a completed card) carries a
+    rework answer with two labeled parts, each naming its stories."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_qa1_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-11'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Story 1: sent back to refinement (returned event)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa1_s1",
+                event_type="started",
+                timestamp="2024-11-02T10:00:00Z",
+                sprint="2024-11",
+                created="2024-11-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_qa1_s1",
+                "2024-11",
+                "2024-11-05T10:00:00Z",
+                failure_class="story_problem",
+                failure_role="Refinement",
+            ),
+        )
+        # Story 2: bounced at review/QA (attempt_failed on a completed card)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa1_s2",
+                event_type="started",
+                timestamp="2024-11-03T10:00:00Z",
+                sprint="2024-11",
+                created="2024-11-01",
+            ),
+        )
+        attempt_failed = {
+            "api_version": "1",
+            "card_id": "rw_qa1_s2",
+            "type": "attempt_failed",
+            "timestamp": "2024-11-06T10:00:00Z",
+            "sprint": "2024-11",
+            "attempt_number": 1,
+            "failure_class": "contract_ruling",
+            "failure_role": "Review",
+            "card": {"created": "2024-11-01"},
+        }
+        _post_events(f"http://127.0.0.1:{port}/events", attempt_failed)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa1_s2",
+                event_type="finished",
+                timestamp="2024-11-07T10:00:00Z",
+                sprint="2024-11",
+                created="2024-11-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-11&end=2024-11")
+        assert status == 200
+        rework = body["sprints"]["2024-11"]["rework"]
+        assert rework["started"] == 2
+        assert rework["sent_backs"] == [
+            {"card_id": "rw_qa1_s1", "send_backs": [{"step": "Refinement", "reason": "story_problem"}]},
+        ]
+        assert rework["qa_returns"] == [
+            {"card_id": "rw_qa1_s2", "returns": [{"step": "Review", "reason": "contract_ruling"}]},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_by_step_groups_each_part():
+    """AC3: the rework answer's by_step shows the count of rework per step
+    for each part, so the reader sees which step the sprint's rework
+    concentrates in."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_qa2_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-12'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Two send-backs from different steps
+        for i, (role, cls) in enumerate([("Review", "contract_ruling"), ("QA", "blocked_session")], start=1):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=f"rw_qa2_s{i}",
+                    event_type="started",
+                    timestamp=f"2024-12-0{i}T10:00:00Z",
+                    sprint="2024-12",
+                    created="2024-12-01",
+                ),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _returned_event(
+                    f"rw_qa2_s{i}",
+                    "2024-12",
+                    f"2024-12-0{i}T12:00:00Z",
+                    failure_class=cls,
+                    failure_role=role,
+                ),
+            )
+        # Two review/QA returns from the same step
+        for i in (3, 4):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=f"rw_qa2_s{i}",
+                    event_type="started",
+                    timestamp=f"2024-12-0{i}T10:00:00Z",
+                    sprint="2024-12",
+                    created="2024-12-01",
+                ),
+            )
+            attempt_failed = {
+                "api_version": "1",
+                "card_id": f"rw_qa2_s{i}",
+                "type": "attempt_failed",
+                "timestamp": f"2024-12-0{i}T12:00:00Z",
+                "sprint": "2024-12",
+                "attempt_number": 1,
+                "failure_class": "parse_error",
+                "failure_role": "QA",
+                "card": {"created": "2024-12-01"},
+            }
+            _post_events(f"http://127.0.0.1:{port}/events", attempt_failed)
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=f"rw_qa2_s{i}",
+                    event_type="finished",
+                    timestamp=f"2024-12-0{i}T14:00:00Z",
+                    sprint="2024-12",
+                    created="2024-12-01",
+                ),
+            )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-12&end=2024-12")
+        assert status == 200
+        rework = body["sprints"]["2024-12"]["rework"]
+        assert rework["by_step"] == {
+            "sent_backs": {"Review": 1, "QA": 1},
+            "qa_returns": {"QA": 2},
+        }
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_qa_returns_only_no_sent_backs():
+    """AC5: a sprint with review/QA returns but no send-backs carries
+    sent_backs null and lists its qa_returns — the two parts do not
+    borrow each other's data."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_qa3_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa3_s1",
+                event_type="started",
+                timestamp="2025-01-02T10:00:00Z",
+                sprint="2025-01",
+                created="2025-01-01",
+            ),
+        )
+        attempt_failed = {
+            "api_version": "1",
+            "card_id": "rw_qa3_s1",
+            "type": "attempt_failed",
+            "timestamp": "2025-01-03T10:00:00Z",
+            "sprint": "2025-01",
+            "attempt_number": 1,
+            "failure_class": "contract_ruling",
+            "failure_role": "Review",
+            "card": {"created": "2025-01-01"},
+        }
+        _post_events(f"http://127.0.0.1:{port}/events", attempt_failed)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa3_s1",
+                event_type="finished",
+                timestamp="2025-01-04T10:00:00Z",
+                sprint="2025-01",
+                created="2025-01-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2025-01&end=2025-01")
+        assert status == 200
+        rework = body["sprints"]["2025-01"]["rework"]
+        assert rework["started"] == 1
+        assert rework["sent_backs"] is None
+        assert rework["qa_returns"] == [
+            {"card_id": "rw_qa3_s1", "returns": [{"step": "Review", "reason": "contract_ruling"}]},
+        ]
+        assert rework["by_step"] == {"qa_returns": {"Review": 1}}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_story_in_both_parts_separately():
+    """AC2: a story that both went back to the BA (returned event) and
+    bounced at review/QA (attempt_failed on a completed card) appears in
+    both parts, separately."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_qa4_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-02'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa4_s1",
+                event_type="started",
+                timestamp="2025-02-02T10:00:00Z",
+                sprint="2025-02",
+                created="2025-02-01",
+            ),
+        )
+        # Bounced at review
+        attempt_failed = {
+            "api_version": "1",
+            "card_id": "rw_qa4_s1",
+            "type": "attempt_failed",
+            "timestamp": "2025-02-03T10:00:00Z",
+            "sprint": "2025-02",
+            "attempt_number": 1,
+            "failure_class": "contract_ruling",
+            "failure_role": "Review",
+            "card": {"created": "2025-02-01"},
+        }
+        _post_events(f"http://127.0.0.1:{port}/events", attempt_failed)
+        # Sent back to refinement
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_qa4_s1",
+                "2025-02",
+                "2025-02-04T10:00:00Z",
+                failure_class="story_problem",
+                failure_role="Refinement",
+            ),
+        )
+        # Completed
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa4_s1",
+                event_type="finished",
+                timestamp="2025-02-05T10:00:00Z",
+                sprint="2025-02",
+                created="2025-02-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2025-02&end=2025-02")
+        assert status == 200
+        rework = body["sprints"]["2025-02"]["rework"]
+        # The story appears in both parts, separately
+        assert rework["sent_backs"] == [
+            {"card_id": "rw_qa4_s1", "send_backs": [{"step": "Refinement", "reason": "story_problem"}]},
+        ]
+        assert rework["qa_returns"] == [
+            {"card_id": "rw_qa4_s1", "returns": [{"step": "Review", "reason": "contract_ruling"}]},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_failure_breakdown_unchanged():
+    """AC4: the rework answer's qa_returns uses the same (failure class,
+    returning role) values as failure_breakdown, and failure_breakdown
+    keeps its values and shape."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_qa5_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-03'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa5_s1",
+                event_type="started",
+                timestamp="2025-03-02T10:00:00Z",
+                sprint="2025-03",
+                created="2025-03-01",
+            ),
+        )
+        attempt_failed = {
+            "api_version": "1",
+            "card_id": "rw_qa5_s1",
+            "type": "attempt_failed",
+            "timestamp": "2025-03-03T10:00:00Z",
+            "sprint": "2025-03",
+            "attempt_number": 1,
+            "failure_class": "contract_ruling",
+            "failure_role": "Review",
+            "card": {"created": "2025-03-01"},
+        }
+        _post_events(f"http://127.0.0.1:{port}/events", attempt_failed)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_qa5_s1",
+                event_type="finished",
+                timestamp="2025-03-04T10:00:00Z",
+                sprint="2025-03",
+                created="2025-03-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2025-03&end=2025-03")
+        assert status == 200
+        entry = body["sprints"]["2025-03"]
+        # failure_breakdown keeps its shape and values
+        assert entry["failure_breakdown"] == [
+            {"class": "contract_ruling", "role": "Review", "count": 1},
+        ]
+        assert entry["top_failure_causes"] == [
+            {"class": "contract_ruling", "role": "Review", "count": 1},
+        ]
+        # qa_returns uses the same (class, role) values
+        rework = entry["rework"]
+        assert rework["qa_returns"] == [
+            {"card_id": "rw_qa5_s1", "returns": [{"step": "Review", "reason": "contract_ruling"}]},
+        ]
+    finally:
+        conn.close()
     """AC1/AC6: after POSTing started+finished+escalated for a card with points 5,
     GET /range returns the four new fields with correct values alongside existing keys."""
     import psycopg
