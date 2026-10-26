@@ -25,7 +25,7 @@ from sprint_metrics.metrics import (
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
-from sprint_metrics.rework import calculate_rework
+from sprint_metrics.rework import calculate_rework, extract_qa_returns
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
@@ -446,6 +446,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     rework[label] = calculate_rework(
                                         query_started_count(conn_holder[0], label),
                                         query_returned_events(conn_holder[0], label),
+                                        extract_qa_returns(sprints[label]),
                                     )
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
@@ -724,12 +725,19 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
-        "Each entry also carries rework: the stories sent back to the "
-        "Business Analyst (its returned events), out of the stories started "
-        "that sprint; each sent-back story is named by its identifier, and "
-        "each send-back carries the step it was sent back from and the "
-        "reason. A send-back counts in the sprint of the returned event. "
-        "Sprints with no events return all-null values, rework included.",
+        "Each entry also carries rework: two labeled parts — "
+        "sent_backs (the stories sent back to the Business Analyst, "
+        "its returned events, out of the stories started that sprint; "
+        "each sent-back story is named by its identifier, and each "
+        "send-back carries the step it was sent back from and the "
+        "reason) and qa_returns (the review/QA returns, using the "
+        "same (failure class, returning role) values as "
+        "failure_breakdown; each returned story is named by its "
+        "identifier, and each return carries the step it was "
+        "returned from and the cause). A send-back counts in the "
+        "sprint of the returned event. by_step groups each part's "
+        "returns by step. Sprints with no events return all-null "
+        "values, rework included.",
     ),
     (
         "GET",

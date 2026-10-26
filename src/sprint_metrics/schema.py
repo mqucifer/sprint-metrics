@@ -117,6 +117,40 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                                     "required": ["card_id", "send_backs"],
                                 },
                             },
+                            "qa_returns": {
+                                "type": ["array", "null"],
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "card_id": {"type": "string"},
+                                        "returns": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "step": {"type": ["string", "null"]},
+                                                    "reason": {"type": ["string", "null"]},
+                                                },
+                                                "required": ["step", "reason"],
+                                            },
+                                        },
+                                    },
+                                    "required": ["card_id", "returns"],
+                                },
+                            },
+                            "by_step": {
+                                "type": "object",
+                                "properties": {
+                                    "sent_backs": {
+                                        "type": "object",
+                                        "additionalProperties": {"type": "integer"},
+                                    },
+                                    "qa_returns": {
+                                        "type": "object",
+                                        "additionalProperties": {"type": "integer"},
+                                    },
+                                },
+                            },
                         },
                         "required": ["started", "sent_backs"],
                     },

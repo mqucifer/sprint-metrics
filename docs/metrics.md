@@ -125,26 +125,45 @@ tokens, and `reasoning_output_percent` is the sprint's reasoning share of
 all output tokens. Both percents are identical on every story in the
 `story_costs` list.
 
-### Rework (send-backs to refinement)
+### Rework (send-backs to refinement and review/QA returns)
 
-The `rework` answer on each sprint's `/range` entry names the stories the
-crew handed back to the Business Analyst — its `returned` events — out of
-the stories started that sprint. `rework.started` is the count of distinct
-stories with a `started` event in the sprint; `rework.sent_backs` names each
-sent-back story once, by its identifier, and each send-back carries the step
-it was sent back from (the role that sent it back, as sent on the event) and
-the reason, in words a public visitor can read. A send-back counts in the
-sprint of the `returned` event, not the sprint the story started in, and a
-story sent back more than once in a sprint is named once with each
-send-back. The `step` and `reason` use the step labels the rest of the
-overview's pipeline uses; the service does not invent its own.
+The `rework` answer on each sprint's `/range` entry covers the whole
+pipeline: the send-backs to refinement and the review/QA returns, each
+labeled and separated, so the reader cannot conflate the two kinds of
+rework. `rework.started` is the count of distinct stories with a
+`started` event in the sprint.
 
-A `returned` event completes no story: it changes none of the other metrics
-(throughput, cycle time, lead time, failure breakdown, and the like keep
-their values and shape). Pre-rollout history reads as no data, not zero: a
-sprint with no events carries `rework` null, and a sprint with events but no
-stored `returned` events carries its started count with `sent_backs` null —
-it names no sent-back story and does not assert a zero send-back count.
+`rework.sent_backs` names the stories the crew handed back to the
+Business Analyst — its `returned` events — out of the stories started
+that sprint. Each sent-back story is named once, by its identifier, and
+each send-back carries the step it was sent back from (the role that
+sent it back, as sent on the event) and the reason, in words a public
+visitor can read. A send-back counts in the sprint of the `returned`
+event, not the sprint the story started in, and a story sent back more
+than once in a sprint is named once with each send-back.
+
+`rework.qa_returns` names the stories bounced at review or QA — its
+`attempt_failed` events (or, in the legacy case, a finished card with
+attempts greater than 1). Each returned story is named once, by its
+identifier, and each return carries the step it was returned from (the
+returning role) and the cause, using the same (failure class, returning
+role) values as `failure_breakdown`. A story that both went back to the
+Business Analyst and bounced at review or QA appears in both parts,
+separately.
+
+`rework.by_step` groups each part's returns by step (the count of
+rework per step), so the reader sees which step the sprint's rework
+concentrates in, and comparing sprints across a `/range` window shows
+where work leaks across sprints, not just a per-sprint snapshot.
+
+A `returned` event completes no story: it changes none of the other
+metrics (throughput, cycle time, lead time, failure breakdown, and the
+like keep their values and shape). Pre-rollout history reads as no
+data, not zero: a sprint with no events carries `rework` null, a sprint
+with events but no stored `returned` events carries its started count
+with `sent_backs` null, and a sprint with no review/QA returns carries
+`qa_returns` null — each part names no story and does not assert a zero
+count, and the two parts do not borrow each other's data.
 
 ## Boundary conditions
 
