@@ -176,6 +176,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                     },
                     "required": ["refinement", "delivery"],
                 },
+                "kind": {"type": "string"},
             },
         },
         "attempt_number": {"type": "integer"},
@@ -183,6 +184,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "failure_role": {"type": "string"},
         "because": {"type": "string", "enum": ["sponsor", "story_problem"]},
         "epic": {"type": "string"},
+        "goal": {"type": "string"},
         "replaced_by": {"type": ["array", "null"], "items": {"type": "integer"}},
     },
 }

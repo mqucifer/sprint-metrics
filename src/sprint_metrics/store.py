@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     points INT,
     because TEXT,
     epic TEXT,
+    goal TEXT,
+    kind TEXT,
     replaced_by JSONB,
     PRIMARY KEY (card_id, type, event_time),
     CONSTRAINT board_events_type_check CHECK (
@@ -43,6 +45,8 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS attempt_number 
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS points INT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS because TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS epic TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS goal TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS kind TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS replaced_by JSONB;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS card_created_at TIMESTAMPTZ;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_seconds INT;
@@ -81,12 +85,13 @@ def insert_event(conn: Connection, event: dict) -> None:
     The event dict must have keys: card_id, type, timestamp, sprint, card (with 'created').
     Optional card fields: attempts, failure_class, failure_role (stored only on 'finished' rows),
     points (stored on every event row that carries it; NULL when absent),
-    created_at (stored on every event row that carries it; NULL when absent).
+    created_at (stored on every event row that carries it; NULL when absent),
+    kind (stored on every event row that carries it; NULL when absent).
     Optional top-level fields: attempt_number, failure_class, failure_role
     (stored only on 'attempt_failed' rows); failure_class and failure_role are
     also stored on 'returned' rows.
     Optional top-level fields: because, replaced_by (stored only on 'superseded' rows);
-    epic is stored on 'superseded' and 'returned' rows that carry it.
+    epic and goal are stored on every event row that carries them; NULL when absent.
 
     On re-send (conflict on the primary key), NULL columns receive the new value;
     columns that already hold a value are left unchanged (epic R1).
@@ -116,7 +121,9 @@ def insert_event(conn: Connection, event: dict) -> None:
         ev_attempt_number = None
 
     ev_because = event.get("because") if is_superseded else None
-    ev_epic = event.get("epic") if (is_superseded or is_returned) else None
+    ev_epic = event.get("epic")
+    ev_goal = event.get("goal")
+    ev_kind = card.get("kind")
     ev_replaced_by = (
         json.dumps(event["replaced_by"]) if is_superseded and "replaced_by" in event else None
     )
@@ -142,10 +149,10 @@ def insert_event(conn: Connection, event: dict) -> None:
         INSERT INTO sprint_metrics.board_events
             (card_id, type, event_time, sprint, card_created,
              attempts, failure_class, failure_role, attempt_number, points,
-             because, epic, replaced_by, card_created_at,
+             because, epic, goal, kind, replaced_by, card_created_at,
              model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens,
              model_time_split_refinement, model_time_split_delivery)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO UPDATE SET
             attempts = COALESCE(board_events.attempts, EXCLUDED.attempts),
             failure_class = COALESCE(board_events.failure_class, EXCLUDED.failure_class),
@@ -154,6 +161,8 @@ def insert_event(conn: Connection, event: dict) -> None:
             points = COALESCE(board_events.points, EXCLUDED.points),
             because = COALESCE(board_events.because, EXCLUDED.because),
             epic = COALESCE(board_events.epic, EXCLUDED.epic),
+            goal = COALESCE(board_events.goal, EXCLUDED.goal),
+            kind = COALESCE(board_events.kind, EXCLUDED.kind),
             replaced_by = COALESCE(board_events.replaced_by, EXCLUDED.replaced_by),
             card_created_at = COALESCE(board_events.card_created_at, EXCLUDED.card_created_at),
             model_seconds = COALESCE(board_events.model_seconds, EXCLUDED.model_seconds),
@@ -177,6 +186,8 @@ def insert_event(conn: Connection, event: dict) -> None:
             card.get("points"),
             ev_because,
             ev_epic,
+            ev_goal,
+            ev_kind,
             ev_replaced_by,
             card_created_at,
             ev_model_seconds,

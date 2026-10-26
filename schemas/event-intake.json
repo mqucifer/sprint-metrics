@@ -99,6 +99,9 @@
             "refinement",
             "delivery"
           ]
+        },
+        "kind": {
+          "type": "string"
         }
       }
     },
@@ -119,6 +122,9 @@
       ]
     },
     "epic": {
+      "type": "string"
+    },
+    "goal": {
       "type": "string"
     },
     "replaced_by": {

@@ -4,6 +4,8 @@
 
 ### Added
 
+- The event intake (api_version stays "1") accepts an optional top-level `epic` string, an optional top-level `goal` string, and an optional `card.kind` string on every accepted event type; the three link fields are stored on every row that carries them (like points), absent fields store as NULL, and the resend rule (NULL fields fill in, set fields are not overwritten) applies to them as it does to points
+
 - The 'returned' event type (a story handed back to the Business Analyst) is accepted at POST /events: it rides the common event fields and optionally carries failure_class (the reason for the send-back), failure_role (the step or role that sent the story back), and epic (the story's epic link); the three fields are stored on the returned row and are optional, and re-sending a returned event is as safe as re-sending any other event (#803)
 
 - The finished event's cost payload accepts an optional `model_time_split` sub-object (refinement and delivery model seconds), validated under its own all-or-nothing rule and stored on the finished row, resend-safe

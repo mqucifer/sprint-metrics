@@ -22,6 +22,14 @@ The service accepts sprint definitions via POST /sprints. Each sprint is registe
 
 The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, superseded, and returned. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
 
+Every accepted event may carry three optional link fields, which the crew sends on any event type:
+
+- `epic` (top-level, optional string): the story's epic link. Absent when the crew does not know the epic.
+- `goal` (top-level, optional string): the story's goal link. Absent when the crew does not know the goal.
+- `card.kind` (on the card object, optional string): the story's kind (for example 'story', 'epic', 'goal'). Absent when the crew does not know the kind.
+
+When absent, the stored row holds no data (NULL) for the field. The intake version stays "1".
+
 A `superseded` event marks a card that was replaced by other stories. It carries two fields beyond the common event fields:
 
 - `because` (required): the reason the card was superseded. Accepts the values `"sponsor"` (at the Sponsor's request) or `"story_problem"` (after a story problem).

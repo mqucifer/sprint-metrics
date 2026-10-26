@@ -98,7 +98,7 @@ def test_init_db_adds_the_cost_columns_to_a_table_from_before_them(conn):
         "output_tokens",
         "reasoning_output_tokens",
     } <= column_names
-    assert len(column_names) == 21
+    assert len(column_names) == 23
     count = conn.execute("SELECT COUNT(*) FROM sprint_metrics.board_events").fetchone()[0]
     assert count == 1
 
