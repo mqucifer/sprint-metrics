@@ -39,7 +39,16 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 
 VALID_EVENT_TYPES = frozenset(
-    {"started", "blocked", "unblocked", "finished", "escalated", "attempt_failed", "superseded"}
+    {
+        "started",
+        "blocked",
+        "unblocked",
+        "finished",
+        "escalated",
+        "attempt_failed",
+        "superseded",
+        "returned",
+    }
 )
 # Measures /trend once offered and now refuses with a 400 that says so.
 RETIRED_TREND_METRICS = frozenset({"escalation_rate_percent", "escalation_count"})
@@ -694,8 +703,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "POST",
         "/events",
         "Accept a board event (started, blocked, unblocked, finished, escalated, "
-        "attempt_failed, superseded). The service validates the card's created "
-        "date and event type.",
+        "attempt_failed, superseded, returned). The service validates the card's "
+        "created date and event type.",
     ),
     (
         "GET",

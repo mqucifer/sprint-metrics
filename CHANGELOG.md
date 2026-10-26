@@ -4,6 +4,8 @@
 
 ### Added
 
+- The 'returned' event type (a story handed back to the Business Analyst) is accepted at POST /events: it rides the common event fields and optionally carries failure_class (the reason for the send-back), failure_role (the step or role that sent the story back), and epic (the story's epic link); the three fields are stored on the returned row and are optional, and re-sending a returned event is as safe as re-sending any other event (#803)
+
 - The finished event's cost payload accepts an optional `model_time_split` sub-object (refinement and delivery model seconds), validated under its own all-or-nothing rule and stored on the finished row, resend-safe
 
 ### Changed

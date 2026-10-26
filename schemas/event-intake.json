@@ -25,7 +25,8 @@
         "finished",
         "escalated",
         "attempt_failed",
-        "superseded"
+        "superseded",
+        "returned"
       ]
     },
     "timestamp": {
