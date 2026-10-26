@@ -1016,6 +1016,59 @@ def test_metrics_md_cost_names_match_service_metrics():
         assert display in section, f"display name {display!r} not in metrics table"
 
 
+def test_service_md_range_row_describes_rework_answer():
+    """AC10: the GET /range description in docs/service.md tells the reader that
+    each sprint's entry carries the stories sent back to the business analyst,
+    out of the stories started that sprint, each naming the story, the step it
+    was sent back from, and why — and that a send-back counts in the sprint of
+    the returned event."""
+    section = _extract_marked_section((DOCS_DIR / "service.md").read_text(), "service")
+    row = next(line for line in section.splitlines() if line.startswith("| GET | /range"))
+    for phrase in (
+        "rework",
+        "Business Analyst",
+        "stories started",
+        "identifier",
+        "step it was sent back from",
+        "reason",
+        "sprint of the returned event",
+    ):
+        assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
+
+
+def test_metrics_md_computation_details_describes_rework_answer():
+    """AC10: docs/metrics.md's 'Computation details' tells the reader what the
+    rework answer is: the stories sent back to the business analyst, out of the
+    stories started that sprint, each naming the story, the step it was sent
+    back from, and why — and that a send-back counts in the sprint of the
+    returned event."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    details = text.split("## Computation details")[1]
+    heading = next(
+        line for line in details.splitlines() if "Rework" in line and line.startswith("###")
+    )
+    section = details.split(heading)[1]
+    # Stop at the next section or the boundary-conditions heading.
+    for stop in ("\n## ", "\n### "):
+        if stop in section:
+            section = section.split(stop)[0]
+    # Markdown wraps long sentences; compare against one-line text.
+    import re
+
+    section = re.sub(r"\s+", " ", section)
+    for phrase in (
+        "rework",
+        "Business Analyst",
+        "started",
+        "step",
+        "reason",
+        "counts in the sprint of the",
+        "`returned`",
+        "completes no story",
+    ):
+        assert phrase in section, f"rework computation details missing {phrase!r}"
+
+
 def test_service_md_cost_example_is_complete():
     """AC7: the event-intake section has a complete cost-payload example with all
     five fields and non-negative integer values, in a copy-ready JSON block."""

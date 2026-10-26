@@ -16,7 +16,14 @@ except ImportError:
     psycopg = None
 
 from sprint_metrics.metrics import calculate_superseded_points
-from sprint_metrics.store import init_db, insert_event, query_sprint, upsert_sprint
+from sprint_metrics.store import (
+    init_db,
+    insert_event,
+    query_returned_events,
+    query_sprint,
+    query_started_count,
+    upsert_sprint,
+)
 
 DB_URL = os.environ.get("SPRINT_METRICS_DB")
 
@@ -483,3 +490,136 @@ def test_resend_cost_keeps_existing(conn):
     ).fetchall()
     assert len(rows) == 1
     assert rows[0] == (3500, 4000, 1400, 900, 300)
+
+
+def _returned(conn, card_id, sprint, timestamp, **extra):
+    insert_event(
+        conn,
+        {
+            "card_id": card_id,
+            "type": "returned",
+            "timestamp": timestamp,
+            "sprint": sprint,
+            "card": {"created": "2024-01-01"},
+            **extra,
+        },
+    )
+
+
+def test_query_started_count_counts_distinct_starteds(conn):
+    """AC1: the started count is the number of distinct stories with a 'started'
+    event in the sprint; other event types do not count."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-01'")
+    conn.commit()
+    for i in range(1, 6):
+        insert_event(
+            conn,
+            {
+                "card_id": f"rw_started_{i}",
+                "type": "started",
+                "timestamp": f"2031-01-0{i}T10:00:00Z",
+                "sprint": "2031-01",
+                "card": {"created": "2031-01-01"},
+            },
+        )
+    # A finished and a returned event in the same sprint add no started story.
+    insert_event(
+        conn,
+        {
+            "card_id": "rw_started_done",
+            "type": "finished",
+            "timestamp": "2031-01-20T10:00:00Z",
+            "sprint": "2031-01",
+            "card": {"created": "2031-01-01"},
+        },
+    )
+    _returned(conn, "rw_started_ret", "2031-01", "2031-01-21T10:00:00Z")
+    assert query_started_count(conn, "2031-01") == 5
+    # A second started event for the same story does not raise the count.
+    insert_event(
+        conn,
+        {
+            "card_id": "rw_started_1",
+            "type": "started",
+            "timestamp": "2031-01-09T10:00:00Z",
+            "sprint": "2031-01",
+            "card": {"created": "2031-01-01"},
+        },
+    )
+    assert query_started_count(conn, "2031-01") == 5
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-01'")
+    conn.commit()
+
+
+def test_query_returned_events_returns_step_and_reason_in_event_order(conn):
+    """AC1/AC2: a sprint's returned rows come back as (card_id, step, reason) in
+    event order, step the failure_role the crew sent and reason the failure_class."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-02'")
+    conn.commit()
+    _returned(
+        conn,
+        "rw_ret_a",
+        "2031-02",
+        "2031-02-05T10:00:00Z",
+        failure_class="contract_ruling",
+        failure_role="Review",
+    )
+    _returned(
+        conn,
+        "rw_ret_b",
+        "2031-02",
+        "2031-02-06T10:00:00Z",
+        failure_class="blocked_session",
+        failure_role="QA",
+    )
+    got = query_returned_events(conn, "2031-02")
+    assert got == [
+        ("rw_ret_a", "Review", "contract_ruling"),
+        ("rw_ret_b", "QA", "blocked_session"),
+    ]
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-02'")
+    conn.commit()
+
+
+def test_query_returned_events_missing_step_or_reason_is_none(conn):
+    """A returned event that carries no failure_role or failure_class yields a
+    None step or reason, not a made-up value."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-03'")
+    conn.commit()
+    _returned(conn, "rw_none_a", "2031-03", "2031-03-05T10:00:00Z")
+    _returned(
+        conn,
+        "rw_none_b",
+        "2031-03",
+        "2031-03-06T10:00:00Z",
+        failure_role="Review",
+    )
+    got = query_returned_events(conn, "2031-03")
+    assert got == [("rw_none_a", None, None), ("rw_none_b", "Review", None)]
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-03'")
+    conn.commit()
+
+
+def test_query_returned_events_counts_the_sprint_of_the_event(conn):
+    """AC3: a returned event counts in the sprint of that event, not the sprint
+    the story started in."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2031-04', '2031-05')")
+    conn.commit()
+    # The story starts in 2031-04 but is sent back in 2031-05.
+    insert_event(
+        conn,
+        {
+            "card_id": "rw_span_x",
+            "type": "started",
+            "timestamp": "2031-04-03T10:00:00Z",
+            "sprint": "2031-04",
+            "card": {"created": "2031-04-01"},
+        },
+    )
+    _returned(conn, "rw_span_x", "2031-05", "2031-05-03T10:00:00Z", failure_role="QA")
+    assert query_returned_events(conn, "2031-04") == []
+    assert query_returned_events(conn, "2031-05") == [("rw_span_x", "QA", None)]
+    assert query_started_count(conn, "2031-04") == 1
+    assert query_started_count(conn, "2031-05") == 0
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2031-04', '2031-05')")
+    conn.commit()
