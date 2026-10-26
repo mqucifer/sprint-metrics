@@ -222,6 +222,63 @@
               "total"
             ]
           },
+          "rework": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "started": {
+                "type": "integer"
+              },
+              "sent_backs": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "card_id": {
+                      "type": "string"
+                    },
+                    "send_backs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "card_id",
+                    "send_backs"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "started",
+              "sent_backs"
+            ]
+          },
           "prior": {
             "type": [
               "object",

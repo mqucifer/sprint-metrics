@@ -506,3 +506,36 @@ def sprint_has_events(conn: Connection, label: str) -> bool:
         (label,),
     ).fetchone()
     return row is not None
+
+
+def query_started_count(conn: Connection, label: str) -> int:
+    """Return the number of distinct stories with a 'started' event in the sprint."""
+    row = conn.execute(
+        """
+        SELECT COUNT(DISTINCT card_id) FROM sprint_metrics.board_events
+        WHERE type = 'started' AND sprint = %s
+        """,
+        (label,),
+    ).fetchone()
+    return row[0]
+
+
+def query_returned_events(
+    conn: Connection, label: str
+) -> list[tuple[str, str | None, str | None]]:
+    """Return the sprint's 'returned' rows as (card_id, step, reason), in event order.
+
+    step is the failure_role the crew sent (the role that sent the story back)
+    and reason the failure_class (the reason for the send-back); each is None
+    when the crew did not send it.
+    """
+    rows = conn.execute(
+        """
+        SELECT card_id, failure_role, failure_class
+        FROM sprint_metrics.board_events
+        WHERE type = 'returned' AND sprint = %s
+        ORDER BY event_time
+        """,
+        (label,),
+    ).fetchall()
+    return [(card_id, failure_role, failure_class) for card_id, failure_role, failure_class in rows]

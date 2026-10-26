@@ -125,6 +125,27 @@ tokens, and `reasoning_output_percent` is the sprint's reasoning share of
 all output tokens. Both percents are identical on every story in the
 `story_costs` list.
 
+### Rework (send-backs to refinement)
+
+The `rework` answer on each sprint's `/range` entry names the stories the
+crew handed back to the Business Analyst — its `returned` events — out of
+the stories started that sprint. `rework.started` is the count of distinct
+stories with a `started` event in the sprint; `rework.sent_backs` names each
+sent-back story once, by its identifier, and each send-back carries the step
+it was sent back from (the role that sent it back, as sent on the event) and
+the reason, in words a public visitor can read. A send-back counts in the
+sprint of the `returned` event, not the sprint the story started in, and a
+story sent back more than once in a sprint is named once with each
+send-back. The `step` and `reason` use the step labels the rest of the
+overview's pipeline uses; the service does not invent its own.
+
+A `returned` event completes no story: it changes none of the other metrics
+(throughput, cycle time, lead time, failure breakdown, and the like keep
+their values and shape). Pre-rollout history reads as no data, not zero: a
+sprint with no events carries `rework` null, and a sprint with events but no
+stored `returned` events carries its started count with `sent_backs` null —
+it names no sent-back story and does not assert a zero send-back count.
+
 ## Boundary conditions
 
 ### Zero values for an empty sprint

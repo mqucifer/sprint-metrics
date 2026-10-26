@@ -3911,6 +3911,417 @@ def test_range_failure_breakdown_and_top_failure_causes_coexist():
         conn.close()
 
 
+def _returned_event(card_id, sprint, timestamp, failure_class=None, failure_role=None):
+    """A 'returned' event: the story handed back to the Business Analyst.
+
+    failure_class (the reason) and failure_role (the step that sent it back) are
+    optional top-level fields, as the crew sends them.
+    """
+    event = {
+        "api_version": "1",
+        "card_id": card_id,
+        "type": "returned",
+        "timestamp": timestamp,
+        "sprint": sprint,
+        "card": {"created": "2024-01-01"},
+    }
+    if failure_class is not None:
+        event["failure_class"] = failure_class
+    if failure_role is not None:
+        event["failure_role"] = failure_role
+    return event
+
+
+@requires_db
+def test_range_rework_names_each_sent_back_story_out_of_started():
+    """AC1: a sprint in which 5 stories started and 2 were sent back (different
+    steps and reasons) carries a rework answer naming each sent-back story by
+    identifier, its step and its reason, out of the 5 started."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_e2e1_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-03'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        for i in range(1, 6):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=f"rw_e2e1_s{i}",
+                    event_type="started",
+                    timestamp=f"2024-03-0{i}T10:00:00Z",
+                    sprint="2024-03",
+                    created="2024-03-01",
+                ),
+            )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e1_s3",
+                "2024-03",
+                "2024-03-12T10:00:00Z",
+                failure_class="contract_ruling",
+                failure_role="Review",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e1_s4",
+                "2024-03",
+                "2024-03-13T10:00:00Z",
+                failure_class="blocked_session",
+                failure_role="QA",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-03&end=2024-03")
+        assert status == 200
+        rework = body["sprints"]["2024-03"]["rework"]
+        assert rework["started"] == 5
+        assert rework["sent_backs"] == [
+            {"card_id": "rw_e2e1_s3", "send_backs": [{"step": "Review", "reason": "contract_ruling"}]},
+            {"card_id": "rw_e2e1_s4", "send_backs": [{"step": "QA", "reason": "blocked_session"}]},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_step_is_unmodified_role_sent_on_event():
+    """AC2: the rework step is the failure_role the crew sent on the returned
+    event, unmodified — not a label the service invents."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_e2e2_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-03'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_e2e2_a",
+                event_type="started",
+                timestamp="2024-03-01T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e2_a",
+                "2024-03",
+                "2024-03-05T10:00:00Z",
+                failure_class="reason",
+                failure_role="Sprint 3's Team Lead",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-03&end=2024-03")
+        assert status == 200
+        rework = body["sprints"]["2024-03"]["rework"]
+        assert rework["sent_backs"][0]["send_backs"][0]["step"] == "Sprint 3's Team Lead"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_counts_in_the_sprint_of_the_returned_event():
+    """AC3: a story that started in sprint A and was sent back in sprint B is
+    named in B's rework against B's started stories, and A's rework does not
+    carry it."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_e2e3_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-04', '2024-05')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Five stories start in 2024-04; one of them (rw_e2e3_m) is sent back in 2024-05.
+        for i in range(1, 6):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=f"rw_e2e3_s{i}",
+                    event_type="started",
+                    timestamp=f"2024-04-0{i}T10:00:00Z",
+                    sprint="2024-04",
+                    created="2024-04-01",
+                ),
+            )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_e2e3_m",
+                event_type="started",
+                timestamp="2024-04-15T10:00:00Z",
+                sprint="2024-04",
+                created="2024-04-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e3_m",
+                "2024-05",
+                "2024-05-03T10:00:00Z",
+                failure_class="story_problem",
+                failure_role="Refinement",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-04&end=2024-05")
+        assert status == 200
+        sprints = body["sprints"]
+        # A's rework names no sent-back story (it has events but no returned rows).
+        assert sprints["2024-04"]["rework"]["started"] == 6
+        assert sprints["2024-04"]["rework"]["sent_backs"] is None
+        # B's rework names the send-back against B's started stories (0 started in B).
+        assert sprints["2024-05"]["rework"]["started"] == 0
+        assert sprints["2024-05"]["rework"]["sent_backs"] == [
+            {
+                "card_id": "rw_e2e3_m",
+                "send_backs": [{"step": "Refinement", "reason": "story_problem"}],
+            }
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_story_sent_back_twice_is_named_once():
+    """AC4: a story sent back twice in the same sprint is named once, with both
+    send-backs each carrying their step and reason, and it counts once in the
+    out-of-started figure."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_e2e4_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-06'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        for i in range(1, 5):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(
+                    card_id=f"rw_e2e4_s{i}",
+                    event_type="started",
+                    timestamp=f"2024-06-0{i}T10:00:00Z",
+                    sprint="2024-06",
+                    created="2024-06-01",
+                ),
+            )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e4_s1",
+                "2024-06",
+                "2024-06-10T10:00:00Z",
+                failure_class="contract_ruling",
+                failure_role="Review",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e4_s1",
+                "2024-06",
+                "2024-06-12T10:00:00Z",
+                failure_class="blocked_session",
+                failure_role="QA",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-06&end=2024-06")
+        assert status == 200
+        rework = body["sprints"]["2024-06"]["rework"]
+        assert rework["started"] == 4
+        # The story is named once even though it was sent back twice.
+        assert [entry["card_id"] for entry in rework["sent_backs"]] == ["rw_e2e4_s1"]
+        assert rework["sent_backs"][0]["send_backs"] == [
+            {"step": "Review", "reason": "contract_ruling"},
+            {"step": "QA", "reason": "blocked_session"},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_lists_send_back_with_zero_started():
+    """AC5: a sprint in which no story started but a story was sent back still
+    lists the send-back and reads 0 started — it neither invents a proportion
+    nor drops the send-back."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_e2e5_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-07'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e5_x",
+                "2024-07",
+                "2024-07-03T10:00:00Z",
+                failure_class="story_problem",
+                failure_role="Refinement",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-07&end=2024-07")
+        assert status == 200
+        rework = body["sprints"]["2024-07"]["rework"]
+        assert rework["started"] == 0
+        assert rework["sent_backs"] == [
+            {"card_id": "rw_e2e5_x", "send_backs": [{"step": "Refinement", "reason": "story_problem"}]}
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_null_for_empty_sprint_and_no_data_without_returned():
+    """AC6: a sprint with no events at all reads rework null (no data, not
+    zero-filled); a sprint with events but no stored 'returned' events names no
+    sent-back story and does not assert a zero send-back count."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_e2e6_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-08', '2024-09')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-08 has events (one started+finished story); 2024-09 has none.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_e2e6_a",
+                event_type="started",
+                timestamp="2024-08-03T10:00:00Z",
+                sprint="2024-08",
+                created="2024-08-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_e2e6_a",
+                event_type="finished",
+                timestamp="2024-08-07T10:00:00Z",
+                sprint="2024-08",
+                created="2024-08-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-08&end=2024-09")
+        assert status == 200
+        sprints = body["sprints"]
+        # The empty sprint reads no data, not a zero-filled answer.
+        assert sprints["2024-09"]["rework"] is None
+        assert sprints["2024-09"]["throughput"] is None
+        # The events-but-no-returned sprint names no sent-back story (null, not
+        # an empty list) and carries its started count.
+        assert sprints["2024-08"]["rework"] == {"started": 1, "sent_backs": None}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_rework_changes_no_other_metric():
+    """AC7: a sent-back story that is never re-completed changes none of the
+    other metrics; the already-shipping keys keep their values and shape."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'rw_e2e7_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # A story that starts and finishes (throughput 1, first attempt 100%).
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_e2e7_done",
+                event_type="started",
+                timestamp="2024-10-03T10:00:00Z",
+                sprint="2024-10",
+                created="2024-10-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_e2e7_done",
+                event_type="finished",
+                timestamp="2024-10-07T10:00:00Z",
+                sprint="2024-10",
+                created="2024-10-01",
+            ),
+        )
+        status, before = _get_json(f"http://127.0.0.1:{port}/range?start=2024-10&end=2024-10")
+        assert status == 200
+        # A second story starts and is sent back to refinement, never re-completed.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="rw_e2e7_back",
+                event_type="started",
+                timestamp="2024-10-04T10:00:00Z",
+                sprint="2024-10",
+                created="2024-10-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _returned_event(
+                "rw_e2e7_back",
+                "2024-10",
+                "2024-10-06T10:00:00Z",
+                failure_class="story_problem",
+                failure_role="Refinement",
+            ),
+        )
+        status, after = _get_json(f"http://127.0.0.1:{port}/range?start=2024-10&end=2024-10")
+        assert status == 200
+        before_entry = {k: v for k, v in before["sprints"]["2024-10"].items() if k != "rework"}
+        after_entry = {k: v for k, v in after["sprints"]["2024-10"].items() if k != "rework"}
+        assert before_entry == after_entry
+        # The send-back completes no story and adds no review/QA return.
+        assert after_entry["throughput"] == 1
+        assert after_entry["failure_breakdown"] == []
+        assert after_entry["top_failure_causes"] == []
+        assert after["sprints"]["2024-10"]["rework"]["sent_backs"] == [
+            {"card_id": "rw_e2e7_back", "send_backs": [{"step": "Refinement", "reason": "story_problem"}]}
+        ]
+    finally:
+        conn.close()
+
+
 @requires_db
 def test_sprint_response_includes_points_first_attempt_and_escalation_count():
     """AC1/AC6: after POSTing started+finished+escalated for a card with points 5,
