@@ -4,6 +4,8 @@
 
 ### Added
 
+- The finished event's cost payload accepts an optional `model_time_split` sub-object (refinement and delivery model seconds), validated under its own all-or-nothing rule and stored on the finished row, resend-safe
+
 ### Changed
 
 ### Fixed
