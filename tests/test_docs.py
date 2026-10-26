@@ -1135,16 +1135,16 @@ def test_service_md_api_version_paragraph_describes_version_5():
     """AC5: docs/service.md's api_version paragraph states the response
     api_version is '5', version '4' is retired, and intake keeps '1'."""
     text = (DOCS_DIR / "service.md").read_text()
-    # The paragraph is outside the generated section (it's hand-written prose)
-    # Find the api_version section
-    api_version_section = text.split("api_version")[1]
-    assert '"5"' in api_version_section or "5" in api_version_section
-    assert '"4"' in api_version_section or "4" in api_version_section
-    assert "retired" in api_version_section
-    assert '"1"' in api_version_section or "1" in api_version_section
-    # Verify version 5 is described as current
-    assert "5.0.0" in api_version_section
-    # Verify version 4 is described as retired
-    assert "retired" in api_version_section
-    # Verify intake keeps version 1
-    assert "intake" in api_version_section.lower() or "Event intake" in api_version_section
+    # The /range and /trend api_version paragraph is outside the generated section
+    paragraph = text.split("The /range and /trend responses carry their own")[1]
+    # Find the end of the paragraph (next blank line or next heading)
+    end = paragraph.find("\n\n")
+    if end == -1:
+        end = len(paragraph)
+    paragraph = paragraph[:end]
+    assert '"5"' in paragraph
+    assert '"4"' in paragraph
+    assert "retired" in paragraph
+    assert "5.0.0" in paragraph
+    assert "Event intake" in paragraph
+    assert '"1"' in paragraph
