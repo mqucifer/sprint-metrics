@@ -190,8 +190,8 @@ jobs:
           echo "OK: api_version is 4"
           # api_version is pinned above; every other field must match the earlier image,
           # except the escalation measures this release removes (#774, #775) and the
-          # rework answer added by the rework story (#803/#813), which the earlier
-          # image does not carry.
+          # rework answer completed by the rework stories (#803, #813, #814), which
+          # the earlier image does not carry.
           RANGE_FILTER='del(.api_version)
             | del(.sprints[] | .escalation_rate_percent, .escalation_count, .flags.escalation_rate_percent)
             | del(.sprints[] | (.prior, .delta) | objects | .escalation_rate_percent, .escalation_count)
