@@ -1111,3 +1111,40 @@ def test_no_documentation_shows_a_cli_flag():
             stripped = line.strip()
             if re.match(r"^sprint-metrics\s+\S+", stripped):
                 pytest.fail(f"{name}: {line!r} looks like a sprint-metrics command with a file argument")
+
+
+def test_service_md_range_row_describes_roster_answer():
+    """AC5: the GET /range row in docs/service.md's generated section describes
+    the roster: per-sprint completed stories, released epics and achieved Goals
+    by identifier; sprints whose stories carry no links read null (no backfill)."""
+    section = _extract_marked_section((DOCS_DIR / "service.md").read_text(), "service")
+    row = next(line for line in section.splitlines() if line.startswith("| GET | /range"))
+    for phrase in (
+        "roster",
+        "completed",
+        "released",
+        "achieved",
+        "identifier",
+        "null",
+        "no backfill",
+    ):
+        assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
+
+
+def test_service_md_api_version_paragraph_describes_version_5():
+    """AC5: docs/service.md's api_version paragraph states the response
+    api_version is '5', version '4' is retired, and intake keeps '1'."""
+    text = (DOCS_DIR / "service.md").read_text()
+    # The paragraph is outside the generated section (it's hand-written prose)
+    # Find the api_version section
+    api_version_section = text.split("api_version")[1]
+    assert '"5"' in api_version_section or "5" in api_version_section
+    assert '"4"' in api_version_section or "4" in api_version_section
+    assert "retired" in api_version_section
+    assert '"1"' in api_version_section or "1" in api_version_section
+    # Verify version 5 is described as current
+    assert "5.0.0" in api_version_section
+    # Verify version 4 is described as retired
+    assert "retired" in api_version_section
+    # Verify intake keeps version 1
+    assert "intake" in api_version_section.lower() or "Event intake" in api_version_section

@@ -539,3 +539,72 @@ def query_returned_events(
         (label,),
     ).fetchall()
     return [(card_id, failure_role, failure_class) for card_id, failure_role, failure_class in rows]
+
+
+def query_roster_data(conn: Connection, labels: list[str]) -> dict:
+    """Return the roster data for the given sprint labels.
+
+    Computes from stored 'finished' events only:
+    - completed stories per sprint (deduplicated card_ids)
+    - the sprint where each epic releases (the sprint of its last story's finished event)
+    - the sprint where each goal is achieved (the sprint where its last epic releases)
+    - which sprints carry at least one finished event with an epic link
+    - which sprints carry at least one finished event with a goal link
+
+    Returns a dict with keys: 'completed', 'released_epics', 'achieved_goals',
+    'sprints_with_epic', 'sprints_with_goal'.
+    """
+    placeholders = ",".join(["%s"] * len(labels))
+    rows = conn.execute(
+        f"""
+        SELECT card_id, sprint, event_time, epic, goal
+        FROM sprint_metrics.board_events
+        WHERE type = 'finished' AND sprint IN ({placeholders})
+        ORDER BY event_time
+        """,
+        labels,
+    ).fetchall()
+
+    completed: dict[str, list[str]] = {label: [] for label in labels}
+    sprints_with_epic: set[str] = set()
+    sprints_with_goal: set[str] = set()
+    epic_latest: dict[str, tuple] = {}  # epic -> (event_time, sprint)
+    goal_epics: dict[str, list] = {}  # goal -> [(event_time, sprint)]
+
+    for card_id, sprint, event_time, epic, goal in rows:
+        if sprint in completed:
+            completed[sprint].append(card_id)
+        if epic is not None:
+            sprints_with_epic.add(sprint)
+            if epic not in epic_latest or event_time > epic_latest[epic][0]:
+                epic_latest[epic] = (event_time, sprint)
+        if goal is not None:
+            sprints_with_goal.add(sprint)
+            if goal not in goal_epics:
+                goal_epics[goal] = []
+            goal_epics[goal].append((event_time, sprint))
+
+    released_epics: dict[str, list[str]] = {label: [] for label in labels}
+    for epic, (_event_time, sprint) in epic_latest.items():
+        if sprint in released_epics:
+            released_epics[sprint].append(epic)
+
+    achieved_goals: dict[str, list[str]] = {label: [] for label in labels}
+    for goal, entries in goal_epics.items():
+        latest = max(entries, key=lambda x: x[0])
+        achieved_sprint = latest[1]
+        if achieved_sprint in achieved_goals:
+            achieved_goals[achieved_sprint].append(goal)
+
+    for label in labels:
+        completed[label] = sorted(set(completed[label]))
+        released_epics[label] = sorted(released_epics[label])
+        achieved_goals[label] = sorted(achieved_goals[label])
+
+    return {
+        "completed": completed,
+        "released_epics": released_epics,
+        "achieved_goals": achieved_goals,
+        "sprints_with_epic": sprints_with_epic,
+        "sprints_with_goal": sprints_with_goal,
+    }

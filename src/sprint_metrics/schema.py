@@ -154,6 +154,24 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         },
                         "required": ["started", "sent_backs"],
                     },
+                    "roster": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "completed_stories": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "released_epics": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string"},
+                            },
+                            "achieved_goals": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["completed_stories", "released_epics", "achieved_goals"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {

@@ -32,6 +32,7 @@ from sprint_metrics.store import (
     init_db,
     insert_event,
     query_range,
+    query_roster_data,
     query_returned_events,
     query_sprint,
     query_started_count,
@@ -456,6 +457,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         result = json.loads(body)
                         _attach_range_cost(result, sprints, labels, has_events)
                         _attach_range_rework(result, labels, rework)
+                        _attach_range_roster(result, conn_holder[0], labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -738,7 +740,15 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "returned from and the cause). A send-back counts in the "
         "sprint of the returned event. by_step groups each part's "
         "returns by step. Sprints with no events return all-null "
-        "values, rework included.",
+        "values, rework included. "
+        "Each entry also carries a roster naming, by identifier, "
+        "the stories that completed in that sprint, the epics that "
+        "released in that sprint (an epic releases in the sprint "
+        "where its last story's finished event is), and the Goals "
+        "that were achieved in that sprint (a Goal is achieved in "
+        "the sprint where its last epic releases). Sprints whose "
+        "stories carry no epic or goal link read null for the "
+        "corresponding roster part (no backfill).",
     ),
     (
         "GET",
@@ -844,6 +854,36 @@ def _attach_range_rework(result: dict, labels: list[str], rework: dict[str, dict
     """
     for label in labels:
         result["sprints"][label]["rework"] = rework.get(label)
+
+
+def _attach_range_roster(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the roster to each range entry.
+
+    A sprint with no events carries roster null. A sprint with events carries
+    a roster object with completed_stories (always a list), released_epics
+    (a list when the sprint's finished events carry at least one epic link,
+    otherwise null), and achieved_goals (a list when the sprint's finished
+    events carry at least one goal link, otherwise null).
+    """
+    roster_data = query_roster_data(conn, labels)
+    for label in labels:
+        if label not in has_events:
+            result["sprints"][label]["roster"] = None
+            continue
+        completed = roster_data["completed"].get(label, [])
+        released = roster_data["released_epics"].get(label, [])
+        achieved = roster_data["achieved_goals"].get(label, [])
+        if label not in roster_data["sprints_with_epic"]:
+            released = None
+        if label not in roster_data["sprints_with_goal"]:
+            achieved = None
+        result["sprints"][label]["roster"] = {
+            "completed_stories": completed,
+            "released_epics": released,
+            "achieved_goals": achieved,
+        }
 
 
 def _validate_cost_fields(card: dict) -> str | None:
