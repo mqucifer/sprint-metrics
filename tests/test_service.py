@@ -4690,6 +4690,10 @@ def test_range_rework_failure_breakdown_unchanged():
         ]
     finally:
         conn.close()
+
+
+@requires_db
+def test_sprint_response_includes_points_first_attempt_and_escalation_count():
     """AC1/AC6: after POSTing started+finished+escalated for a card with points 5,
     GET /range returns the four new fields with correct values alongside existing keys."""
     import psycopg
