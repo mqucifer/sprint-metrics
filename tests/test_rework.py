@@ -167,7 +167,7 @@ def test_rework_by_step_groups_each_part_by_step():
 
 def test_rework_qa_returns_empty_reads_as_no_data():
     """AC5: a sprint with send-backs but no review/QA returns carries
-    qa_returns null — the two parts do not borrow each other's data."""
+    no qa_returns key — the two parts do not borrow each other's data."""
     answer = calculate_rework(
         3,
         [("s1", "Review", "contract_ruling")],
@@ -176,8 +176,8 @@ def test_rework_qa_returns_empty_reads_as_no_data():
     assert answer["sent_backs"] == [
         {"card_id": "s1", "send_backs": [{"step": "Review", "reason": "contract_ruling"}]},
     ]
-    assert answer["qa_returns"] is None
-    assert answer["by_step"] == {"sent_backs": {"Review": 1}}
+    assert "qa_returns" not in answer
+    assert "by_step" not in answer
 
 
 def test_rework_sent_backs_empty_qa_returns_present():
@@ -197,10 +197,10 @@ def test_rework_sent_backs_empty_qa_returns_present():
 
 
 def test_rework_both_parts_empty_no_by_step():
-    """AC3: when both parts are empty, by_step is absent (no data to group)."""
+    """AC3: when both parts are empty, by_step and qa_returns are absent."""
     answer = calculate_rework(3, [], [])
     assert answer["sent_backs"] is None
-    assert answer["qa_returns"] is None
+    assert "qa_returns" not in answer
     assert "by_step" not in answer
 
 

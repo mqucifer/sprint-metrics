@@ -79,28 +79,26 @@ def calculate_rework(
     review/QA returns as (card_id, step, reason) in event order; step is the
     returning role and reason the cause, using the same (failure class,
     returning role) values as the failure_breakdown. When ``qa_returns`` is
-    None the answer carries only the send-backs part.
+    None or empty the answer carries only the send-backs part.
 
     Each story is named once per kind, its returns in event order.
     ``sent_backs`` is None when the sprint holds no 'returned' events, and
-    ``qa_returns`` is None when the sprint holds no review/QA returns, so
-    pre-rollout history reads as no data, not zero. ``by_step`` groups each
-    part's returns by step (the count per step), present when ``qa_returns``
-    is given and at least one part has data. A 'returned' event completes no
-    story and changes no other measure.
+    ``qa_returns`` is present only when the sprint holds review/QA returns,
+    so pre-rollout history reads as no data, not zero. ``by_step`` groups
+    each part's returns by step (the count per step), present when at least
+    one part has data. A 'returned' event completes no story and changes no
+    other measure.
     """
     sent_backs = _group_by_story(returned, "send_backs")
     result: dict = {
         "started": started,
         "sent_backs": sent_backs,
     }
-    if qa_returns is not None:
+    if qa_returns:
         result["qa_returns"] = _group_by_story(qa_returns, "returns")
         by_step: dict[str, dict[str, int]] = {}
         if sent_backs is not None:
             by_step["sent_backs"] = _by_step(returned)
-        if result["qa_returns"] is not None:
-            by_step["qa_returns"] = _by_step(qa_returns)
-        if by_step:
-            result["by_step"] = by_step
+        by_step["qa_returns"] = _by_step(qa_returns)
+        result["by_step"] = by_step
     return result
