@@ -1148,3 +1148,28 @@ def test_service_md_api_version_paragraph_describes_version_5():
     assert "5.0.0" in paragraph
     assert "Event intake" in paragraph
     assert '"1"' in paragraph
+
+
+def test_metrics_md_names_dora_measures():
+    """AC3: docs/metrics.md's generated table names the two DORA measures with
+    their plain-English display names, metric keys, units, and precision."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = _extract_marked_section(text, "metrics")
+    # Both DORA display names are present
+    assert "DORA release frequency" in section
+    assert "DORA lead time for changes" in section
+    # Both metric keys are present
+    assert "`release_frequency`" in section
+    assert "`dora_lead_time_days`" in section
+    # Release frequency states its unit (whole count) and what it measures
+    release_row = next(
+        line for line in section.splitlines() if "`release_frequency`" in line
+    )
+    assert "whole count" in release_row
+    assert "how often epics ship" in release_row
+    # Lead time states its unit (days) and precision (mean in whole days)
+    lead_row = next(
+        line for line in section.splitlines() if "`dora_lead_time_days`" in line
+    )
+    assert "whole days" in lead_row
+    assert "epic's release moment" in lead_row
