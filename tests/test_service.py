@@ -8801,32 +8801,39 @@ def test_range_working_time_prior_and_delta():
 
 @requires_db
 def test_range_working_time_null_prior_delta_when_prior_no_data():
-    """AC4b: when the prior sprint has no working-time data, that entry's prior
-    and delta carry working_time_minutes null."""
+    """AC4b: when the prior sprint has events but no closed session window (no
+    working-time data), that entry's prior and delta carry working_time_minutes
+    null, while the current sprint's own total is present."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wtpd')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wtpd_a', 'wtpd_b')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-09', '2024-10')")
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 2024-09: no events
-        # 2024-10: 60 min
+        # 2024-09: a session that started but never closed (events, but no working time)
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtpd", event_type="started", timestamp="2024-10-02T09:00:00Z", sprint="2024-10"),
+            _make_event(card_id="wtpd_a", event_type="started", timestamp="2024-09-02T09:00:00Z", sprint="2024-09"),
+        )
+        # 2024-10: a closed 60-minute session
+        _post_events(
+            f"{base}/events",
+            _make_event(card_id="wtpd_b", event_type="started", timestamp="2024-10-02T09:00:00Z", sprint="2024-10"),
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtpd", event_type="finished", timestamp="2024-10-02T10:00:00Z", sprint="2024-10"),
+            _make_event(card_id="wtpd_b", event_type="finished", timestamp="2024-10-02T10:00:00Z", sprint="2024-10"),
         )
         status, body = _get_json(f"{base}/range?start=2024-09&end=2024-10")
         assert status == 200
+        e9 = body["sprints"]["2024-09"]
         e10 = body["sprints"]["2024-10"]
+        assert e9["working_time"] is None
         assert e10["working_time"]["total"] == 60
         assert e10["prior"]["working_time_minutes"] is None
         assert e10["delta"]["working_time_minutes"] is None
