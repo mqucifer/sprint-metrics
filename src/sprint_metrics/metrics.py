@@ -151,6 +151,7 @@ ALL_METRICS: frozenset[str] = frozenset(
         "output_tokens_total",
         "cached_input_percent",
         "reasoning_output_percent",
+        "sent_backs_count",
     }
 )
 

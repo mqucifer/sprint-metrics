@@ -92,6 +92,86 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         },
                         "required": ["middle", "total"],
                     },
+                    "rework": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "started": {"type": "integer"},
+                            "sent_backs": {
+                                "type": ["array", "null"],
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "card_id": {"type": "string"},
+                                        "send_backs": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "step": {"type": ["string", "null"]},
+                                                    "reason": {"type": ["string", "null"]},
+                                                },
+                                                "required": ["step", "reason"],
+                                            },
+                                        },
+                                    },
+                                    "required": ["card_id", "send_backs"],
+                                },
+                            },
+                            "qa_returns": {
+                                "type": ["array", "null"],
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "card_id": {"type": "string"},
+                                        "returns": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "step": {"type": ["string", "null"]},
+                                                    "reason": {"type": ["string", "null"]},
+                                                },
+                                                "required": ["step", "reason"],
+                                            },
+                                        },
+                                    },
+                                    "required": ["card_id", "returns"],
+                                },
+                            },
+                            "by_step": {
+                                "type": "object",
+                                "properties": {
+                                    "sent_backs": {
+                                        "type": "object",
+                                        "additionalProperties": {"type": "integer"},
+                                    },
+                                    "qa_returns": {
+                                        "type": "object",
+                                        "additionalProperties": {"type": "integer"},
+                                    },
+                                },
+                            },
+                        },
+                        "required": ["started", "sent_backs"],
+                    },
+                    "roster": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "completed_stories": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "released_epics": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string"},
+                            },
+                            "achieved_goals": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["completed_stories", "released_epics", "achieved_goals"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {
@@ -148,6 +228,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "escalated",
                 "attempt_failed",
                 "superseded",
+                "returned",
             ],
         },
         "timestamp": {"type": "string", "format": "date-time"},
@@ -167,6 +248,15 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "cached_input_tokens": {"type": "integer", "minimum": 0},
                 "output_tokens": {"type": "integer", "minimum": 0},
                 "reasoning_output_tokens": {"type": "integer", "minimum": 0},
+                "model_time_split": {
+                    "type": "object",
+                    "properties": {
+                        "refinement": {"type": "integer", "minimum": 0},
+                        "delivery": {"type": "integer", "minimum": 0},
+                    },
+                    "required": ["refinement", "delivery"],
+                },
+                "kind": {"type": "string"},
             },
         },
         "attempt_number": {"type": "integer"},
@@ -174,6 +264,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "failure_role": {"type": "string"},
         "because": {"type": "string", "enum": ["sponsor", "story_problem"]},
         "epic": {"type": "string"},
+        "goal": {"type": "string"},
         "replaced_by": {"type": ["array", "null"], "items": {"type": "integer"}},
     },
 }

@@ -222,6 +222,159 @@
               "total"
             ]
           },
+          "rework": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "started": {
+                "type": "integer"
+              },
+              "sent_backs": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "card_id": {
+                      "type": "string"
+                    },
+                    "send_backs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "card_id",
+                    "send_backs"
+                  ]
+                }
+              },
+              "qa_returns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "card_id": {
+                      "type": "string"
+                    },
+                    "returns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "card_id",
+                    "returns"
+                  ]
+                }
+              },
+              "by_step": {
+                "type": "object",
+                "properties": {
+                  "sent_backs": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  },
+                  "qa_returns": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "required": [
+              "started",
+              "sent_backs"
+            ]
+          },
+          "roster": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "completed_stories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "released_epics": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "achieved_goals": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "completed_stories",
+              "released_epics",
+              "achieved_goals"
+            ]
+          },
           "prior": {
             "type": [
               "object",

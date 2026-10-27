@@ -4,7 +4,19 @@
 
 ### Added
 
+- The event intake (api_version stays "1") accepts an optional top-level `epic` string, an optional top-level `goal` string, and an optional `card.kind` string on every accepted event type; the three link fields are stored on every row that carries them (like points), absent fields store as NULL, and the resend rule (NULL fields fill in, set fields are not overwritten) applies to them as it does to points
+
+- The 'returned' event type (a story handed back to the Business Analyst) is accepted at POST /events: it rides the common event fields and optionally carries failure_class (the reason for the send-back), failure_role (the step or role that sent the story back), and epic (the story's epic link); the three fields are stored on the returned row and are optional, and re-sending a returned event is as safe as re-sending any other event (#803)
+- GET /range carries each sprint's `rework` answer: the stories sent back to the Business Analyst (its `returned` events), out of the stories started that sprint, each named by its identifier with the step it was sent back from and the reason in words; a send-back counts in the sprint of the `returned` event, a story sent back more than once is named once, and a sprint with no events (or no `returned` events) reads as no data, not zero (#803, #813)
+
+- The rework answer on each sprint's `/range` entry is completed with the review/QA returns: `qa_returns` names the stories bounced at review or QA (its `attempt_failed` events), each by its identifier with the step it was returned from and the cause, using the same (failure class, returning role) values as `failure_breakdown`; a story that both went back to the Business Analyst and bounced at review appears in both parts, separately. `by_step` groups each part's returns by step (the count of rework per step), so the reader sees which step the sprint's rework concentrates in. The two parts are labeled and do not borrow each other's data (#803, #814)
+- The finished event's cost payload accepts an optional `model_time_split` sub-object (refinement and delivery model seconds), validated under its own all-or-nothing rule and stored on the finished row, resend-safe
+- GET /trend accepts the new `sent_backs_count` measure: the count of distinct stories sent back to the Business Analyst (its `returned` events) in the sprint; a sprint with events but no `returned` events reads null, not zero (#803)
+- GET /range carries each sprint's `roster` naming, by identifier, the stories that completed in that sprint, the epics that released in that sprint (an epic releases in the sprint where its last story's finished event is), and the Goals that were achieved in that sprint (a Goal is achieved in the sprint where its last epic releases); sprints whose stories carry no epic or goal link read null for the corresponding roster part (no backfill), and sprints with no events read roster null (#804, #806)
+
 ### Changed
+
+- The /range and /trend responses carry `api_version` "5"; version "4" is retired because /range's shape changed (the per-sprint roster). Event intake keeps `api_version` "1"
 
 ### Fixed
 

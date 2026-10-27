@@ -25,13 +25,17 @@ from sprint_metrics.metrics import (
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
+from sprint_metrics.rework import calculate_rework, calculate_sent_backs_count, extract_qa_returns
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
     init_db,
     insert_event,
     query_range,
+    query_returned_events,
+    query_roster_data,
     query_sprint,
+    query_started_count,
     resolve_sprint_range,
     sprint_has_events,
     upsert_sprint,
@@ -39,7 +43,16 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 
 VALID_EVENT_TYPES = frozenset(
-    {"started", "blocked", "unblocked", "finished", "escalated", "attempt_failed", "superseded"}
+    {
+        "started",
+        "blocked",
+        "unblocked",
+        "finished",
+        "escalated",
+        "attempt_failed",
+        "superseded",
+        "returned",
+    }
 )
 # Measures /trend once offered and now refuses with a 400 that says so.
 RETIRED_TREND_METRICS = frozenset({"escalation_rate_percent", "escalation_count"})
@@ -286,6 +299,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     if error:
                         status, response_body = 400, {"error": error}
                         return
+                    error = _validate_model_time_split(card)
+                    if error:
+                        status, response_body = 400, {"error": error}
+                        return
 
                 if event_type == "superseded":
                     error = _validate_superseded_event(event)
@@ -424,6 +441,14 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             for label in labels:
                                 if sprint_has_events(conn_holder[0], label):
                                     has_events.add(label)
+                            rework: dict[str, dict] = {}
+                            for label in labels:
+                                if label in has_events:
+                                    rework[label] = calculate_rework(
+                                        query_started_count(conn_holder[0], label),
+                                        query_returned_events(conn_holder[0], label),
+                                        extract_qa_returns(sprints[label]),
+                                    )
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -431,6 +456,8 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         body = format_sprint_range_json(sprints, labels)
                         result = json.loads(body)
                         _attach_range_cost(result, sprints, labels, has_events)
+                        _attach_range_rework(result, labels, rework)
+                        _attach_range_roster(result, conn_holder[0], labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -515,15 +542,16 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
                             return
-                        values = [
-                            {
-                                "sprint": label,
-                                "value": metric_value(metric, sprints[label])
-                                if label in has_events
-                                else None,
-                            }
-                            for label in sprints
-                        ]
+                        values = []
+                        for label in sprints:
+                            if label not in has_events:
+                                value = None
+                            elif metric == "sent_backs_count":
+                                returned = query_returned_events(conn_holder[0], label)
+                                value = calculate_sent_backs_count(returned)
+                            else:
+                                value = metric_value(metric, sprints[label])
+                            values.append({"sprint": label, "value": value})
                         response = {
                             "api_version": API_VERSION,
                             "metric": metric,
@@ -690,8 +718,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "POST",
         "/events",
         "Accept a board event (started, blocked, unblocked, finished, escalated, "
-        "attempt_failed, superseded). The service validates the card's created "
-        "date and event type.",
+        "attempt_failed, superseded, returned). The service validates the card's "
+        "created date and event type.",
     ),
     (
         "GET",
@@ -700,7 +728,27 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
-        "Sprints with no events return all-null values.",
+        "Each entry also carries rework: two labeled parts — "
+        "sent_backs (the stories sent back to the Business Analyst, "
+        "its returned events, out of the stories started that sprint; "
+        "each sent-back story is named by its identifier, and each "
+        "send-back carries the step it was sent back from and the "
+        "reason) and qa_returns (the review/QA returns, using the "
+        "same (failure class, returning role) values as "
+        "failure_breakdown; each returned story is named by its "
+        "identifier, and each return carries the step it was "
+        "returned from and the cause). A send-back counts in the "
+        "sprint of the returned event. by_step groups each part's "
+        "returns by step. Sprints with no events return all-null "
+        "values, rework included. "
+        "Each entry also carries a roster naming, by identifier, "
+        "the stories that completed in that sprint, the epics that "
+        "released in that sprint (an epic releases in the sprint "
+        "where its last story's finished event is), and the Goals "
+        "that were achieved in that sprint (a Goal is achieved in "
+        "the sprint where its last epic releases). Sprints whose "
+        "stories carry no epic or goal link read null for the "
+        "corresponding roster part (no backfill).",
     ),
     (
         "GET",
@@ -717,7 +765,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "model_minutes_middle, model_minutes_total, "
         "input_tokens_middle, input_tokens_total, "
         "output_tokens_middle, output_tokens_total, "
-        "cached_input_percent, reasoning_output_percent. "
+        "cached_input_percent, reasoning_output_percent, "
+        "sent_backs_count. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null.",
@@ -795,6 +844,48 @@ def _attach_range_cost(
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 
 
+def _attach_range_rework(result: dict, labels: list[str], rework: dict[str, dict]) -> None:
+    """Attach the rework answer to each range entry.
+
+    An entry for a sprint with no events carries rework null, so pre-rollout
+    history reads as no data, not zero. An entry for a sprint with events
+    carries its started count and its sent-backs, or null sent-backs when the
+    sprint holds no 'returned' events.
+    """
+    for label in labels:
+        result["sprints"][label]["rework"] = rework.get(label)
+
+
+def _attach_range_roster(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the roster to each range entry.
+
+    A sprint with no events carries roster null. A sprint with events carries
+    a roster object with completed_stories (always a list), released_epics
+    (a list when the sprint's finished events carry at least one epic link,
+    otherwise null), and achieved_goals (a list when the sprint's finished
+    events carry at least one goal link, otherwise null).
+    """
+    roster_data = query_roster_data(conn, labels)
+    for label in labels:
+        if label not in has_events:
+            result["sprints"][label]["roster"] = None
+            continue
+        completed = roster_data["completed"].get(label, [])
+        released = roster_data["released_epics"].get(label, [])
+        achieved = roster_data["achieved_goals"].get(label, [])
+        if label not in roster_data["sprints_with_epic"]:
+            released = None
+        if label not in roster_data["sprints_with_goal"]:
+            achieved = None
+        result["sprints"][label]["roster"] = {
+            "completed_stories": completed,
+            "released_epics": released,
+            "achieved_goals": achieved,
+        }
+
+
 def _validate_cost_fields(card: dict) -> str | None:
     """Validate all-or-nothing cost fields on a finished event's card payload.
 
@@ -819,6 +910,32 @@ def _validate_cost_fields(card: dict) -> str | None:
             return f"invalid cost payload on finished event: {key} must be a non-negative integer"
         if value < 0:
             return f"invalid cost payload on finished event: {key} must be a non-negative integer"
+    return None
+
+
+def _validate_model_time_split(card: dict) -> str | None:
+    """Validate all-or-nothing model-time split sub-object on a finished event's card payload.
+
+    Returns an error string on failure, None on success or when no split key is present.
+    """
+    if "model_time_split" not in card:
+        return None
+    split = card["model_time_split"]
+    if not isinstance(split, dict):
+        return "invalid model-time split on finished event: must be an object"
+    split_keys = ("refinement", "delivery")
+    present = [k for k in split_keys if k in split]
+    if not present:
+        return None
+    missing = [k for k in split_keys if k not in split]
+    if missing:
+        return f"partial model-time split on finished event: missing {', '.join(missing)}"
+    for key in split_keys:
+        value = split[key]
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"invalid model-time split on finished event: {key} must be a non-negative integer"
+        if value < 0:
+            return f"invalid model-time split on finished event: {key} must be a non-negative integer"
     return None
 
 

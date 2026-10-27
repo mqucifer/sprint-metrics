@@ -16,7 +16,14 @@ except ImportError:
     psycopg = None
 
 from sprint_metrics.metrics import calculate_superseded_points
-from sprint_metrics.store import init_db, insert_event, query_sprint, upsert_sprint
+from sprint_metrics.store import (
+    init_db,
+    insert_event,
+    query_returned_events,
+    query_sprint,
+    query_started_count,
+    upsert_sprint,
+)
 
 DB_URL = os.environ.get("SPRINT_METRICS_DB")
 
@@ -98,7 +105,7 @@ def test_init_db_adds_the_cost_columns_to_a_table_from_before_them(conn):
         "output_tokens",
         "reasoning_output_tokens",
     } <= column_names
-    assert len(column_names) == 19
+    assert len(column_names) == 23
     count = conn.execute("SELECT COUNT(*) FROM sprint_metrics.board_events").fetchone()[0]
     assert count == 1
 
@@ -483,3 +490,279 @@ def test_resend_cost_keeps_existing(conn):
     ).fetchall()
     assert len(rows) == 1
     assert rows[0] == (3500, 4000, 1400, 900, 300)
+
+
+def _returned(conn, card_id, sprint, timestamp, **extra):
+    insert_event(
+        conn,
+        {
+            "card_id": card_id,
+            "type": "returned",
+            "timestamp": timestamp,
+            "sprint": sprint,
+            "card": {"created": "2024-01-01"},
+            **extra,
+        },
+    )
+
+
+def test_query_started_count_counts_distinct_starteds(conn):
+    """AC1: the started count is the number of distinct stories with a 'started'
+    event in the sprint; other event types do not count."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-01'")
+    conn.commit()
+    for i in range(1, 6):
+        insert_event(
+            conn,
+            {
+                "card_id": f"rw_started_{i}",
+                "type": "started",
+                "timestamp": f"2031-01-0{i}T10:00:00Z",
+                "sprint": "2031-01",
+                "card": {"created": "2031-01-01"},
+            },
+        )
+    # A finished and a returned event in the same sprint add no started story.
+    insert_event(
+        conn,
+        {
+            "card_id": "rw_started_done",
+            "type": "finished",
+            "timestamp": "2031-01-20T10:00:00Z",
+            "sprint": "2031-01",
+            "card": {"created": "2031-01-01"},
+        },
+    )
+    _returned(conn, "rw_started_ret", "2031-01", "2031-01-21T10:00:00Z")
+    assert query_started_count(conn, "2031-01") == 5
+    # A second started event for the same story does not raise the count.
+    insert_event(
+        conn,
+        {
+            "card_id": "rw_started_1",
+            "type": "started",
+            "timestamp": "2031-01-09T10:00:00Z",
+            "sprint": "2031-01",
+            "card": {"created": "2031-01-01"},
+        },
+    )
+    assert query_started_count(conn, "2031-01") == 5
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-01'")
+    conn.commit()
+
+
+def test_query_returned_events_returns_step_and_reason_in_event_order(conn):
+    """AC1/AC2: a sprint's returned rows come back as (card_id, step, reason) in
+    event order, step the failure_role the crew sent and reason the failure_class."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-02'")
+    conn.commit()
+    _returned(
+        conn,
+        "rw_ret_a",
+        "2031-02",
+        "2031-02-05T10:00:00Z",
+        failure_class="contract_ruling",
+        failure_role="Review",
+    )
+    _returned(
+        conn,
+        "rw_ret_b",
+        "2031-02",
+        "2031-02-06T10:00:00Z",
+        failure_class="blocked_session",
+        failure_role="QA",
+    )
+    got = query_returned_events(conn, "2031-02")
+    assert got == [
+        ("rw_ret_a", "Review", "contract_ruling"),
+        ("rw_ret_b", "QA", "blocked_session"),
+    ]
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-02'")
+    conn.commit()
+
+
+def test_query_returned_events_missing_step_or_reason_is_none(conn):
+    """A returned event that carries no failure_role or failure_class yields a
+    None step or reason, not a made-up value."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-03'")
+    conn.commit()
+    _returned(conn, "rw_none_a", "2031-03", "2031-03-05T10:00:00Z")
+    _returned(
+        conn,
+        "rw_none_b",
+        "2031-03",
+        "2031-03-06T10:00:00Z",
+        failure_role="Review",
+    )
+    got = query_returned_events(conn, "2031-03")
+    assert got == [("rw_none_a", None, None), ("rw_none_b", "Review", None)]
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-03'")
+    conn.commit()
+
+
+def test_query_returned_events_counts_the_sprint_of_the_event(conn):
+    """AC3: a returned event counts in the sprint of that event, not the sprint
+    the story started in."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2031-04', '2031-05')")
+    conn.commit()
+    # The story starts in 2031-04 but is sent back in 2031-05.
+    insert_event(
+        conn,
+        {
+            "card_id": "rw_span_x",
+            "type": "started",
+            "timestamp": "2031-04-03T10:00:00Z",
+            "sprint": "2031-04",
+            "card": {"created": "2031-04-01"},
+        },
+    )
+    _returned(conn, "rw_span_x", "2031-05", "2031-05-03T10:00:00Z", failure_role="QA")
+    assert query_returned_events(conn, "2031-04") == []
+    assert query_returned_events(conn, "2031-05") == [("rw_span_x", "QA", None)]
+    assert query_started_count(conn, "2031-04") == 1
+    assert query_started_count(conn, "2031-05") == 0
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2031-04', '2031-05')")
+    conn.commit()
+
+
+def test_started_row_stores_epic_goal_and_kind(conn):
+    """AC1: a 'started' event carrying top-level epic, top-level goal, and card.kind
+    stores all three on the row."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'link_start'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "link_start",
+            "type": "started",
+            "timestamp": "2024-06-01T09:00:00Z",
+            "sprint": "2024-06",
+            "epic": "epic-42",
+            "goal": "goal-7",
+            "card": {"created": "2024-06-01", "kind": "feature"},
+        },
+    )
+    rows = conn.execute(
+        "SELECT epic, goal, kind FROM sprint_metrics.board_events "
+        "WHERE card_id = 'link_start' AND type = 'started'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0] == ("epic-42", "goal-7", "feature")
+
+
+def test_finished_row_stores_epic_goal_and_kind(conn):
+    """AC1: a 'finished' event carrying top-level epic, top-level goal, and card.kind
+    stores all three on the row."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'link_fin'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "link_fin",
+            "type": "finished",
+            "timestamp": "2024-06-05T15:00:00Z",
+            "sprint": "2024-06",
+            "epic": "epic-99",
+            "goal": "goal-12",
+            "card": {"created": "2024-06-01", "kind": "bug"},
+        },
+    )
+    rows = conn.execute(
+        "SELECT epic, goal, kind FROM sprint_metrics.board_events "
+        "WHERE card_id = 'link_fin' AND type = 'finished'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0] == ("epic-99", "goal-12", "bug")
+
+
+def test_event_without_links_stores_null(conn):
+    """AC2: an event carrying no epic, goal, or kind stores NULL for all three columns."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'link_null'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "link_null",
+            "type": "finished",
+            "timestamp": "2024-06-10T12:00:00Z",
+            "sprint": "2024-06",
+            "card": {"created": "2024-06-01"},
+        },
+    )
+    rows = conn.execute(
+        "SELECT epic, goal, kind FROM sprint_metrics.board_events "
+        "WHERE card_id = 'link_null' AND type = 'finished'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0] == (None, None, None)
+
+
+def test_resend_fills_null_goal_and_keeps_existing_epic(conn):
+    """AC3: re-sending the same event with a goal fills the NULL goal column,
+    while a re-send carrying a different epic does not overwrite the stored value."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'link_resend'")
+    conn.commit()
+    # First send: has epic but no goal.
+    insert_event(
+        conn,
+        {
+            "card_id": "link_resend",
+            "type": "started",
+            "timestamp": "2024-07-01T09:00:00Z",
+            "sprint": "2024-07",
+            "epic": "original-epic",
+            "card": {"created": "2024-07-01"},
+        },
+    )
+    # Re-send same event: now carries goal, and a *different* epic.
+    insert_event(
+        conn,
+        {
+            "card_id": "link_resend",
+            "type": "started",
+            "timestamp": "2024-07-01T09:00:00Z",
+            "sprint": "2024-07",
+            "epic": "different-epic",
+            "goal": "new-goal",
+            "card": {"created": "2024-07-01"},
+        },
+    )
+    rows = conn.execute(
+        "SELECT epic, goal, kind FROM sprint_metrics.board_events "
+        "WHERE card_id = 'link_resend' AND type = 'started'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "original-epic"  # not overwritten
+    assert rows[0][1] == "new-goal"  # filled from NULL
+    assert rows[0][2] is None  # kind was never sent
+
+
+def test_superseded_row_stores_epic_goal_and_kind(conn):
+    """AC4: a 'superseded' event carrying epic, because, replaced_by, goal, and
+    card.kind stores all five on the row."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'link_sup'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "link_sup",
+            "type": "superseded",
+            "timestamp": "2024-08-01T10:00:00Z",
+            "sprint": "2024-08",
+            "epic": "epic-sup",
+            "goal": "goal-sup",
+            "because": "sponsor",
+            "replaced_by": [42, 43],
+            "card": {"created": "2024-08-01", "kind": "chore"},
+        },
+    )
+    rows = conn.execute(
+        "SELECT epic, goal, kind, because, replaced_by FROM sprint_metrics.board_events "
+        "WHERE card_id = 'link_sup' AND type = 'superseded'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == "epic-sup"
+    assert rows[0][1] == "goal-sup"
+    assert rows[0][2] == "chore"
+    assert rows[0][3] == "sponsor"
+    assert rows[0][4] == [42, 43]

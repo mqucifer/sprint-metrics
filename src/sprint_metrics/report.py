@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-API_VERSION = "4"
+API_VERSION = "5"
 
 
 _METRIC_COLUMNS: dict[str, str] = {
@@ -29,4 +29,5 @@ _METRIC_COLUMNS: dict[str, str] = {
     "output_tokens_total": "Output tokens (total)",
     "cached_input_percent": "Cached input percent",
     "reasoning_output_percent": "Reasoning output percent",
+    "sent_backs_count": "Sent backs count",
 }

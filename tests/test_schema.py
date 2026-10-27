@@ -249,3 +249,64 @@ def test_sprint_range_schema_names_no_escalation_measure():
     text = json.dumps(SPRINT_RANGE_SCHEMA)
     assert "escalation_rate_percent" not in text
     assert "escalation_count" not in text
+
+
+def test_sprint_range_schema_declares_rework_on_sprint_entry():
+    """AC8: the range schema declares a rework key on a sprint entry, shaped as
+    the service answers it: an object (or null) with started (integer) and
+    sent_backs (array or null) of {card_id, send_backs: [{step, reason}]};
+    rework is not required, so a pre-rollout entry may omit it."""
+    sprint_schema = SPRINT_RANGE_SCHEMA["properties"]["sprints"]["additionalProperties"]
+    assert "rework" in sprint_schema["properties"]
+    assert "rework" not in sprint_schema["required"]
+    rework = sprint_schema["properties"]["rework"]
+    assert rework["type"] == ["object", "null"]
+    assert rework["required"] == ["started", "sent_backs"]
+    assert rework["properties"]["started"]["type"] == "integer"
+    sent_backs = rework["properties"]["sent_backs"]
+    assert sent_backs["type"] == ["array", "null"]
+    item = sent_backs["items"]
+    assert item["type"] == "object"
+    assert item["required"] == ["card_id", "send_backs"]
+    assert item["properties"]["card_id"]["type"] == "string"
+    send_back_item = item["properties"]["send_backs"]["items"]
+    assert send_back_item["type"] == "object"
+    assert send_back_item["required"] == ["step", "reason"]
+    assert send_back_item["properties"]["step"]["type"] == ["string", "null"]
+    assert send_back_item["properties"]["reason"]["type"] == ["string", "null"]
+
+
+def test_sprint_range_schema_accepts_rework_answer():
+    """AC8: a range entry carrying a rework answer (and one with rework null)
+    both validate against SPRINT_RANGE_SCHEMA."""
+    rework = {
+        "started": 5,
+        "sent_backs": [
+            {"card_id": "s3", "send_backs": [{"step": "Review", "reason": "contract_ruling"}]},
+            {"card_id": "s4", "send_backs": [{"step": "QA", "reason": "blocked_session"}]},
+        ],
+    }
+    response = {
+        "api_version": "4",
+        "sprints": {
+            "2024-03": _range_entry(rework=rework, prior=None, delta=None),
+            "2024-04": _range_entry(rework=None, prior=None, delta=None),
+        },
+    }
+    jsonschema.validate(response, SPRINT_RANGE_SCHEMA)
+
+
+def test_sprint_range_schema_rework_rejects_malformed_send_back():
+    """AC8: a rework answer whose send-back omits its step is rejected."""
+    bad = {
+        "api_version": "4",
+        "sprints": {
+            "2024-03": _range_entry(
+                rework={"started": 1, "sent_backs": [{"card_id": "s3", "send_backs": [{"reason": "x"}]}]},
+                prior=None,
+                delta=None,
+            )
+        },
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(bad, SPRINT_RANGE_SCHEMA)

@@ -30,10 +30,12 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     points INT,
     because TEXT,
     epic TEXT,
+    goal TEXT,
+    kind TEXT,
     replaced_by JSONB,
     PRIMARY KEY (card_id, type, event_time),
     CONSTRAINT board_events_type_check CHECK (
-        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
     ),
     CONSTRAINT board_events_because_check CHECK (
         because IS NULL OR because IN ('sponsor', 'story_problem')
@@ -43,6 +45,8 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS attempt_number 
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS points INT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS because TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS epic TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS goal TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS kind TEXT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS replaced_by JSONB;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS card_created_at TIMESTAMPTZ;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_seconds INT;
@@ -50,9 +54,11 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS input_tokens BI
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS cached_input_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS reasoning_output_tokens BIGINT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_time_split_refinement INT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_time_split_delivery INT;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
-    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded')
+    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
 );
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_because_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_because_check CHECK (
@@ -79,10 +85,13 @@ def insert_event(conn: Connection, event: dict) -> None:
     The event dict must have keys: card_id, type, timestamp, sprint, card (with 'created').
     Optional card fields: attempts, failure_class, failure_role (stored only on 'finished' rows),
     points (stored on every event row that carries it; NULL when absent),
-    created_at (stored on every event row that carries it; NULL when absent).
+    created_at (stored on every event row that carries it; NULL when absent),
+    kind (stored on every event row that carries it; NULL when absent).
     Optional top-level fields: attempt_number, failure_class, failure_role
-    (stored only on 'attempt_failed' rows).
-    Optional top-level fields: because, epic, replaced_by (stored only on 'superseded' rows).
+    (stored only on 'attempt_failed' rows); failure_class and failure_role are
+    also stored on 'returned' rows.
+    Optional top-level fields: because, replaced_by (stored only on 'superseded' rows);
+    epic and goal are stored on every event row that carries them; NULL when absent.
 
     On re-send (conflict on the primary key), NULL columns receive the new value;
     columns that already hold a value are left unchanged (epic R1).
@@ -92,6 +101,7 @@ def insert_event(conn: Connection, event: dict) -> None:
     is_finished = event_type == "finished"
     is_attempt_failed = event_type == "attempt_failed"
     is_superseded = event_type == "superseded"
+    is_returned = event_type == "returned"
 
     if is_finished:
         ev_failure_class = card.get("failure_class")
@@ -101,13 +111,19 @@ def insert_event(conn: Connection, event: dict) -> None:
         ev_failure_class = event.get("failure_class")
         ev_failure_role = event.get("failure_role")
         ev_attempt_number = event.get("attempt_number")
+    elif is_returned:
+        ev_failure_class = event.get("failure_class")
+        ev_failure_role = event.get("failure_role")
+        ev_attempt_number = None
     else:
         ev_failure_class = None
         ev_failure_role = None
         ev_attempt_number = None
 
     ev_because = event.get("because") if is_superseded else None
-    ev_epic = event.get("epic") if is_superseded else None
+    ev_epic = event.get("epic")
+    ev_goal = event.get("goal")
+    ev_kind = card.get("kind")
     ev_replaced_by = (
         json.dumps(event["replaced_by"]) if is_superseded and "replaced_by" in event else None
     )
@@ -120,14 +136,23 @@ def insert_event(conn: Connection, event: dict) -> None:
     ev_output_tokens = card.get("output_tokens") if is_finished else None
     ev_reasoning_output_tokens = card.get("reasoning_output_tokens") if is_finished else None
 
+    ev_model_time_split_refinement = None
+    ev_model_time_split_delivery = None
+    if is_finished:
+        split = card.get("model_time_split")
+        if isinstance(split, dict):
+            ev_model_time_split_refinement = split.get("refinement")
+            ev_model_time_split_delivery = split.get("delivery")
+
     conn.execute(
         """
         INSERT INTO sprint_metrics.board_events
             (card_id, type, event_time, sprint, card_created,
              attempts, failure_class, failure_role, attempt_number, points,
-             because, epic, replaced_by, card_created_at,
-             model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             because, epic, goal, kind, replaced_by, card_created_at,
+             model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens,
+             model_time_split_refinement, model_time_split_delivery)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO UPDATE SET
             attempts = COALESCE(board_events.attempts, EXCLUDED.attempts),
             failure_class = COALESCE(board_events.failure_class, EXCLUDED.failure_class),
@@ -136,13 +161,17 @@ def insert_event(conn: Connection, event: dict) -> None:
             points = COALESCE(board_events.points, EXCLUDED.points),
             because = COALESCE(board_events.because, EXCLUDED.because),
             epic = COALESCE(board_events.epic, EXCLUDED.epic),
+            goal = COALESCE(board_events.goal, EXCLUDED.goal),
+            kind = COALESCE(board_events.kind, EXCLUDED.kind),
             replaced_by = COALESCE(board_events.replaced_by, EXCLUDED.replaced_by),
             card_created_at = COALESCE(board_events.card_created_at, EXCLUDED.card_created_at),
             model_seconds = COALESCE(board_events.model_seconds, EXCLUDED.model_seconds),
             input_tokens = COALESCE(board_events.input_tokens, EXCLUDED.input_tokens),
             cached_input_tokens = COALESCE(board_events.cached_input_tokens, EXCLUDED.cached_input_tokens),
             output_tokens = COALESCE(board_events.output_tokens, EXCLUDED.output_tokens),
-            reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens)
+            reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens),
+            model_time_split_refinement = COALESCE(board_events.model_time_split_refinement, EXCLUDED.model_time_split_refinement),
+            model_time_split_delivery = COALESCE(board_events.model_time_split_delivery, EXCLUDED.model_time_split_delivery)
         """,
         (
             event["card_id"],
@@ -157,6 +186,8 @@ def insert_event(conn: Connection, event: dict) -> None:
             card.get("points"),
             ev_because,
             ev_epic,
+            ev_goal,
+            ev_kind,
             ev_replaced_by,
             card_created_at,
             ev_model_seconds,
@@ -164,6 +195,8 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_cached_input_tokens,
             ev_output_tokens,
             ev_reasoning_output_tokens,
+            ev_model_time_split_refinement,
+            ev_model_time_split_delivery,
         ),
     )
     conn.commit()
@@ -473,3 +506,105 @@ def sprint_has_events(conn: Connection, label: str) -> bool:
         (label,),
     ).fetchone()
     return row is not None
+
+
+def query_started_count(conn: Connection, label: str) -> int:
+    """Return the number of distinct stories with a 'started' event in the sprint."""
+    row = conn.execute(
+        """
+        SELECT COUNT(DISTINCT card_id) FROM sprint_metrics.board_events
+        WHERE type = 'started' AND sprint = %s
+        """,
+        (label,),
+    ).fetchone()
+    return row[0]
+
+
+def query_returned_events(
+    conn: Connection, label: str
+) -> list[tuple[str, str | None, str | None]]:
+    """Return the sprint's 'returned' rows as (card_id, step, reason), in event order.
+
+    step is the failure_role the crew sent (the role that sent the story back)
+    and reason the failure_class (the reason for the send-back); each is None
+    when the crew did not send it.
+    """
+    rows = conn.execute(
+        """
+        SELECT card_id, failure_role, failure_class
+        FROM sprint_metrics.board_events
+        WHERE type = 'returned' AND sprint = %s
+        ORDER BY event_time
+        """,
+        (label,),
+    ).fetchall()
+    return [(card_id, failure_role, failure_class) for card_id, failure_role, failure_class in rows]
+
+
+def query_roster_data(conn: Connection, labels: list[str]) -> dict:
+    """Return the roster data for the given sprint labels.
+
+    Computes from stored 'finished' events only:
+    - completed stories per sprint (deduplicated card_ids)
+    - the sprint where each epic releases (the sprint of its last story's finished event)
+    - the sprint where each goal is achieved (the sprint where its last epic releases)
+    - which sprints carry at least one finished event with an epic link
+    - which sprints carry at least one finished event with a goal link
+
+    Returns a dict with keys: 'completed', 'released_epics', 'achieved_goals',
+    'sprints_with_epic', 'sprints_with_goal'.
+    """
+    placeholders = ",".join(["%s"] * len(labels))
+    rows = conn.execute(
+        f"""
+        SELECT card_id, sprint, event_time, epic, goal
+        FROM sprint_metrics.board_events
+        WHERE type = 'finished' AND sprint IN ({placeholders})
+        ORDER BY event_time
+        """,
+        labels,
+    ).fetchall()
+
+    completed: dict[str, list[str]] = {label: [] for label in labels}
+    sprints_with_epic: set[str] = set()
+    sprints_with_goal: set[str] = set()
+    epic_latest: dict[str, tuple] = {}  # epic -> (event_time, sprint)
+    goal_epics: dict[str, list] = {}  # goal -> [(event_time, sprint)]
+
+    for card_id, sprint, event_time, epic, goal in rows:
+        if sprint in completed:
+            completed[sprint].append(card_id)
+        if epic is not None:
+            sprints_with_epic.add(sprint)
+            if epic not in epic_latest or event_time > epic_latest[epic][0]:
+                epic_latest[epic] = (event_time, sprint)
+        if goal is not None:
+            sprints_with_goal.add(sprint)
+            if goal not in goal_epics:
+                goal_epics[goal] = []
+            goal_epics[goal].append((event_time, sprint))
+
+    released_epics: dict[str, list[str]] = {label: [] for label in labels}
+    for epic, (_event_time, sprint) in epic_latest.items():
+        if sprint in released_epics:
+            released_epics[sprint].append(epic)
+
+    achieved_goals: dict[str, list[str]] = {label: [] for label in labels}
+    for goal, entries in goal_epics.items():
+        latest = max(entries, key=lambda x: x[0])
+        achieved_sprint = latest[1]
+        if achieved_sprint in achieved_goals:
+            achieved_goals[achieved_sprint].append(goal)
+
+    for label in labels:
+        completed[label] = sorted(set(completed[label]))
+        released_epics[label] = sorted(released_epics[label])
+        achieved_goals[label] = sorted(achieved_goals[label])
+
+    return {
+        "completed": completed,
+        "released_epics": released_epics,
+        "achieved_goals": achieved_goals,
+        "sprints_with_epic": sprints_with_epic,
+        "sprints_with_goal": sprints_with_goal,
+    }

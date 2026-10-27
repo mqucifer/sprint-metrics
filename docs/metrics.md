@@ -24,6 +24,7 @@ BEGIN:metrics
 | Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, or None when no story carries cost. |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards. |
 | Reasoning output percent | `reasoning_output_percent` | Return the sprint's reasoning share of output tokens as a whole percent, or None when no story carries cost. |
+| Sent backs count | `sent_backs_count` | Return the count of distinct stories sent back to the Business Analyst in the sprint, or None when no returned events are stored. |
 | Superseded breakdown | `superseded_breakdown` | Return the per-reason breakdown of superseded cards, keyed by 'sponsor' and 'story_problem' with their counts. Excluded from throughput and in-flight calculations. |
 | Superseded count | `superseded_count` | Return the number of cards marked superseded in the sprint. Excluded from throughput and in-flight calculations. |
 | Superseded points | `superseded_points` | Return the sum of the points value on superseded cards (0 when a superseded card carries no points value). Excluded from throughput and in-flight calculations. |
@@ -95,6 +96,18 @@ non-negative integer:
 All five fields are sent together or not at all; a partial payload is
 rejected at intake.
 
+The cost payload may also carry an optional `model_time_split` sub-object
+that splits the story's model time between refinement and delivery. Its two
+fields are each a non-negative integer (model seconds):
+
+- `refinement` — model seconds spent in refinement
+- `delivery` — model seconds spent in delivery
+
+The two fields are sent together or not at all; a partial sub-object is
+rejected at intake. The sub-object is independent of the five cost fields:
+a finished event may carry the split without the five fields, or the five
+fields without the split.
+
 The report's display unit for model cost is whole minutes. The crew sends
 model seconds on the event; the report shows `round(model_seconds / 60)`
 as `model_minutes`.
@@ -112,6 +125,46 @@ are computed from the sprint's combined token totals, not per story:
 tokens, and `reasoning_output_percent` is the sprint's reasoning share of
 all output tokens. Both percents are identical on every story in the
 `story_costs` list.
+
+### Rework (send-backs to refinement and review/QA returns)
+
+The `rework` answer on each sprint's `/range` entry covers the whole
+pipeline: the send-backs to refinement and the review/QA returns, each
+labeled and separated, so the reader cannot conflate the two kinds of
+rework. `rework.started` is the count of distinct stories with a
+`started` event in the sprint.
+
+`rework.sent_backs` names the stories the crew handed back to the
+Business Analyst — its `returned` events — out of the stories started
+that sprint. Each sent-back story is named once, by its identifier, and
+each send-back carries the step it was sent back from (the role that
+sent it back, as sent on the event) and the reason, in words a public
+visitor can read. A send-back counts in the sprint of the `returned`
+event, not the sprint the story started in, and a story sent back more
+than once in a sprint is named once with each send-back.
+
+`rework.qa_returns` names the stories bounced at review or QA — its
+`attempt_failed` events (or, in the legacy case, a finished card with
+attempts greater than 1). Each returned story is named once, by its
+identifier, and each return carries the step it was returned from (the
+returning role) and the cause, using the same (failure class, returning
+role) values as `failure_breakdown`. A story that both went back to the
+Business Analyst and bounced at review or QA appears in both parts,
+separately.
+
+`rework.by_step` groups each part's returns by step (the count of
+rework per step), so the reader sees which step the sprint's rework
+concentrates in, and comparing sprints across a `/range` window shows
+where work leaks across sprints, not just a per-sprint snapshot.
+
+A `returned` event completes no story: it changes none of the other
+metrics (throughput, cycle time, lead time, failure breakdown, and the
+like keep their values and shape). Pre-rollout history reads as no
+data, not zero: a sprint with no events carries `rework` null, a sprint
+with events but no stored `returned` events carries its started count
+with `sent_backs` null, and a sprint with no review/QA returns carries
+`qa_returns` null — each part names no story and does not assert a zero
+count, and the two parts do not borrow each other's data.
 
 ## Boundary conditions
 

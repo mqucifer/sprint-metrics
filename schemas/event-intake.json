@@ -25,7 +25,8 @@
         "finished",
         "escalated",
         "attempt_failed",
-        "superseded"
+        "superseded",
+        "returned"
       ]
     },
     "timestamp": {
@@ -81,6 +82,26 @@
         "reasoning_output_tokens": {
           "type": "integer",
           "minimum": 0
+        },
+        "model_time_split": {
+          "type": "object",
+          "properties": {
+            "refinement": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "delivery": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "refinement",
+            "delivery"
+          ]
+        },
+        "kind": {
+          "type": "string"
         }
       }
     },
@@ -101,6 +122,9 @@
       ]
     },
     "epic": {
+      "type": "string"
+    },
+    "goal": {
       "type": "string"
     },
     "replaced_by": {

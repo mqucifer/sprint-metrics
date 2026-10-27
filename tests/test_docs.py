@@ -547,6 +547,35 @@ def test_service_md_documents_superseded_event():
     )
 
 
+def test_service_md_documents_returned_event():
+    """AC6: the hand-written Event intake content in docs/service.md names 'returned'
+    as an accepted event type, documents its three fields — failure_role (the step
+    the story was sent back from), failure_class (the reason), and epic (the story's
+    epic link) — as optional, and states re-sending one is as safe as re-sending any
+    other; the generated endpoints table names 'returned' among the accepted types."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "returned" in before, (
+        "hand-written content does not name 'returned' as an accepted event type"
+    )
+    anchor = before.index("A `returned` event")
+    returned_text = before[anchor : anchor + 700]
+    for field in ("failure_role", "failure_class", "epic"):
+        assert field in returned_text, f"returned-event documentation does not name {field!r}"
+    assert "optional" in returned_text.lower(), (
+        "returned-event documentation does not state the fields are optional"
+    )
+    assert "re-sending" in returned_text.lower(), (
+        "returned-event documentation does not state re-sending is safe"
+    )
+    section = _extract_marked_section(text, "service")
+    events_rows = [line for line in section.splitlines() if "/events" in line]
+    assert any("returned" in row for row in events_rows), (
+        "generated endpoints table does not name 'returned' among the accepted event types"
+    )
+
+
 def test_service_md_sprint_range_descriptions_state_per_return_semantics():
     """AC5: the hand-written /range endpoint description in
     docs/service.md states that failure_breakdown and top_failure_causes count
@@ -987,6 +1016,59 @@ def test_metrics_md_cost_names_match_service_metrics():
         assert display in section, f"display name {display!r} not in metrics table"
 
 
+def test_service_md_range_row_describes_rework_answer():
+    """AC10: the GET /range description in docs/service.md tells the reader that
+    each sprint's entry carries the stories sent back to the business analyst,
+    out of the stories started that sprint, each naming the story, the step it
+    was sent back from, and why — and that a send-back counts in the sprint of
+    the returned event."""
+    section = _extract_marked_section((DOCS_DIR / "service.md").read_text(), "service")
+    row = next(line for line in section.splitlines() if line.startswith("| GET | /range"))
+    for phrase in (
+        "rework",
+        "Business Analyst",
+        "stories started",
+        "identifier",
+        "step it was sent back from",
+        "reason",
+        "sprint of the returned event",
+    ):
+        assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
+
+
+def test_metrics_md_computation_details_describes_rework_answer():
+    """AC10: docs/metrics.md's 'Computation details' tells the reader what the
+    rework answer is: the stories sent back to the business analyst, out of the
+    stories started that sprint, each naming the story, the step it was sent
+    back from, and why — and that a send-back counts in the sprint of the
+    returned event."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    details = text.split("## Computation details")[1]
+    heading = next(
+        line for line in details.splitlines() if "Rework" in line and line.startswith("###")
+    )
+    section = details.split(heading)[1]
+    # Stop at the next section or the boundary-conditions heading.
+    for stop in ("\n## ", "\n### "):
+        if stop in section:
+            section = section.split(stop)[0]
+    # Markdown wraps long sentences; compare against one-line text.
+    import re
+
+    section = re.sub(r"\s+", " ", section)
+    for phrase in (
+        "rework",
+        "Business Analyst",
+        "started",
+        "step",
+        "reason",
+        "counts in the sprint of the",
+        "`returned`",
+        "completes no story",
+    ):
+        assert phrase in section, f"rework computation details missing {phrase!r}"
+
+
 def test_service_md_cost_example_is_complete():
     """AC7: the event-intake section has a complete cost-payload example with all
     five fields and non-negative integer values, in a copy-ready JSON block."""
@@ -1029,3 +1111,40 @@ def test_no_documentation_shows_a_cli_flag():
             stripped = line.strip()
             if re.match(r"^sprint-metrics\s+\S+", stripped):
                 pytest.fail(f"{name}: {line!r} looks like a sprint-metrics command with a file argument")
+
+
+def test_service_md_range_row_describes_roster_answer():
+    """AC5: the GET /range row in docs/service.md's generated section describes
+    the roster: per-sprint completed stories, released epics and achieved Goals
+    by identifier; sprints whose stories carry no links read null (no backfill)."""
+    section = _extract_marked_section((DOCS_DIR / "service.md").read_text(), "service")
+    row = next(line for line in section.splitlines() if line.startswith("| GET | /range"))
+    for phrase in (
+        "roster",
+        "completed",
+        "released",
+        "achieved",
+        "identifier",
+        "null",
+        "no backfill",
+    ):
+        assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
+
+
+def test_service_md_api_version_paragraph_describes_version_5():
+    """AC5: docs/service.md's api_version paragraph states the response
+    api_version is '5', version '4' is retired, and intake keeps '1'."""
+    text = (DOCS_DIR / "service.md").read_text()
+    # The /range and /trend api_version paragraph is outside the generated section
+    paragraph = text.split("The /range and /trend responses carry their own")[1]
+    # Find the end of the paragraph (next blank line or next heading)
+    end = paragraph.find("\n\n")
+    if end == -1:
+        end = len(paragraph)
+    paragraph = paragraph[:end]
+    assert '"5"' in paragraph
+    assert '"4"' in paragraph
+    assert "retired" in paragraph
+    assert "5.0.0" in paragraph
+    assert "Event intake" in paragraph
+    assert '"1"' in paragraph

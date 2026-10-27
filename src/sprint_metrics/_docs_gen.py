@@ -72,6 +72,10 @@ def _generate_metrics_content() -> str:
             "keyed by 'sponsor' and 'story_problem' with their counts. "
             "Excluded from throughput and in-flight calculations."
         ),
+        "sent_backs_count": (
+            "Return the count of distinct stories sent back to the Business "
+            "Analyst in the sprint, or None when no returned events are stored."
+        ),
     }
 
     display_overrides: dict[str, str] = {
