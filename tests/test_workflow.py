@@ -39,6 +39,17 @@ def test_docker_job_range_filter_accounts_for_window_key():
     )
 
 
+def test_docker_job_range_filter_accounts_for_window_verdicts():
+    """AC9: the field-for-field /range comparison filters out the new per-measure
+    window verdicts, the way it already filters out the other keys the earlier
+    image does not carry."""
+    text = _text()
+    filter_block = text.split("RANGE_FILTER='", 1)[1].split("'", 1)[0]
+    assert "del(.window.verdicts)" in filter_block, (
+        "the docker job's /range comparison must account for the new window verdicts"
+    )
+
+
 def test_docker_job_range_filter_accounts_for_working_time_key():
     """The field-for-field /range comparison filters out the new per-sprint
     working_time answer and the working_time_minutes prior/delta name, the way
