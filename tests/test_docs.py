@@ -1105,7 +1105,7 @@ def test_metrics_md_metrics_table_has_working_time_row():
     """AC6: docs/metrics.md's metrics table carries a row for
     working_time_minutes stating what it measures, in whole minutes."""
     text = (DOCS_DIR / "metrics.md").read_text()
-    table = text.split("## Metrics")[1].split("## Computation details")[0]
+    table = _extract_marked_section(text, "metrics")
     row = next(line for line in table.splitlines() if "`working_time_minutes`" in line)
     cells = [c.strip() for c in row.split("|") if c.strip()]
     assert cells[1] == "`working_time_minutes`"
