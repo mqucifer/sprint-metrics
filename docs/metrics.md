@@ -10,6 +10,7 @@ BEGIN:metrics
 | Cached input percent | `cached_input_percent` | Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost. |
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
 | Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. |
+| DORA lead time for changes | `dora_lead_time_days` | Return the mean, in whole days from story creation to the epic's release moment, over each released story. None when no epic link is derivable. |
 | Top causes | `failure_breakdown` | Return the returns from review or QA, grouped by (failure class, returning role), sorted by count descending. |
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards. |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1. |
@@ -24,6 +25,7 @@ BEGIN:metrics
 | Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, or None when no story carries cost. |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards. |
 | Reasoning output percent | `reasoning_output_percent` | Return the sprint's reasoning share of output tokens as a whole percent, or None when no story carries cost. |
+| DORA release frequency | `release_frequency` | Return the count of distinct epics released in the sprint (how often epics ship), as a whole count. None when no epic link is derivable. |
 | Sent backs count | `sent_backs_count` | Return the count of distinct stories sent back to the Business Analyst in the sprint, or None when no returned events are stored. |
 | Superseded breakdown | `superseded_breakdown` | Return the per-reason breakdown of superseded cards, keyed by 'sponsor' and 'story_problem' with their counts. Excluded from throughput and in-flight calculations. |
 | Superseded count | `superseded_count` | Return the number of cards marked superseded in the sprint. Excluded from throughput and in-flight calculations. |

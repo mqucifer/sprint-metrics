@@ -8191,3 +8191,177 @@ def test_sprint_range_schema_declares_roster_on_sprint_entry():
         "type": ["array", "null"],
         "items": {"type": "string"},
     }
+
+
+@requires_db
+def test_range_dora_release_frequency_and_lead_time():
+    """AC1: two epics release in a sprint (one with 3 stories, one with 1 story)
+    yields release_frequency 2 and lead_time_days the mean of the four spans."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'd_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Epic A: 1 story, created 2024-01-01, finished 2024-01-05T00:00:00Z
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="d_a1",
+                event_type="finished",
+                timestamp="2024-01-05T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        # Epic B: 3 stories
+        # d_b1: created 2024-01-01, finished 2024-01-04T00:00:00Z
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="d_b1",
+                event_type="finished",
+                timestamp="2024-01-04T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E2"},
+        )
+        # d_b2: created 2024-01-02, finished 2024-01-05T00:00:00Z
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="d_b2",
+                event_type="finished",
+                timestamp="2024-01-05T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-02",
+            ) | {"epic": "E2"},
+        )
+        # d_b3: created 2024-01-03, finished 2024-01-06T00:00:00Z (last story of E2)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="d_b3",
+                event_type="finished",
+                timestamp="2024-01-06T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-03",
+            ) | {"epic": "E2"},
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        dora = body["sprints"]["2024-01"]["dora"]
+        # Two epics release (E1 and E2)
+        assert dora["release_frequency"] == 2
+        # Spans: d_a1 = 4 days, d_b1 = 5 days, d_b2 = 4 days, d_b3 = 3 days
+        # Mean = (4 + 5 + 4 + 3) / 4 = 4.0 → rounds to 4
+        assert dora["lead_time_days"] == 4
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_dora_null_when_no_epic_links():
+    """AC2: a sprint whose events carry no epic link has DORA values null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'd_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # A finished story with no epic link
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="d_noepic",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="d_noepic",
+                event_type="finished",
+                timestamp="2024-01-07T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        dora = body["sprints"]["2024-01"]["dora"]
+        # DORA block is present (sprint has events) but values are null
+        assert dora is not None
+        assert dora["release_frequency"] is None
+        assert dora["lead_time_days"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_dora_null_block_when_no_events():
+    """AC2: a sprint with no events at all has the whole DORA block null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'd_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Only 2024-01 has events
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="d_ev1",
+                event_type="finished",
+                timestamp="2024-01-07T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        # 2024-02 has no events → dora is null
+        assert body["sprints"]["2024-02"]["dora"] is None
+        # 2024-01 has events with epic link → dora has values
+        assert body["sprints"]["2024-01"]["dora"]["release_frequency"] == 1
+    finally:
+        conn.close()
+
+
+def test_sprint_range_schema_declares_dora_on_sprint_entry():
+    """AC4: SPRINT_RANGE_SCHEMA documents dora as an optional property per
+    sprint entry (not in required), with release_frequency and lead_time_days
+    (integer-or-null)."""
+    from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
+
+    sprint_entry = SPRINT_RANGE_SCHEMA["properties"]["sprints"]["additionalProperties"]
+    # dora is NOT in the required list
+    assert "dora" not in sprint_entry["required"]
+    # dora is in properties
+    dora_schema = sprint_entry["properties"]["dora"]
+    assert dora_schema["type"] == ["object", "null"]
+    assert dora_schema["required"] == ["release_frequency", "lead_time_days"]
+    assert dora_schema["properties"]["release_frequency"] == {
+        "type": ["integer", "null"],
+    }
+    assert dora_schema["properties"]["lead_time_days"] == {
+        "type": ["integer", "null"],
+    }
