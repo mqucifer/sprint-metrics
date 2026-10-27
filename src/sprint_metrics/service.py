@@ -747,6 +747,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "GET",
         "/range",
         "Return metrics for a range of sprints in chronological order. "
+        "The response carries a top-level window object naming the window "
+        "it is judging (start, end, sprint_count, no_data). "
         "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
