@@ -192,8 +192,9 @@ jobs:
           # except the escalation measures this release removes (#774, #775) and the
           # rework answer completed by the rework stories (#803, #813, #814), which
           # the earlier image does not carry, and the roster answer added by the
-          # roster story (#804, #806).
+          # roster story (#804, #806), and the window object added by this story.
           RANGE_FILTER='del(.api_version)
+            | del(.window)
             | del(.sprints[] | .escalation_rate_percent, .escalation_count, .flags.escalation_rate_percent)
             | del(.sprints[] | (.prior, .delta) | objects | .escalation_rate_percent, .escalation_count)
             | del(.sprints[] | .rework)

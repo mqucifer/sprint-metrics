@@ -115,6 +115,12 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
 
     all_null_sprint = {
         "api_version": "1",
+        "window": {
+            "start": "2026-11",
+            "end": "2026-11",
+            "sprint_count": 1,
+            "no_data": ["2026-11"],
+        },
         "sprints": {
             "2026-11": {
                 "cycle_time_days": None,
@@ -228,6 +234,12 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
     }
     response = {
         "api_version": "1",
+        "window": {
+            "start": "2026-09",
+            "end": "2026-10",
+            "sprint_count": 2,
+            "no_data": [],
+        },
         "sprints": {
             "2026-09": _range_entry(story_costs=[costed_story], cost=cost, prior=None, delta=None),
             "2026-10": _range_entry(
@@ -288,6 +300,12 @@ def test_sprint_range_schema_accepts_rework_answer():
     }
     response = {
         "api_version": "4",
+        "window": {
+            "start": "2024-03",
+            "end": "2024-04",
+            "sprint_count": 2,
+            "no_data": [],
+        },
         "sprints": {
             "2024-03": _range_entry(rework=rework, prior=None, delta=None),
             "2024-04": _range_entry(rework=None, prior=None, delta=None),

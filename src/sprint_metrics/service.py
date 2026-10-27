@@ -461,6 +461,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             return
                         body = format_sprint_range_json(sprints, labels)
                         result = json.loads(body)
+                        result["window"] = {
+                            "start": labels[0],
+                            "end": labels[-1],
+                            "sprint_count": len(labels),
+                            "no_data": [label for label in labels if label not in has_events],
+                        }
                         _attach_range_cost(result, sprints, labels, has_events)
                         _attach_range_rework(result, labels, rework)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)

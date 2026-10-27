@@ -18,9 +18,22 @@ METRIC_KEYS = [
 SPRINT_RANGE_SCHEMA: dict[str, object] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
-    "required": ["api_version", "sprints"],
+    "required": ["api_version", "window", "sprints"],
     "properties": {
         "api_version": {"type": "string"},
+        "window": {
+            "type": "object",
+            "required": ["start", "end", "sprint_count", "no_data"],
+            "properties": {
+                "start": {"type": "string"},
+                "end": {"type": "string"},
+                "sprint_count": {"type": "integer"},
+                "no_data": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+        },
         "sprints": {
             "type": "object",
             "additionalProperties": {

@@ -696,11 +696,113 @@ def test_range_response_metrics_and_keys():
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
         assert body["api_version"] == "5"
+        assert body["window"] == {
+            "start": "2024-01",
+            "end": "2024-02",
+            "sprint_count": 2,
+            "no_data": [],
+        }
         assert set(body["sprints"].keys()) == {"2024-01", "2024-02"}
         assert body["sprints"]["2024-01"]["throughput"] == 1
         assert body["sprints"]["2024-01"]["cycle_time_days"] == 4
         assert body["sprints"]["2024-02"]["throughput"] == 1
         assert body["sprints"]["2024-02"]["cycle_time_days"] == 3
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_with_gap():
+    """AC1: GET /range?start=2024-01&end=2024-03 with events in 2024-01 and 2024-03
+    but not 2024-02 returns window.start='2024-01', window.end='2024-03',
+    window.sprint_count=3, and window.no_data=['2024-02']."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('w_gap_a', 'w_gap_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="w_gap_a",
+                event_type="started",
+                timestamp="2024-01-03T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="w_gap_a",
+                event_type="finished",
+                timestamp="2024-01-07T15:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="w_gap_b",
+                event_type="started",
+                timestamp="2024-03-03T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="w_gap_b",
+                event_type="finished",
+                timestamp="2024-03-07T15:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-03")
+        assert status == 200
+        assert body["window"]["start"] == "2024-01"
+        assert body["window"]["end"] == "2024-03"
+        assert body["window"]["sprint_count"] == 3
+        assert body["window"]["no_data"] == ["2024-02"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_empty_db():
+    """AC3: GET /range?start=2024-01&end=2024-02 on an empty DB returns 200;
+    window names both labels, sprint_count 2, no_data names both; every per-sprint
+    metric value is null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        assert body["window"]["start"] == "2024-01"
+        assert body["window"]["end"] == "2024-02"
+        assert body["window"]["sprint_count"] == 2
+        assert body["window"]["no_data"] == ["2024-01", "2024-02"]
+        entry = body["sprints"]["2024-01"]
+        assert entry["cycle_time_days"] is None
+        assert entry["throughput"] is None
+        assert entry["story_costs"] == []
+        assert entry["cost"] is None
     finally:
         conn.close()
 
