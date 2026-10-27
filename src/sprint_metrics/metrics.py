@@ -154,6 +154,7 @@ ALL_METRICS: frozenset[str] = frozenset(
         "sent_backs_count",
         "release_frequency",
         "dora_lead_time_days",
+        "working_time_minutes",
     }
 )
 

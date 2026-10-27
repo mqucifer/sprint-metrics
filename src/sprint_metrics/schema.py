@@ -193,6 +193,24 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         },
                         "required": ["release_frequency", "lead_time_days"],
                     },
+                    "working_time": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "per_step": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "step": {"type": ["string", "null"]},
+                                        "minutes": {"type": "integer"},
+                                    },
+                                    "required": ["step", "minutes"],
+                                },
+                            },
+                            "total": {"type": "integer"},
+                        },
+                        "required": ["per_step", "total"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {
@@ -207,6 +225,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "input_tokens_total": {"type": ["integer", "null"]},
                             "output_tokens_middle": {"type": ["integer", "null"]},
                             "output_tokens_total": {"type": ["integer", "null"]},
+                            "working_time_minutes": {"type": ["integer", "null"]},
                         },
                     },
                     "delta": {
@@ -223,6 +242,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "input_tokens_total": {"type": ["integer", "null"]},
                             "output_tokens_middle": {"type": ["integer", "null"]},
                             "output_tokens_total": {"type": ["integer", "null"]},
+                            "working_time_minutes": {"type": ["integer", "null"]},
                         },
                     },
                 },

@@ -42,11 +42,13 @@ from sprint_metrics.store import (
     query_roster_data,
     query_sprint,
     query_started_count,
+    query_working_time_events,
     resolve_sprint_range,
     sprint_has_events,
     upsert_sprint,
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
+from sprint_metrics.time_splits import calculate_working_time, working_time_total
 
 VALID_EVENT_TYPES = frozenset(
     {
@@ -471,6 +473,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_rework(result, labels, rework)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
                         _attach_range_dora(result, conn_holder[0], labels, has_events)
+                        _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -571,6 +574,8 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             elif metric == "dora_lead_time_days":
                                 spans = dora_data["story_spans_days"].get(label)
                                 value = calculate_dora_lead_time(spans)
+                            elif metric == "working_time_minutes":
+                                value = working_time_total(query_working_time_events(conn_holder[0], label))
                             else:
                                 value = metric_value(metric, sprints[label])
                             values.append({"sprint": label, "value": value})
@@ -772,7 +777,13 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "that were achieved in that sprint (a Goal is achieved in "
         "the sprint where its last epic releases). Sprints whose "
         "stories carry no epic or goal link read null for the "
-        "corresponding roster part (no backfill).",
+        "corresponding roster part (no backfill). "
+        "Each entry also carries a working_time answer: the minutes "
+        "the crew's sessions ran, per step of a story's pipeline "
+        "(a returned or attempt_failed row marks the step boundary; "
+        "a rework session is labeled by the step it is reworking), "
+        "plus the sprint's working-time total; a sprint with no "
+        "events (or no closed session window) reads null.",
     ),
     (
         "GET",
@@ -790,10 +801,13 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "input_tokens_middle, input_tokens_total, "
         "output_tokens_middle, output_tokens_total, "
         "cached_input_percent, reasoning_output_percent, "
-        "sent_backs_count, release_frequency, dora_lead_time_days. "
+        "sent_backs_count, release_frequency, dora_lead_time_days, "
+        "working_time_minutes. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
-        "return JSON null.",
+        "return JSON null. working_time_minutes returns the sprint's "
+        "working-time total in whole minutes (null where the sprint has no "
+        "closed session window).",
     ),
     (
         "GET",
@@ -927,6 +941,47 @@ def _attach_range_dora(
         released = dora_data["released_epics"].get(label)
         spans = dora_data["story_spans_days"].get(label)
         result["sprints"][label]["dora"] = calculate_dora(released, spans)
+
+
+def _attach_range_working_time(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the working-time answer to each range entry, and its flat name to prior/delta.
+
+    A sprint with no events carries working_time null, matching the other
+    null metrics. A sprint with events but no closed session window (its cards
+    carry only date-level fields, or its sessions never closed) also carries
+    working_time null — no data, not zero. For every sprint after the first,
+    the flat working_time_minutes name appears in that entry's prior and delta
+    whenever those objects are present, null where the corresponding sprint
+    has no working-time data.
+    """
+    answers: dict[str, dict | None] = {}
+    totals: dict[str, int | None] = {}
+    for label in labels:
+        if label in has_events:
+            answer = calculate_working_time(query_working_time_events(conn, label))
+            answers[label] = answer
+            totals[label] = answer["total"] if answer is not None else None
+        else:
+            answers[label] = None
+            totals[label] = None
+    for index, label in enumerate(labels):
+        entry = result["sprints"][label]
+        entry["working_time"] = answers[label]
+        if index == 0:
+            continue
+        prior_label = labels[index - 1]
+        current_total = totals[label]
+        prior_total = totals[prior_label]
+        if isinstance(entry.get("prior"), dict):
+            entry["prior"]["working_time_minutes"] = prior_total
+        if isinstance(entry.get("delta"), dict):
+            entry["delta"]["working_time_minutes"] = (
+                current_total - prior_total
+                if current_total is not None and prior_total is not None
+                else None
+            )
 
 
 def _validate_cost_fields(card: dict) -> str | None:

@@ -426,6 +426,42 @@
               "lead_time_days"
             ]
           },
+          "working_time": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "per_step": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "minutes": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "minutes"
+                  ]
+                }
+              },
+              "total": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "per_step",
+              "total"
+            ]
+          },
           "prior": {
             "type": [
               "object",
@@ -547,6 +583,12 @@
                 ]
               },
               "output_tokens_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "working_time_minutes": {
                 "type": [
                   "integer",
                   "null"
@@ -675,6 +717,12 @@
                 ]
               },
               "output_tokens_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "working_time_minutes": {
                 "type": [
                   "integer",
                   "null"

@@ -541,6 +541,32 @@ def query_returned_events(
     return [(card_id, failure_role, failure_class) for card_id, failure_role, failure_class in rows]
 
 
+def query_working_time_events(
+    conn: Connection, label: str
+) -> dict[str, list[tuple[str, datetime, str | None]]]:
+    """Return the sprint's session rows for working-time computation, grouped by card.
+
+    For each card_id, the ordered list of (event_type, event_time, failure_role)
+    over its 'started', 'finished', 'attempt_failed', 'returned', 'blocked', and
+    'unblocked' rows in the sprint, in event order. failure_role is None unless
+    the row is an 'attempt_failed' or 'returned' row that carried one.
+    """
+    rows = conn.execute(
+        """
+        SELECT card_id, type, event_time, failure_role
+        FROM sprint_metrics.board_events
+        WHERE sprint = %s
+          AND type IN ('started', 'finished', 'attempt_failed', 'returned', 'blocked', 'unblocked')
+        ORDER BY card_id, event_time
+        """,
+        (label,),
+    ).fetchall()
+    result: dict[str, list[tuple[str, datetime, str | None]]] = {}
+    for card_id, event_type, event_time, failure_role in rows:
+        result.setdefault(card_id, []).append((event_type, event_time, failure_role))
+    return result
+
+
 def query_roster_data(conn: Connection, labels: list[str]) -> dict:
     """Return the roster data for the given sprint labels.
 

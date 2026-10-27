@@ -86,6 +86,14 @@ def _generate_metrics_content() -> str:
             "epic's release moment, over each released story. None when no "
             "epic link is derivable."
         ),
+        "working_time_minutes": (
+            "Return the sprint's working-time total, in whole minutes — "
+            "the sum of the crew's session windows (from a story's started "
+            "row to its returned/attempt_failed/finished row, a blocked "
+            "card's blocked interval not counted), per step of the "
+            "story's pipeline. None when no card carries a closed session "
+            "window."
+        ),
     }
 
     display_overrides: dict[str, str] = {

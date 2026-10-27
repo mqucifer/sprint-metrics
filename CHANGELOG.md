@@ -6,8 +6,12 @@
 
 - GET /range now names the window it is judging: a top-level `window` object carrying the sprint labels at both ends (`start`, `end`), the count of sprints in the window (`sprint_count`), and which sprints had no data (`no_data`), so a gap reads as 'no data' not zero. The response `api_version` moves from "4" to "5"
 - GET /range carries each sprint's `dora` block with DORA's first two measures: `release_frequency` (how often epics ship, a whole count of distinct epics whose last story completes in the sprint) and `lead_time_days` (the mean, in whole days, of each released story's span from its creation to its epic's release moment); a sprint with events but no epic link reads both values as null (no data, not zero), and a sprint with no events reads the whole DORA block as null (#804, #807)
+- GET /range carries each sprint's `working_time` answer: the minutes the crew's sessions ran, per step of a story's pipeline (a `returned` or `attempt_failed` row marks the step boundary; a rework session is labeled by the step it is reworking, the same step labels the rework answer uses), plus the sprint's working-time total; a blocked card's blocked interval is not counted, and a sprint with no events (or no closed session window) reads null, not zero (#805, #818)
+- GET /trend accepts the new `working_time_minutes` measure: the sprint's working-time total in whole minutes, null for a sprint with no events or no closed session window (#805, #818)
 
 ### Changed
+
+- The /range and /trend responses carry `api_version` "6"; version "5" is retired because /range's shape changed (the per-sprint `working_time` answer) and /trend gained the `working_time_minutes` measure. Event intake keeps `api_version` "1"
 
 ### Fixed
 

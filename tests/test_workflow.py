@@ -39,6 +39,21 @@ def test_docker_job_range_filter_accounts_for_window_key():
     )
 
 
+def test_docker_job_range_filter_accounts_for_working_time_key():
+    """The field-for-field /range comparison filters out the new per-sprint
+    working_time answer and the working_time_minutes prior/delta name, the way
+    it already filters out the rework and roster answers the earlier image does
+    not carry."""
+    text = _text()
+    filter_block = text.split("RANGE_FILTER='", 1)[1].split("'", 1)[0]
+    assert "del(.sprints[] | .working_time)" in filter_block, (
+        "the docker job's /range comparison must account for the new working_time key"
+    )
+    assert ".working_time_minutes" in filter_block, (
+        "the docker job's /range comparison must account for the new working_time_minutes prior/delta name"
+    )
+
+
 def test_docker_job_api_version_pin_matches_response_api_version():
     """AC9: every api_version pin in the docker job equals the response
     api_version in force (report.API_VERSION); the pin is not an assumed '4'."""

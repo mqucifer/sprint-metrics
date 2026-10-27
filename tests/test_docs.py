@@ -1069,6 +1069,49 @@ def test_metrics_md_computation_details_describes_rework_answer():
         assert phrase in section, f"rework computation details missing {phrase!r}"
 
 
+def test_metrics_md_describes_working_time_answer():
+    """AC5: docs/metrics.md's 'Working time per pipeline step' tells the reader
+    that working time per step is the minutes the crew's sessions ran (not the
+    creation-to-finish span), that a rework session not re-sent as 'started' is
+    invisible to working time (shows as idle), and that a blocked card's blocked
+    interval is not counted."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    details = text.split("## Computation details")[1]
+    heading = next(
+        line for line in details.splitlines() if "Working time" in line and line.startswith("###")
+    )
+    section = details.split(heading)[1]
+    for stop in ("\n## ", "\n### "):
+        if stop in section:
+            section = section.split(stop)[0]
+    import re
+
+    section = re.sub(r"\s+", " ", section)
+    for phrase in (
+        "`working_time`",
+        "minutes the crew's sessions ran",
+        "not the span",
+        "`started`",
+        "`finished`, `attempt_failed`, or `returned`",
+        "rework session",
+        "invisible to working time",
+        "idle time",
+        "blocked interval",
+    ):
+        assert phrase in section, f"working time computation details missing {phrase!r}"
+
+
+def test_metrics_md_metrics_table_has_working_time_row():
+    """AC6: docs/metrics.md's metrics table carries a row for
+    working_time_minutes stating what it measures, in whole minutes."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    table = text.split("## Metrics")[1].split("## Computation details")[0]
+    row = next(line for line in table.splitlines() if "`working_time_minutes`" in line)
+    cells = [c.strip() for c in row.split("|") if c.strip()]
+    assert cells[1] == "`working_time_minutes`"
+    assert "whole minutes" in row
+
+
 def test_service_md_cost_example_is_complete():
     """AC7: the event-intake section has a complete cost-payload example with all
     five fields and non-negative integer values, in a copy-ready JSON block."""
@@ -1131,9 +1174,9 @@ def test_service_md_range_row_describes_roster_answer():
         assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
 
 
-def test_service_md_api_version_paragraph_describes_version_5():
-    """AC5: docs/service.md's api_version paragraph states the response
-    api_version is '5', version '4' is retired, and intake keeps '1'."""
+def test_service_md_api_version_paragraph_describes_version_6():
+    """AC: docs/service.md's api_version paragraph states the response
+    api_version is '6', version '5' is retired, and intake keeps '1'."""
     text = (DOCS_DIR / "service.md").read_text()
     # The /range and /trend api_version paragraph is outside the generated section
     paragraph = text.split("The /range and /trend responses carry their own")[1]
@@ -1142,10 +1185,10 @@ def test_service_md_api_version_paragraph_describes_version_5():
     if end == -1:
         end = len(paragraph)
     paragraph = paragraph[:end]
+    assert '"6"' in paragraph
     assert '"5"' in paragraph
-    assert '"4"' in paragraph
     assert "retired" in paragraph
-    assert "5.0.0" in paragraph
+    assert "6.0.0" in paragraph
     assert "Event intake" in paragraph
     assert '"1"' in paragraph
 

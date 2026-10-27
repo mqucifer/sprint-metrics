@@ -32,6 +32,7 @@ BEGIN:metrics
 | Superseded points | `superseded_points` | Return the sum of the points value on superseded cards (0 when a superseded card carries no points value). Excluded from throughput and in-flight calculations. |
 | Throughput | `throughput` | Return the number of completed cards in the sprint. |
 | WIP violations | `wip_violations` | Return the number of states whose WIP limit was breached this sprint. |
+| Working time | `working_time_minutes` | Return the sprint's working-time total, in whole minutes — the sum of the crew's session windows (from a story's started row to its returned/attempt_failed/finished row, a blocked card's blocked interval not counted), per step of the story's pipeline. None when no card carries a closed session window. |
 END:metrics
 
 ## Computation details
@@ -82,6 +83,33 @@ timestamp, expressed in whole minutes and rounded to the nearest integer.
 `lead_time_minutes` is the mean of (completed_at − created_at) over all
 completed cards that carry both a `created_at` and a `completed_at`
 timestamp, expressed in whole minutes and rounded to the nearest integer.
+
+### Working time per pipeline step
+
+The `working_time` answer on each sprint's `/range` entry carries the
+minutes the crew's sessions ran, per step of a story's pipeline. A session
+window runs from a story's `started` row to the story's next terminal row
+(`finished`, `attempt_failed`, or `returned`); the story's working time is
+the sum of its windows, and the sprint's is the sum across its stories. The
+step a window belongs to is the role sent on its terminal row when that row
+is an `attempt_failed` or `returned` row (the row that marks the step
+boundary), or, for a window closed by `finished`, the step it is reworking.
+`working_time.per_step` carries one value per session window, and
+`working_time.total` is their sum in whole minutes.
+
+Working time is the minutes the crew's sessions ran, not the span from the
+story's creation to its finish: it is measured session by session, so the
+calendar gap between one session and the next — and any time a card sat
+unworked — never counts. A rework session that the crew never re-sent as
+`started` is invisible to working time and shows as idle time instead; this
+is the fidelity bound, set by the granularity of the events the crew sends.
+A blocked card's blocked interval is not working time: while the story is
+blocked, the crew's clock does not run, so a session's minutes are its span
+minus the minutes it was blocked.
+
+A sprint whose cards carry no session timestamps (date-only fields) or whose
+sessions never closed reports `working_time` null, not zero, matching the
+null behaviour of the other minute-based metrics.
 
 ### Model cost
 

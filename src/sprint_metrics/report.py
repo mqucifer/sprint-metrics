@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-API_VERSION = "5"
+API_VERSION = "6"
 
 
 _METRIC_COLUMNS: dict[str, str] = {
@@ -32,4 +32,5 @@ _METRIC_COLUMNS: dict[str, str] = {
     "sent_backs_count": "Sent backs count",
     "release_frequency": "DORA release frequency",
     "dora_lead_time_days": "DORA lead time for changes",
+    "working_time_minutes": "Working time",
 }
