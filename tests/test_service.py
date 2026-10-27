@@ -8602,7 +8602,15 @@ def test_range_working_time_per_step_and_total():
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wt1", event_type="finished", timestamp="2024-01-03T12:00:00Z", sprint="2024-01"),
+            _make_event(
+                card_id="wt1",
+                event_type="finished",
+                timestamp="2024-01-03T12:00:00Z",
+                sprint="2024-01",
+                attempts=2,
+                failure_class="parse",
+                failure_role="Review",
+            ),
         )
         # Sprint 2024-02: wt2 session started->returned (150 min), rework started->finished (240 min)
         _post_events(
@@ -8633,13 +8641,17 @@ def test_range_working_time_per_step_and_total():
         assert [e["minutes"] for e in wt2["per_step"]] == [150, 240]
         assert wt2["total"] == 390
 
-        # step labels exactly match the rework answer's by_step, per sprint
+        # step labels exactly match the rework answer's step labels, per sprint
         for label in ("2024-01", "2024-02"):
             working_time = body["sprints"][label]["working_time"]
-            rework_by_step = body["sprints"][label]["rework"]["by_step"]
+            rework = body["sprints"][label]["rework"]
             rework_steps = set()
-            for part in rework_by_step.values():
-                rework_steps.update(part.keys())
+            for entry in rework.get("sent_backs") or []:
+                for sb in entry["send_backs"]:
+                    rework_steps.add(sb["step"])
+            for entry in rework.get("qa_returns") or []:
+                for ret in entry["returns"]:
+                    rework_steps.add(ret["step"])
             wt_steps = {e["step"] for e in working_time["per_step"]}
             assert wt_steps == rework_steps
     finally:
