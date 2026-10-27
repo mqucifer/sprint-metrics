@@ -149,7 +149,8 @@ def window_standouts(
                 }
 
     # Find turns: a sprint where a measure moved one way into it and the other
-    # way out of it (both steps non-zero and opposite direction).
+    # way out of it (both steps non-zero and opposite direction). Only measures
+    # with a better direction can turn.
     turns: list[dict[str, str]] = []
     if len(data_bearing) >= 3:
         for i in range(1, len(data_bearing) - 1):
@@ -157,6 +158,8 @@ def window_standouts(
             prev_step = steps[i - 1][2]
             next_step = steps[i][2]
             for measure in registry:
+                if registry[measure][0] is None:
+                    continue
                 if measure not in prev_step or measure not in next_step:
                     continue
                 in_delta = prev_step[measure]
