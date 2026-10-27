@@ -8,11 +8,13 @@
 - GET /range carries each sprint's `dora` block with DORA's first two measures: `release_frequency` (how often epics ship, a whole count of distinct epics whose last story completes in the sprint) and `lead_time_days` (the mean, in whole days, of each released story's span from its creation to its epic's release moment); a sprint with events but no epic link reads both values as null (no data, not zero), and a sprint with no events reads the whole DORA block as null (#804, #807)
 - A new verdict module (`sprint_metrics.verdict`) carries the measure registry — for every scalar measure the /range sprint entry carries, its better direction (lower, higher, or none), its unit, and its precision — and a verdict that judges a first value against a last purely from that (measure, better-direction) pair: measures with a better direction carry "better", "worse" or "flat", measures without one (the first-attempt counts and the cost measures) carry the movement "up", "down" or "flat"; a new measure plugs into the window verdict with only a registry entry (#802)
 - GET /range carries each sprint's `working_time` answer: the minutes the crew's sessions ran, per step of a story's pipeline (a `returned` or `attempt_failed` row marks the step boundary; a rework session is labeled by the step it is reworking, the same step labels the rework answer uses), plus the sprint's working-time total; a blocked card's blocked interval is not counted, and a sprint with no events (or no closed session window) reads null, not zero (#805)
+- GET /range carries each sprint's `cost_by_kind` answer: the sprint's working time split by story kind (addition and change), in whole minutes; a sprint whose stored story rows carry no kind reads null (no data, not zero), and a story whose kind is neither addition nor change contributes to neither (#805, #818)
 - GET /trend accepts the new `working_time_minutes` measure: the sprint's working-time total in whole minutes, null for a sprint with no events or no closed session window (#805)
+- GET /trend accepts the new `addition_working_time_minutes` and `change_working_time_minutes` measures: the sprint's working time for stories of the given kind in whole minutes, null where the sprint carries no kind data (#805, #818)
 
 ### Changed
 
-- The /range and /trend responses carry `api_version` "6"; version "5" is retired because /range's shape changed (the per-sprint `working_time` answer) and /trend gained the `working_time_minutes` measure. Event intake keeps `api_version` "1"
+- The /range and /trend responses carry `api_version` "7"; version "6" is retired because /range's shape changed (the per-sprint `cost_by_kind` answer) and /trend gained the `addition_working_time_minutes` and `change_working_time_minutes` measures. Event intake keeps `api_version` "1"
 
 ### Fixed
 

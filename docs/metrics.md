@@ -6,8 +6,10 @@ names, and a description of what each measures.
 BEGIN:metrics
 | Display name | Metric key | Description |
 |---|---|---|
+| Addition working time | `addition_working_time_minutes` | Return the sprint's working time for stories whose kind is 'addition', in whole minutes. None when no stored story row in the sprint carries a kind. |
 | Blocked aging | `blocked_aging_days` | Return the maximum number of days any card has been blocked in the sprint. |
 | Cached input percent | `cached_input_percent` | Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost. |
+| Change working time | `change_working_time_minutes` | Return the sprint's working time for stories whose kind is 'change', in whole minutes. None when no stored story row in the sprint carries a kind. |
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
 | Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. |
 | DORA lead time for changes | `dora_lead_time_days` | Return the mean, in whole days from story creation to the epic's release moment, over each released story. None when no epic link is derivable. |
