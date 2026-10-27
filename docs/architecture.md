@@ -8,7 +8,7 @@ Update it when the code changes.
 
 ```mermaid
 C4Container
-    title sprint-metrics, as the repository has it, with the Goal's (mqucifer/sprint-metrics#749) retirements and new parts
+    title sprint-metrics, as the repository has it, after Goal 749 of mqucifer/sprint-metrics
     Person(crew, "The crew", "Every tick: sends sprints and events, reads one sprint range back")
     System(site, "Crew-presentation site", "The Sponsor's sprint overview, built from that range")
     System(otel, "Observability backend", "Ingests the service's OpenTelemetry logs and traces over OTLP")
