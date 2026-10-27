@@ -32,6 +32,11 @@ MEASURE_REGISTRY: Mapping[str, tuple[str | None, str, str]] = {
     "output_tokens_total": (None, "count", "whole"),
 }
 
+# Measures that are derived from another measure in the registry (the same
+# quantity in a different unit) and therefore excluded from the standouts
+# computation, so the same step is not counted twice.
+_DERIVED_MEASURES: frozenset[str] = frozenset({"cycle_time_minutes", "lead_time_minutes"})
+
 
 def verdict(
     measure: str,
@@ -100,6 +105,8 @@ def window_standouts(
         to_values = sprints[to_label]
         step: dict[str, int] = {}
         for measure in registry:
+            if measure in _DERIVED_MEASURES:
+                continue
             from_val = from_values.get(measure)
             to_val = to_values.get(measure)
             if from_val is None or to_val is None:
@@ -113,6 +120,8 @@ def window_standouts(
 
     for from_label, to_label, step in steps:
         for measure in registry:
+            if measure in _DERIVED_MEASURES:
+                continue
             if measure not in step:
                 continue
             better = registry[measure][0]
@@ -158,6 +167,8 @@ def window_standouts(
             prev_step = steps[i - 1][2]
             next_step = steps[i][2]
             for measure in registry:
+                if measure in _DERIVED_MEASURES:
+                    continue
                 if registry[measure][0] is None:
                     continue
                 if measure not in prev_step or measure not in next_step:

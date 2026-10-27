@@ -250,32 +250,36 @@ def test_tie_broken_by_earlier_sprint_pair_then_registry_order():
     """AC5: two improvements of equal magnitude in different sprint pairs — the
     earlier sprint pair wins; within the same pair the measure earlier in the
     registry order wins."""
-    # Two pairs with the same improvement size: cycle_time_days drops by 3 in
-    # both pairs. The earlier pair (2024-01 to 2024-02) wins.
+    # Two pairs with the same improvement size: throughput improves by 3 in
+    # both pairs (2024-01 to 2024-02 and 2024-02 to 2024-03). The earlier
+    # pair (2024-01 to 2024-02) wins.
     sprints = {
-        "2024-01": {"cycle_time_days": 10, "throughput": 5},
-        "2024-02": {"cycle_time_days": 7, "throughput": 8},
-        "2024-03": {"cycle_time_days": 10, "throughput": 5},
+        "2024-01": {"throughput": 4, "cycle_time_days": 10},
+        "2024-02": {"throughput": 7, "cycle_time_days": 10},
+        "2024-03": {"throughput": 10, "cycle_time_days": 10},
     }
     data_bearing = ["2024-01", "2024-02", "2024-03"]
     result = window_standouts(sprints, data_bearing)
-    # Both pairs have cycle_time_days improving by 3; the earlier pair wins.
+    # Both pairs have throughput improving by 3; the earlier pair wins.
+    assert result["biggest_improvement"]["measure"] == "throughput"
     assert result["biggest_improvement"]["from_sprint"] == "2024-01"
     assert result["biggest_improvement"]["to_sprint"] == "2024-02"
+    assert result["biggest_improvement"]["size"] == 3
 
     # Within the same pair, two measures tie: cycle_time_days improves by 3 and
     # throughput improves by 3. cycle_time_days comes first in the registry.
     sprints2 = {
         "2024-01": {"cycle_time_days": 10, "throughput": 5},
         "2024-02": {"cycle_time_days": 7, "throughput": 8},
-        "2024-03": {"cycle_time_days": 6, "throughput": 5},
+        "2024-03": {"cycle_time_days": 7, "throughput": 8},
     }
     data_bearing2 = ["2024-01", "2024-02", "2024-03"]
     result2 = window_standouts(sprints2, data_bearing2)
-    # cycle_time_days improves by 3 in both pairs; throughput improves by 3 in
-    # the first pair. cycle_time_days is earlier in the registry, so it wins.
+    # cycle_time_days improves by 3 in the first pair; throughput also improves
+    # by 3 in the same pair. cycle_time_days is earlier in the registry, so it wins.
     assert result2["biggest_improvement"]["measure"] == "cycle_time_days"
     assert result2["biggest_improvement"]["from_sprint"] == "2024-01"
+    assert result2["biggest_improvement"]["to_sprint"] == "2024-02"
 
 
 def test_movement_only_measures_never_appear_as_standouts():

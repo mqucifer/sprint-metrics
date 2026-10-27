@@ -1138,10 +1138,9 @@ def test_range_window_single_data_bearing_sprint_verdicts_all_null():
 @requires_db
 def test_range_window_standouts_biggest_improvement_and_worst_dip():
     """AC1: with events in four sprints carrying throughput 4, 5, 3, 8 and
-    cycle_time_days 9, 8, 8, 7, the window's worst_dip names throughput
-    (2024-02 to 2024-03, size 2, count, whole); the biggest_improvement names
-    the measure with the largest step (cycle_time_minutes, 1440 minutes, from
-    2024-01 to 2024-02)."""
+    cycle_time_days 9, 8, 8, 7, the window's biggest_improvement names
+    throughput (2024-03 to 2024-04, size 5, count, whole); the worst_dip
+    names throughput (2024-02 to 2024-03, size 2, count, whole)."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1197,14 +1196,14 @@ def test_range_window_standouts_biggest_improvement_and_worst_dip():
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-04")
         assert status == 200
         window = body["window"]
-        # The biggest improvement is cycle_time_minutes (12960 to 11520 = 1440),
-        # which is larger than throughput's improvement (3 to 8 = 5).
+        # The biggest improvement is throughput (3 to 8 = 5); the derived
+        # cycle_time_minutes is excluded so the same step is not counted twice.
         assert window["biggest_improvement"] == {
-            "measure": "cycle_time_minutes",
-            "from_sprint": "2024-01",
-            "to_sprint": "2024-02",
-            "size": 1440,
-            "unit": "minutes",
+            "measure": "throughput",
+            "from_sprint": "2024-03",
+            "to_sprint": "2024-04",
+            "size": 5,
+            "unit": "count",
             "precision": "whole",
         }
         # The worst dip is throughput (5 to 3 = 2); no other measure dips.
