@@ -988,6 +988,15 @@ def test_service_md_trend_row_lists_cost_metrics():
         assert name in section, f"missing cost metric {name!r} in /trend row"
 
 
+def test_service_md_trend_row_lists_cost_by_kind_measures():
+    """AC5: the /trend row in docs/service.md names the addition_working_time_minutes
+    and change_working_time_minutes measures."""
+    text = (DOCS_DIR / "service.md").read_text()
+    section = _extract_marked_section(text, "service")
+    assert "addition_working_time_minutes" in section
+    assert "change_working_time_minutes" in section
+
+
 def test_metrics_md_cost_names_match_service_metrics():
     """AC6: the cost measure names in the generated metrics table match the names
     in ALL_METRICS and _METRIC_COLUMNS exactly."""
@@ -1110,6 +1119,24 @@ def test_metrics_md_metrics_table_has_working_time_row():
     cells = [c.strip() for c in row.split("|") if c.strip()]
     assert cells[1] == "`working_time_minutes`"
     assert "whole minutes" in row
+
+
+def test_metrics_md_metrics_table_has_cost_by_kind_rows():
+    """AC5: docs/metrics.md's metrics table carries rows for
+    addition_working_time_minutes and change_working_time_minutes, stating
+    what cost by kind measures, its unit (whole minutes), and that kind-less
+    sprints read null."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    table = _extract_marked_section(text, "metrics")
+    add_row = next(line for line in table.splitlines() if "`addition_working_time_minutes`" in line)
+    cells = [c.strip() for c in add_row.split("|") if c.strip()]
+    assert cells[1] == "`addition_working_time_minutes`"
+    assert "whole minutes" in add_row
+    assert "None" in add_row or "null" in add_row.lower()
+    chg_row = next(line for line in table.splitlines() if "`change_working_time_minutes`" in line)
+    cells = [c.strip() for c in chg_row.split("|") if c.strip()]
+    assert cells[1] == "`change_working_time_minutes`"
+    assert "whole minutes" in chg_row
 
 
 def test_service_md_cost_example_is_complete():
