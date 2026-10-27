@@ -382,12 +382,12 @@ def test_calculate_points_and_first_attempt_empty():
 
 
 def test_all_metrics_grew_by_four():
-    """ALL_METRICS holds 27 entries, including the two sub-day minute metrics, the eight cost
-    metrics, the rework sent-backs count, the two DORA measures, and the working-time measure;
-    the escalation measures are gone (#776)."""
+    """ALL_METRICS holds 29 entries, including the two sub-day minute metrics, the eight cost
+    metrics, the rework sent-backs count, the two DORA measures, the working-time measure, and
+    the two cost-by-kind measures; the escalation measures are gone (#776)."""
     from sprint_metrics.metrics import ALL_METRICS
 
-    assert len(ALL_METRICS) == 27
+    assert len(ALL_METRICS) == 29
     assert "escalation_count" not in ALL_METRICS
     assert "escalation_rate_percent" not in ALL_METRICS
     new_metrics = {
@@ -401,7 +401,13 @@ def test_all_metrics_grew_by_four():
         "release_frequency",
         "dora_lead_time_days",
     }
-    minute_metrics = {"cycle_time_minutes", "lead_time_minutes", "working_time_minutes"}
+    minute_metrics = {
+        "cycle_time_minutes",
+        "lead_time_minutes",
+        "working_time_minutes",
+        "addition_working_time_minutes",
+        "change_working_time_minutes",
+    }
     cost_metrics = {
         "model_minutes_middle",
         "model_minutes_total",
