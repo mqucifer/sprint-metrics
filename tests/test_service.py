@@ -695,7 +695,7 @@ def test_range_response_metrics_and_keys():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert body["window"] == {
             "start": "2024-01",
             "end": "2024-02",
@@ -1591,7 +1591,7 @@ def test_trend_cycle_time_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-02", "value": 3}
         assert body["values"][1] == {"sprint": "2024-03", "value": None}
@@ -1617,7 +1617,7 @@ def test_trend_empty_db_all_zeros():
             f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-03"
         )
         assert status == 200
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": None}
         assert body["values"][1] == {"sprint": "2024-02", "value": None}
@@ -1734,7 +1734,7 @@ def test_trend_first_attempt_rate_two_sprints():
             f"&start=2024-01&end=2024-02"
         )
         assert status == 200
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert len(body["values"]) == 2
         assert body["values"][0]["sprint"] == "2024-01"
         assert body["values"][0]["value"] == 100
@@ -5261,7 +5261,7 @@ def test_trend_answers_api_version_4_and_still_refuses_escalation_count():
             assert _post_events(f"{base}/events", _make_event(*event))[0] == 200
         status, body = _get_json(f"{base}/trend?metric=throughput&start=2024-01&end=2024-02")
         assert status == 200
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert body["values"] == [
             {"sprint": "2024-01", "value": 1},
             {"sprint": "2024-02", "value": None},
@@ -5427,7 +5427,7 @@ def test_trend_points_delivered_two_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert len(body["values"]) == 2
         assert body["values"][0] == {"sprint": "2024-01", "value": 5}
         assert body["values"][1] == {"sprint": "2024-02", "value": 7}
@@ -6348,7 +6348,7 @@ def test_trend_superseded_count_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": 1}
         assert body["values"][1] == {"sprint": "2024-02", "value": 1}
@@ -7805,7 +7805,7 @@ def test_trend_sent_backs_count_two_sprints():
             f"http://127.0.0.1:{port}/trend?metric=sent_backs_count&start=2024-01&end=2024-02"
         )
         assert status == 200
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert body["metric"] == "sent_backs_count"
         assert body["start"] == "2024-01"
         assert body["end"] == "2024-02"
@@ -8866,7 +8866,7 @@ def test_trend_working_time_minutes():
         )
         status, body = _get_json(f"{base}/trend?metric=working_time_minutes&start=2024-11&end=2024-12")
         assert status == 200
-        assert body["api_version"] == "7"
+        assert body["api_version"] == "8"
         assert body["metric"] == "working_time_minutes"
         assert body["values"] == [
             {"sprint": "2024-11", "value": 150},

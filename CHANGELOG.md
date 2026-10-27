@@ -11,10 +11,12 @@
 - GET /range carries each sprint's `cost_by_kind` answer: the sprint's working time split by story kind (addition and change), in whole minutes; a sprint whose stored story rows carry no kind reads null (no data, not zero), and a story whose kind is neither addition nor change contributes to neither (#805, #818)
 - GET /trend accepts the new `working_time_minutes` measure: the sprint's working-time total in whole minutes, null for a sprint with no events or no closed session window (#805)
 - GET /trend accepts the new `addition_working_time_minutes` and `change_working_time_minutes` measures: the sprint's working time for stories of the given kind in whole minutes, null where the sprint carries no kind data (#805, #818)
+- GET /range carries each sprint's `model_time_split` answer: the sprint's model time split into refinement and delivery, in whole minutes (each story's split converted to whole minutes, the model_minutes display unit, and summed over the costed stories); a sprint whose costed stories carry the five-field cost payload but no split (the pre-Goal payloads), or a sprint with no costed stories at all, reads null (no data, not zero) (#805)
+- GET /trend accepts the new `model_time_split_refinement_minutes` and `model_time_split_delivery_minutes` measures: the sprint's model time split into refinement and delivery, in whole minutes, null where no story in the sprint carries the split (#805)
 
 ### Changed
 
-- The /range and /trend responses carry `api_version` "7"; version "6" is retired because /range's shape changed (the per-sprint `cost_by_kind` answer) and /trend gained the `addition_working_time_minutes` and `change_working_time_minutes` measures. Event intake keeps `api_version` "1"
+- The /range and /trend responses carry `api_version` "8"; version "7" is retired because /range's shape changed (the per-sprint `model_time_split` answer) and /trend gained the `model_time_split_refinement_minutes` and `model_time_split_delivery_minutes` measures. Event intake keeps `api_version` "1"
 
 ### Fixed
 

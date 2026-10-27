@@ -160,6 +160,23 @@ tokens, and `reasoning_output_percent` is the sprint's reasoning share of
 all output tokens. Both percents are identical on every story in the
 `story_costs` list.
 
+### Model time split (refinement against delivery)
+
+`model_time_split_refinement_minutes` and
+`model_time_split_delivery_minutes` split the sprint's model time between
+refinement and delivery. The unit is whole minutes, the model_minutes
+display unit: the crew sends model seconds on each story's finished event
+(`model_time_split`'s `refinement` and `delivery` fields), and each story's
+two values are converted to whole minutes (rounded) before the sprint's
+totals sum them across the costed stories. The pair lets a reader see,
+sprint by sprint, how much model time went to refinement and how much to
+delivery.
+
+A sprint whose stories carry no model-time split — the pre-Goal payloads
+that carry the five-field cost but no split, or a sprint with no costed
+stories at all — reports both measures as null, not zero: no data, matching
+the null behaviour of the other minute-based metrics.
+
 ### Rework (send-backs to refinement and review/QA returns)
 
 The `rework` answer on each sprint's `/range` entry covers the whole
