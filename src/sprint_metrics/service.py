@@ -55,6 +55,7 @@ from sprint_metrics.time_splits import (
     cost_by_kind_total,
     working_time_total,
 )
+from sprint_metrics.verdict import MEASURE_REGISTRY, window_verdicts
 
 VALID_EVENT_TYPES = frozenset(
     {
@@ -481,6 +482,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_dora(result, conn_holder[0], labels, has_events)
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
+                        _attach_range_verdict(result, labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -1055,6 +1057,25 @@ def _attach_range_cost_by_kind(
             for name in ("addition_working_time_minutes", "change_working_time_minutes"):
                 cur, pri = flat[label][name], flat[prior_label][name]
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str]) -> None:
+    """Attach the per-measure window verdict to the range's window object.
+
+    The window judges its first data-bearing sprint against its last, per
+    registry measure, so a gap sprint (no events) is skipped, not read as zero.
+    Each entry names both reference sprints and their values, with the unit and
+    precision; an entry is null when the measure's value is missing in either
+    reference sprint, or the window has fewer than two data-bearing sprints.
+    """
+    data_bearing = [label for label in labels if label in has_events]
+    flat: dict[str, dict[str, object]] = {}
+    for label in labels:
+        entry = result["sprints"][label]
+        values = dict(entry)
+        values.update(_cost_flat(entry.get("cost")))
+        flat[label] = values
+    result["window"]["verdicts"] = window_verdicts(flat, data_bearing, MEASURE_REGISTRY)
 
 
 def _validate_cost_fields(card: dict) -> str | None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 # Each entry names a measure's better direction — "lower", "higher", or None
 # when the measure has no better direction (the first-attempt counts and the
@@ -61,3 +61,49 @@ def verdict(
     if better == "lower":
         return "worse" if up else "better"
     return "better" if up else "worse"
+
+
+def window_verdicts(
+    sprints: Mapping[str, Mapping[str, object]],
+    data_bearing: Sequence[str],
+    registry: Mapping[str, tuple[str | None, str, str]] = MEASURE_REGISTRY,
+) -> dict[str, dict[str, object] | None]:
+    """The per-measure verdict across a window of sprints.
+
+    Judges the window's first data-bearing sprint against its last, per
+    measure, purely from the measure registry. ``sprints`` maps each sprint
+    label to its measure values — one key per registry measure, the value
+    ``None`` when the measure is missing for that sprint — and ``data_bearing``
+    is the ordered list of sprint labels that carried events: a gap sprint,
+    not in the list, is skipped, not read as zero.
+
+    Every registry measure gets exactly one entry, keyed by the measure's name
+    (the non-scalar items get none): an object carrying the verdict (better,
+    worse or flat — or up, down or flat for a measure with no better
+    direction), the two reference sprint labels, both reference values, the
+    measure's unit, and its precision. The entry is null when the measure's
+    value is missing in either reference sprint, or the window has fewer than
+    two data-bearing sprints.
+    """
+    verdicts: dict[str, dict[str, object] | None] = {measure: None for measure in registry}
+    if len(data_bearing) < 2:
+        return verdicts
+    first_label, last_label = data_bearing[0], data_bearing[-1]
+    first = sprints[first_label]
+    last = sprints[last_label]
+    for measure in registry:
+        first_value = first.get(measure)
+        last_value = last.get(measure)
+        if first_value is None or last_value is None:
+            continue
+        _, unit, precision = registry[measure]
+        verdicts[measure] = {
+            "verdict": verdict(measure, first_value, last_value, registry),
+            "first_sprint": first_label,
+            "last_sprint": last_label,
+            "first_value": first_value,
+            "last_value": last_value,
+            "unit": unit,
+            "precision": precision,
+        }
+    return verdicts

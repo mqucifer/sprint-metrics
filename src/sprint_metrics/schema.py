@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sprint_metrics.verdict import MEASURE_REGISTRY
+
 METRIC_KEYS = [
     "cycle_time_days",
     "lead_time_days",
@@ -15,6 +17,32 @@ METRIC_KEYS = [
     "superseded_points",
 ]
 
+# One entry of the range window's per-measure verdict: the verdict word, the two
+# reference sprint labels, both reference values, and the measure's unit and
+# precision. Null when the measure's value is missing in a reference sprint, or
+# the window has fewer than two data-bearing sprints.
+_WINDOW_VERDICT_ENTRY: dict[str, object] = {
+    "type": ["object", "null"],
+    "properties": {
+        "verdict": {"type": "string"},
+        "first_sprint": {"type": "string"},
+        "last_sprint": {"type": "string"},
+        "first_value": {"type": "integer"},
+        "last_value": {"type": "integer"},
+        "unit": {"type": "string"},
+        "precision": {"type": "string"},
+    },
+    "required": [
+        "verdict",
+        "first_sprint",
+        "last_sprint",
+        "first_value",
+        "last_value",
+        "unit",
+        "precision",
+    ],
+}
+
 SPRINT_RANGE_SCHEMA: dict[str, object] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -23,7 +51,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
         "api_version": {"type": "string"},
         "window": {
             "type": "object",
-            "required": ["start", "end", "sprint_count", "no_data"],
+            "required": ["start", "end", "sprint_count", "no_data", "verdicts"],
             "properties": {
                 "start": {"type": "string"},
                 "end": {"type": "string"},
@@ -31,6 +59,13 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                 "no_data": {
                     "type": "array",
                     "items": {"type": "string"},
+                },
+                "verdicts": {
+                    "type": "object",
+                    "required": list(MEASURE_REGISTRY),
+                    "properties": {
+                        measure: _WINDOW_VERDICT_ENTRY for measure in MEASURE_REGISTRY
+                    },
                 },
             },
         },
