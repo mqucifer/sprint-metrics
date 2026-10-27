@@ -608,3 +608,73 @@ def query_roster_data(conn: Connection, labels: list[str]) -> dict:
         "sprints_with_epic": sprints_with_epic,
         "sprints_with_goal": sprints_with_goal,
     }
+
+
+def query_dora_data(conn: Connection, labels: list[str]) -> dict:
+    """Return DORA computation data for the given sprint labels.
+
+    Computes from stored 'finished' events that carry an epic link:
+    - which epics release in each sprint (the epic's last story's finished
+      event is the latest among the range)
+    - for each released story, the span in days from its card's created date
+      to the release moment (its epic's last story's finished event time)
+
+    Returns a dict with keys:
+    'released_epics': {sprint: [epic1, ...]} or None per sprint
+    'story_spans_days': {sprint: [span1, ...]} or None per sprint
+    'sprints_with_epic': set of sprints with at least one finished event carrying an epic
+    """
+    from datetime import datetime as dt
+
+    placeholders = ",".join(["%s"] * len(labels))
+    rows = conn.execute(
+        f"""
+        SELECT card_id, sprint, event_time, epic, card_created
+        FROM sprint_metrics.board_events
+        WHERE type = 'finished' AND epic IS NOT NULL AND sprint IN ({placeholders})
+        ORDER BY event_time
+        """,
+        labels,
+    ).fetchall()
+
+    if not rows:
+        return {
+            "released_epics": {label: None for label in labels},
+            "story_spans_days": {label: None for label in labels},
+            "sprints_with_epic": set(),
+        }
+
+    epic_latest: dict[str, tuple] = {}
+    sprints_with_epic: set[str] = set()
+    for _card_id, sprint, event_time, epic, _card_created in rows:
+        sprints_with_epic.add(sprint)
+        if epic not in epic_latest or event_time > epic_latest[epic][0]:
+            epic_latest[epic] = (event_time, sprint)
+
+    released_epics: dict[str, list[str] | None] = {label: None for label in labels}
+    for epic, (_event_time, sprint) in epic_latest.items():
+        if sprint in released_epics:
+            if released_epics[sprint] is None:
+                released_epics[sprint] = []
+            released_epics[sprint].append(epic)
+    for label in labels:
+        if released_epics[label] is not None:
+            released_epics[label] = sorted(released_epics[label])
+
+    story_spans_days: dict[str, list[float] | None] = {label: None for label in labels}
+    for _card_id, sprint, _event_time, epic, card_created in rows:
+        release_moment = epic_latest[epic][0]
+        created_dt = dt(
+            card_created.year, card_created.month, card_created.day,
+            tzinfo=release_moment.tzinfo,
+        )
+        span_days = (release_moment - created_dt).total_seconds() / 86400
+        if story_spans_days[sprint] is None:
+            story_spans_days[sprint] = []
+        story_spans_days[sprint].append(span_days)
+
+    return {
+        "released_epics": released_epics,
+        "story_spans_days": story_spans_days,
+        "sprints_with_epic": sprints_with_epic,
+    }

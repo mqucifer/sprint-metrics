@@ -152,6 +152,8 @@ ALL_METRICS: frozenset[str] = frozenset(
         "cached_input_percent",
         "reasoning_output_percent",
         "sent_backs_count",
+        "release_frequency",
+        "dora_lead_time_days",
     }
 )
 

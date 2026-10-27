@@ -76,6 +76,16 @@ def _generate_metrics_content() -> str:
             "Return the count of distinct stories sent back to the Business "
             "Analyst in the sprint, or None when no returned events are stored."
         ),
+        "release_frequency": (
+            "Return the count of distinct epics released in the sprint "
+            "(how often epics ship), as a whole count. None when no epic "
+            "link is derivable."
+        ),
+        "dora_lead_time_days": (
+            "Return the mean, in whole days from story creation to the "
+            "epic's release moment, over each released story. None when no "
+            "epic link is derivable."
+        ),
     }
 
     display_overrides: dict[str, str] = {
