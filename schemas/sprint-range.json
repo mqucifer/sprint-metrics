@@ -17,7 +17,11 @@
         "end",
         "sprint_count",
         "no_data",
-        "verdicts"
+        "verdicts",
+        "biggest_improvement",
+        "worst_dip",
+        "turns",
+        "too_short"
       ],
       "properties": {
         "start": {
@@ -782,6 +786,95 @@
               ]
             }
           }
+        },
+        "biggest_improvement": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "measure": {
+              "type": "string"
+            },
+            "from_sprint": {
+              "type": "string"
+            },
+            "to_sprint": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "precision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "measure",
+            "from_sprint",
+            "to_sprint",
+            "size",
+            "unit",
+            "precision"
+          ]
+        },
+        "worst_dip": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "measure": {
+              "type": "string"
+            },
+            "from_sprint": {
+              "type": "string"
+            },
+            "to_sprint": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "precision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "measure",
+            "from_sprint",
+            "to_sprint",
+            "size",
+            "unit",
+            "precision"
+          ]
+        },
+        "turns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sprint": {
+                "type": "string"
+              },
+              "measure": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sprint",
+              "measure"
+            ]
+          }
+        },
+        "too_short": {
+          "type": "boolean"
         }
       }
     },
