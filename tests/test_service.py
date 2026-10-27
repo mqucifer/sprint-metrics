@@ -1136,6 +1136,234 @@ def test_range_window_single_data_bearing_sprint_verdicts_all_null():
 
 
 @requires_db
+def test_range_window_standouts_biggest_improvement_and_worst_dip():
+    """AC1: with events in four sprints carrying throughput 4, 5, 3, 8 and
+    cycle_time_days 9, 8, 8, 7, the window's worst_dip names throughput
+    (2024-02 to 2024-03, size 2, count, whole); the biggest_improvement names
+    the measure with the largest step (cycle_time_minutes, 1440 minutes, from
+    2024-01 to 2024-02)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'so_%'"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: throughput 4, cycle 9 days (started 01-01, finished 01-10)
+        for i in range(4):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_a{i}", event_type="started", timestamp="2024-01-01T10:00:00Z", sprint="2024-01", created="2024-01-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_a{i}", event_type="finished", timestamp="2024-01-10T10:00:00Z", sprint="2024-01", created="2024-01-01"),
+            )
+        # 2024-02: throughput 5, cycle 8 days (started 02-01, finished 02-09)
+        for i in range(5):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_b{i}", event_type="started", timestamp="2024-02-01T10:00:00Z", sprint="2024-02", created="2024-02-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_b{i}", event_type="finished", timestamp="2024-02-09T10:00:00Z", sprint="2024-02", created="2024-02-01"),
+            )
+        # 2024-03: throughput 3, cycle 8 days (started 03-01, finished 03-09)
+        for i in range(3):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_c{i}", event_type="started", timestamp="2024-03-01T10:00:00Z", sprint="2024-03", created="2024-03-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_c{i}", event_type="finished", timestamp="2024-03-09T10:00:00Z", sprint="2024-03", created="2024-03-01"),
+            )
+        # 2024-04: throughput 8, cycle 7 days (started 04-01, finished 04-08)
+        for i in range(8):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_d{i}", event_type="started", timestamp="2024-04-01T10:00:00Z", sprint="2024-04", created="2024-04-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_d{i}", event_type="finished", timestamp="2024-04-08T10:00:00Z", sprint="2024-04", created="2024-04-01"),
+            )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-04")
+        assert status == 200
+        window = body["window"]
+        # The biggest improvement is cycle_time_minutes (12960 to 11520 = 1440),
+        # which is larger than throughput's improvement (3 to 8 = 5).
+        assert window["biggest_improvement"] == {
+            "measure": "cycle_time_minutes",
+            "from_sprint": "2024-01",
+            "to_sprint": "2024-02",
+            "size": 1440,
+            "unit": "minutes",
+            "precision": "whole",
+        }
+        # The worst dip is throughput (5 to 3 = 2); no other measure dips.
+        assert window["worst_dip"] == {
+            "measure": "throughput",
+            "from_sprint": "2024-02",
+            "to_sprint": "2024-03",
+            "size": 2,
+            "unit": "count",
+            "precision": "whole",
+        }
+        assert window["too_short"] is False
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_standouts_turns():
+    """AC2: with throughput 4, 5, 3, 8 and cycle_time_days 9, 8, 8, 7 across
+    four sprints, the turns list names exactly (2024-02, throughput) and
+    (2024-03, throughput) in window order; cycle_time_days' flat step
+    (8 to 8) names no turn."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'so_%'"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: throughput 4, cycle 9 days
+        for i in range(4):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_a{i}", event_type="started", timestamp="2024-01-01T10:00:00Z", sprint="2024-01", created="2024-01-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_a{i}", event_type="finished", timestamp="2024-01-10T10:00:00Z", sprint="2024-01", created="2024-01-01"),
+            )
+        # 2024-02: throughput 5, cycle 8 days
+        for i in range(5):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_b{i}", event_type="started", timestamp="2024-02-01T10:00:00Z", sprint="2024-02", created="2024-02-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_b{i}", event_type="finished", timestamp="2024-02-09T10:00:00Z", sprint="2024-02", created="2024-02-01"),
+            )
+        # 2024-03: throughput 3, cycle 8 days
+        for i in range(3):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_c{i}", event_type="started", timestamp="2024-03-01T10:00:00Z", sprint="2024-03", created="2024-03-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_c{i}", event_type="finished", timestamp="2024-03-09T10:00:00Z", sprint="2024-03", created="2024-03-01"),
+            )
+        # 2024-04: throughput 8, cycle 7 days
+        for i in range(8):
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_d{i}", event_type="started", timestamp="2024-04-01T10:00:00Z", sprint="2024-04", created="2024-04-01"),
+            )
+            _post_events(
+                f"http://127.0.0.1:{port}/events",
+                _make_event(card_id=f"so_d{i}", event_type="finished", timestamp="2024-04-08T10:00:00Z", sprint="2024-04", created="2024-04-01"),
+            )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-04")
+        assert status == 200
+        # Only throughput changes direction: 4→5 (up), 5→3 (down), 3→8 (up).
+        # cycle_time_days: 9→8 (down), 8→8 (flat), 8→7 (down) — no turn.
+        assert body["window"]["turns"] == [
+            {"sprint": "2024-02", "measure": "throughput"},
+            {"sprint": "2024-03", "measure": "throughput"},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_too_short_two_data_bearing_sprints():
+    """AC3: a window with exactly two data-bearing sprints carries too_short
+    true, while the per-measure verdict entries are still present."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'so_ts_%'"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: one card, cycle 4 days
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(card_id="so_ts_a", event_type="started", timestamp="2024-01-01T10:00:00Z", sprint="2024-01", created="2024-01-01"),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(card_id="so_ts_a", event_type="finished", timestamp="2024-01-05T10:00:00Z", sprint="2024-01", created="2024-01-01"),
+        )
+        # 2024-02: one card, cycle 2 days
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(card_id="so_ts_b", event_type="started", timestamp="2024-02-01T10:00:00Z", sprint="2024-02", created="2024-02-01"),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(card_id="so_ts_b", event_type="finished", timestamp="2024-02-03T10:00:00Z", sprint="2024-02", created="2024-02-01"),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        window = body["window"]
+        assert window["too_short"] is True
+        # Verdict entries are still present (not all null since two data-bearing sprints)
+        assert window["verdicts"]["cycle_time_days"] is not None
+        # With two data-bearing sprints, turns is empty (needs at least 3)
+        assert window["turns"] == []
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_zero_data_bearing_sprints_null_standouts():
+    """AC4: a window with zero data-bearing sprints has biggest_improvement
+    and worst_dip null, turns empty, and too_short true."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'so_zero_%'"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        window = body["window"]
+        assert window["biggest_improvement"] is None
+        assert window["worst_dip"] is None
+        assert window["turns"] == []
+        assert window["too_short"] is True
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_range_prior_and_delta():
     """AC2: 2024-01 has prior=null and delta=null; 2024-02 has prior.throughput=1
     and delta.throughput=0."""

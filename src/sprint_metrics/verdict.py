@@ -127,26 +127,26 @@ def window_standouts(
             )
             is_dip = (better == "lower" and delta > 0) or (better == "higher" and delta < 0)
             size = abs(delta)
-            if is_improvement:
-                if best_improvement is None or size > best_improvement["size"]:
-                    best_improvement = {
-                        "measure": measure,
-                        "from_sprint": from_label,
-                        "to_sprint": to_label,
-                        "size": size,
-                        "unit": unit,
-                        "precision": precision,
-                    }
-            if is_dip:
-                if best_dip is None or size > best_dip["size"]:
-                    best_dip = {
-                        "measure": measure,
-                        "from_sprint": from_label,
-                        "to_sprint": to_label,
-                        "size": size,
-                        "unit": unit,
-                        "precision": precision,
-                    }
+            if is_improvement and (
+                best_improvement is None or size > best_improvement["size"]
+            ):
+                best_improvement = {
+                    "measure": measure,
+                    "from_sprint": from_label,
+                    "to_sprint": to_label,
+                    "size": size,
+                    "unit": unit,
+                    "precision": precision,
+                }
+            if is_dip and (best_dip is None or size > best_dip["size"]):
+                best_dip = {
+                    "measure": measure,
+                    "from_sprint": from_label,
+                    "to_sprint": to_label,
+                    "size": size,
+                    "unit": unit,
+                    "precision": precision,
+                }
 
     # Find turns: a sprint where a measure moved one way into it and the other
     # way out of it (both steps non-zero and opposite direction).
