@@ -211,6 +211,14 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         },
                         "required": ["per_step", "total"],
                     },
+                    "cost_by_kind": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "addition": {"type": "integer"},
+                            "change": {"type": "integer"},
+                        },
+                        "required": ["addition", "change"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {
@@ -226,6 +234,8 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "output_tokens_middle": {"type": ["integer", "null"]},
                             "output_tokens_total": {"type": ["integer", "null"]},
                             "working_time_minutes": {"type": ["integer", "null"]},
+                            "addition_working_time_minutes": {"type": ["integer", "null"]},
+                            "change_working_time_minutes": {"type": ["integer", "null"]},
                         },
                     },
                     "delta": {
@@ -243,6 +253,8 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "output_tokens_middle": {"type": ["integer", "null"]},
                             "output_tokens_total": {"type": ["integer", "null"]},
                             "working_time_minutes": {"type": ["integer", "null"]},
+                            "addition_working_time_minutes": {"type": ["integer", "null"]},
+                            "change_working_time_minutes": {"type": ["integer", "null"]},
                         },
                     },
                 },

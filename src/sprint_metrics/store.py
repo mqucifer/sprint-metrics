@@ -567,6 +567,28 @@ def query_working_time_events(
     return result
 
 
+def query_card_kinds(conn: Connection, label: str) -> dict[str, str | None]:
+    """Return the sprint's story kinds, keyed by card_id.
+
+    For each card_id that appears in the sprint's board_events, the kind stored
+    on any of its rows (the kind is the same on every row that carries it), or
+    None when no row for that card carries a kind.
+    """
+    rows = conn.execute(
+        """
+        SELECT DISTINCT ON (card_id) card_id, kind
+        FROM sprint_metrics.board_events
+        WHERE sprint = %s
+        ORDER BY card_id, (kind IS NULL), event_time
+        """,
+        (label,),
+    ).fetchall()
+    result: dict[str, str | None] = {}
+    for card_id, kind in rows:
+        result[card_id] = kind
+    return result
+
+
 def query_roster_data(conn: Connection, labels: list[str]) -> dict:
     """Return the roster data for the given sprint labels.
 

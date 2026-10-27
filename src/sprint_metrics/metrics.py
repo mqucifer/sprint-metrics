@@ -155,6 +155,8 @@ ALL_METRICS: frozenset[str] = frozenset(
         "release_frequency",
         "dora_lead_time_days",
         "working_time_minutes",
+        "addition_working_time_minutes",
+        "change_working_time_minutes",
     }
 )
 

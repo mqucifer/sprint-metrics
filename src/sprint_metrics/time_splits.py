@@ -113,3 +113,83 @@ def working_time_total(
     """
     answer = calculate_working_time(events_by_card)
     return answer["total"] if answer is not None else None
+
+
+def _card_total_minutes(
+    events: list[tuple[str, datetime, str | None]],
+) -> int:
+    """Total working time in whole minutes for a single card's ordered event rows."""
+    total = 0
+    open_window: datetime | None = None
+    blocked: list[datetime] = []
+    unblocked: list[datetime] = []
+    for event_type, event_time, _role in events:
+        if event_type == "started":
+            open_window = event_time
+            blocked = []
+            unblocked = []
+        elif event_type == "blocked":
+            if open_window is not None:
+                blocked.append(event_time)
+        elif event_type == "unblocked":
+            if open_window is not None:
+                unblocked.append(event_time)
+        elif event_type in _TERMINAL:
+            if open_window is not None:
+                seconds = (event_time - open_window).total_seconds()
+                blocked_seconds = _blocked_seconds(blocked, unblocked, open_window, event_time)
+                minutes = round((seconds - blocked_seconds) / 60)
+                if minutes < 0:
+                    minutes = 0
+                total += minutes
+                open_window = None
+    return total
+
+
+def calculate_cost_by_kind(
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
+    kinds: Mapping[str, str | None],
+) -> dict | None:
+    """The sprint's working-time cost by story kind: addition and change, in whole minutes.
+
+    ``events_by_card`` maps each card_id to its ordered
+    (event_type, event_time, failure_role) rows (the same shape the working-time
+    answer uses). ``kinds`` maps each card_id to its story kind string, or None
+    when the stored rows carry no kind. The answer carries both keys (addition
+    and change), each the sum of the working-time minutes of the stories of that
+    kind in the sprint. A story whose kind is neither addition nor change
+    contributes to neither. When no stored story row in the sprint carries a
+    kind at all, the answer is None (no data, not zero; no backfill).
+    """
+    has_any_kind = any(kinds.get(card_id) is not None for card_id in events_by_card)
+    if not has_any_kind:
+        return None
+    addition = 0
+    change = 0
+    for card_id, events in events_by_card.items():
+        kind = kinds.get(card_id)
+        if kind is None:
+            continue
+        minutes = _card_total_minutes(events)
+        if kind == "addition":
+            addition += minutes
+        elif kind == "change":
+            change += minutes
+    return {"addition": addition, "change": change}
+
+
+def cost_by_kind_total(
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
+    kinds: Mapping[str, str | None],
+    kind: str,
+) -> int | None:
+    """The sprint's working-time total for stories of the given kind, in whole minutes.
+
+    Returns None when no stored story row in the sprint carries a kind at all
+    (no data, not zero). The ``kind`` argument is the story kind string
+    (for example 'addition' or 'change').
+    """
+    answer = calculate_cost_by_kind(events_by_card, kinds)
+    if answer is None:
+        return None
+    return answer.get(kind, 0)

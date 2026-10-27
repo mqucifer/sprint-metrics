@@ -94,6 +94,16 @@ def _generate_metrics_content() -> str:
             "story's pipeline. None when no card carries a closed session "
             "window."
         ),
+        "addition_working_time_minutes": (
+            "Return the sprint's working time for stories whose kind is "
+            "'addition', in whole minutes. None when no stored story row "
+            "in the sprint carries a kind."
+        ),
+        "change_working_time_minutes": (
+            "Return the sprint's working time for stories whose kind is "
+            "'change', in whole minutes. None when no stored story row "
+            "in the sprint carries a kind."
+        ),
     }
 
     display_overrides: dict[str, str] = {

@@ -33,4 +33,6 @@ _METRIC_COLUMNS: dict[str, str] = {
     "release_frequency": "DORA release frequency",
     "dora_lead_time_days": "DORA lead time for changes",
     "working_time_minutes": "Working time",
+    "addition_working_time_minutes": "Addition working time",
+    "change_working_time_minutes": "Change working time",
 }

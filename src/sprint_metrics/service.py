@@ -36,6 +36,7 @@ from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range
 from sprint_metrics.store import (
     init_db,
     insert_event,
+    query_card_kinds,
     query_dora_data,
     query_range,
     query_returned_events,
@@ -48,7 +49,12 @@ from sprint_metrics.store import (
     upsert_sprint,
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
-from sprint_metrics.time_splits import calculate_working_time, working_time_total
+from sprint_metrics.time_splits import (
+    calculate_cost_by_kind,
+    calculate_working_time,
+    cost_by_kind_total,
+    working_time_total,
+)
 
 VALID_EVENT_TYPES = frozenset(
     {
@@ -474,6 +480,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
                         _attach_range_dora(result, conn_holder[0], labels, has_events)
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
+                        _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -576,6 +583,13 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 value = calculate_dora_lead_time(spans)
                             elif metric == "working_time_minutes":
                                 value = working_time_total(query_working_time_events(conn_holder[0], label))
+                            elif metric in ("addition_working_time_minutes", "change_working_time_minutes"):
+                                kind = "addition" if metric == "addition_working_time_minutes" else "change"
+                                value = cost_by_kind_total(
+                                    query_working_time_events(conn_holder[0], label),
+                                    query_card_kinds(conn_holder[0], label),
+                                    kind,
+                                )
                             else:
                                 value = metric_value(metric, sprints[label])
                             values.append({"sprint": label, "value": value})
@@ -783,7 +797,11 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "(a returned or attempt_failed row marks the step boundary; "
         "a rework session is labeled by the step it is reworking), "
         "plus the sprint's working-time total; a sprint with no "
-        "events (or no closed session window) reads null.",
+        "events (or no closed session window) reads null. "
+        "Each entry also carries a cost_by_kind answer: the sprint's "
+        "working time split by story kind (addition and change), in "
+        "whole minutes; a sprint whose stored story rows carry no "
+        "kind reads null (no data, not zero).",
     ),
     (
         "GET",
@@ -802,12 +820,16 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "output_tokens_middle, output_tokens_total, "
         "cached_input_percent, reasoning_output_percent, "
         "sent_backs_count, release_frequency, dora_lead_time_days, "
-        "working_time_minutes. "
+        "working_time_minutes, addition_working_time_minutes, "
+        "change_working_time_minutes. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null. working_time_minutes returns the sprint's "
         "working-time total in whole minutes (null where the sprint has no "
-        "closed session window).",
+        "closed session window). addition_working_time_minutes and "
+        "change_working_time_minutes return the sprint's working time for "
+        "stories of the given kind in whole minutes (null where the sprint "
+        "carries no kind data).",
     ),
     (
         "GET",
@@ -982,6 +1004,57 @@ def _attach_range_working_time(
                 if current_total is not None and prior_total is not None
                 else None
             )
+
+
+def _attach_range_cost_by_kind(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the cost-by-kind answer to each range entry, and its flat names to prior/delta.
+
+    A sprint with no events carries cost_by_kind null. A sprint with events but
+    whose stored story rows carry no kind also carries cost_by_kind null (no
+    data, not zero; no backfill). For every sprint after the first, the flat
+    names addition_working_time_minutes and change_working_time_minutes appear
+    in that entry's prior and delta whenever those objects are present, null
+    where the corresponding sprint has no kind data.
+    """
+    answers: dict[str, dict | None] = {}
+    flat: dict[str, dict[str, int | None]] = {}
+    for label in labels:
+        if label in has_events:
+            events = query_working_time_events(conn, label)
+            kinds = query_card_kinds(conn, label)
+            answer = calculate_cost_by_kind(events, kinds)
+            answers[label] = answer
+            if answer is not None:
+                flat[label] = {
+                    "addition_working_time_minutes": answer["addition"],
+                    "change_working_time_minutes": answer["change"],
+                }
+            else:
+                flat[label] = {
+                    "addition_working_time_minutes": None,
+                    "change_working_time_minutes": None,
+                }
+        else:
+            answers[label] = None
+            flat[label] = {
+                "addition_working_time_minutes": None,
+                "change_working_time_minutes": None,
+            }
+    for index, label in enumerate(labels):
+        entry = result["sprints"][label]
+        entry["cost_by_kind"] = answers[label]
+        if index == 0:
+            continue
+        prior_label = labels[index - 1]
+        if isinstance(entry.get("prior"), dict):
+            for name in ("addition_working_time_minutes", "change_working_time_minutes"):
+                entry["prior"][name] = flat[prior_label][name]
+        if isinstance(entry.get("delta"), dict):
+            for name in ("addition_working_time_minutes", "change_working_time_minutes"):
+                cur, pri = flat[label][name], flat[prior_label][name]
+                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 
 
 def _validate_cost_fields(card: dict) -> str | None:
