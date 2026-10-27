@@ -55,7 +55,7 @@ from sprint_metrics.time_splits import (
     cost_by_kind_total,
     working_time_total,
 )
-from sprint_metrics.verdict import MEASURE_REGISTRY, window_verdicts
+from sprint_metrics.verdict import MEASURE_REGISTRY, window_standouts, window_verdicts
 
 VALID_EVENT_TYPES = frozenset(
     {
@@ -483,6 +483,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_verdict(result, labels, has_events)
+                        _attach_range_standouts(result, labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -1084,6 +1085,28 @@ def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str])
         values.update(_cost_flat(entry.get("cost")))
         flat[label] = values
     result["window"]["verdicts"] = window_verdicts(flat, data_bearing, MEASURE_REGISTRY)
+
+
+def _attach_range_standouts(result: dict, labels: list[str], has_events: set[str]) -> None:
+    """Attach the window's standouts to the range's window object.
+
+    The standouts are the window's biggest improvement, worst dip, the sprints
+    where a measure turned, and the too-short flag. A gap sprint (no events) is
+    bridged, not read as zero. Ties are broken by the earlier sprint pair, then
+    the measure earlier in the registry order.
+    """
+    data_bearing = [label for label in labels if label in has_events]
+    flat: dict[str, dict[str, object]] = {}
+    for label in labels:
+        entry = result["sprints"][label]
+        values = dict(entry)
+        values.update(_cost_flat(entry.get("cost")))
+        flat[label] = values
+    standouts = window_standouts(flat, data_bearing, MEASURE_REGISTRY)
+    result["window"]["biggest_improvement"] = standouts["biggest_improvement"]
+    result["window"]["worst_dip"] = standouts["worst_dip"]
+    result["window"]["turns"] = standouts["turns"]
+    result["window"]["too_short"] = standouts["too_short"]
 
 
 def _validate_cost_fields(card: dict) -> str | None:

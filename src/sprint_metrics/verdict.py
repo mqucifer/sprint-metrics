@@ -63,6 +63,115 @@ def verdict(
     return "better" if up else "worse"
 
 
+def window_standouts(
+    sprints: Mapping[str, Mapping[str, object]],
+    data_bearing: Sequence[str],
+    registry: Mapping[str, tuple[str | None, str, str]] = MEASURE_REGISTRY,
+) -> dict[str, object]:
+    """The window's standouts: biggest improvement, worst dip, turns, and the too-short flag.
+
+    Computes the largest single-step improvement and the largest single-step dip
+    between consecutive data-bearing sprints, judged in the measure's own unit,
+    over measures that have a better direction. A turn is a sprint where a
+    measure moved one way from the previous data-bearing sprint and the other
+    way into the next. A window with fewer than three data-bearing sprints is
+    flagged too short for a trend.
+
+    ``sprints`` maps each sprint label to its measure values (``None`` when
+    missing) and ``data_bearing`` is the ordered list of sprint labels that
+    carried events; a gap sprint is bridged, not read as zero. Ties are broken
+    by the earlier sprint pair, then the measure earlier in the registry order.
+    """
+    too_short = len(data_bearing) < 3
+    if len(data_bearing) < 2:
+        return {
+            "biggest_improvement": None,
+            "worst_dip": None,
+            "turns": [],
+            "too_short": too_short,
+        }
+
+    # Build the list of steps between consecutive data-bearing sprints.
+    steps: list[tuple[str, str, dict[str, int]]] = []
+    for i in range(len(data_bearing) - 1):
+        from_label = data_bearing[i]
+        to_label = data_bearing[i + 1]
+        from_values = sprints[from_label]
+        to_values = sprints[to_label]
+        step: dict[str, int] = {}
+        for measure in registry:
+            from_val = from_values.get(measure)
+            to_val = to_values.get(measure)
+            if from_val is None or to_val is None:
+                continue
+            step[measure] = to_val - from_val
+        steps.append((from_label, to_label, step))
+
+    # Find the biggest improvement and worst dip.
+    best_improvement: dict[str, object] | None = None
+    best_dip: dict[str, object] | None = None
+
+    for from_label, to_label, step in steps:
+        for measure in registry:
+            if measure not in step:
+                continue
+            better = registry[measure][0]
+            if better is None:
+                continue
+            _, unit, precision = registry[measure]
+            delta = step[measure]
+            if delta == 0:
+                continue
+            is_improvement = (better == "lower" and delta < 0) or (
+                better == "higher" and delta > 0
+            )
+            is_dip = (better == "lower" and delta > 0) or (better == "higher" and delta < 0)
+            size = abs(delta)
+            if is_improvement:
+                if best_improvement is None or size > best_improvement["size"]:
+                    best_improvement = {
+                        "measure": measure,
+                        "from_sprint": from_label,
+                        "to_sprint": to_label,
+                        "size": size,
+                        "unit": unit,
+                        "precision": precision,
+                    }
+            if is_dip:
+                if best_dip is None or size > best_dip["size"]:
+                    best_dip = {
+                        "measure": measure,
+                        "from_sprint": from_label,
+                        "to_sprint": to_label,
+                        "size": size,
+                        "unit": unit,
+                        "precision": precision,
+                    }
+
+    # Find turns: a sprint where a measure moved one way into it and the other
+    # way out of it (both steps non-zero and opposite direction).
+    turns: list[dict[str, str]] = []
+    if len(data_bearing) >= 3:
+        for i in range(1, len(data_bearing) - 1):
+            sprint_label = data_bearing[i]
+            prev_step = steps[i - 1][2]
+            next_step = steps[i][2]
+            for measure in registry:
+                if measure not in prev_step or measure not in next_step:
+                    continue
+                in_delta = prev_step[measure]
+                out_delta = next_step[measure]
+                if in_delta * out_delta < 0:
+                    turns.append({"sprint": sprint_label, "measure": measure})
+
+    return {
+        "biggest_improvement": best_improvement,
+        "worst_dip": best_dip,
+        "turns": turns,
+        "too_short": too_short,
+    }
+
+
 def window_verdicts(
     sprints: Mapping[str, Mapping[str, object]],
     data_bearing: Sequence[str],

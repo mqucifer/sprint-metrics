@@ -122,6 +122,10 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
             "sprint_count": 1,
             "no_data": ["2026-11"],
             "verdicts": {measure: None for measure in MEASURE_REGISTRY},
+            "biggest_improvement": None,
+            "worst_dip": None,
+            "turns": [],
+            "too_short": True,
         },
         "sprints": {
             "2026-11": {
@@ -252,6 +256,10 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
             "sprint_count": 2,
             "no_data": [],
             "verdicts": verdicts,
+            "biggest_improvement": None,
+            "worst_dip": None,
+            "turns": [],
+            "too_short": True,
         },
         "sprints": {
             "2026-09": _range_entry(story_costs=[costed_story], cost=cost, prior=None, delta=None),
@@ -367,6 +375,10 @@ def test_sprint_range_schema_accepts_rework_answer():
             "sprint_count": 2,
             "no_data": [],
             "verdicts": {measure: None for measure in MEASURE_REGISTRY},
+            "biggest_improvement": None,
+            "worst_dip": None,
+            "turns": [],
+            "too_short": True,
         },
         "sprints": {
             "2024-03": _range_entry(rework=rework, prior=None, delta=None),
