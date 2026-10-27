@@ -56,14 +56,18 @@ def _generate_metrics_content() -> str:
     # function's docstring (shared function, or no calculate function at all),
     # or whose table row carries a note the docstring does not.
     metric_descriptions: dict[str, str] = {
-        "first_attempt_numerator": "Return the count of completed cards whose attempts equals 1.",
-        "first_attempt_denominator": "Return the total count of completed cards.",
+        "first_attempt_numerator": (
+            "Return the count of completed cards whose attempts equals 1, as a whole count."
+        ),
+        "first_attempt_denominator": (
+            "Return the total count of completed cards, as a whole count."
+        ),
         "superseded_count": (
-            "Return the number of cards marked superseded in the sprint. "
+            "Return the count of cards marked superseded in the sprint, as a whole count. "
             "Excluded from throughput and in-flight calculations."
         ),
         "superseded_points": (
-            "Return the sum of the points value on superseded cards "
+            "Return the sum of the points value on superseded cards, in whole points "
             "(0 when a superseded card carries no points value). "
             "Excluded from throughput and in-flight calculations."
         ),

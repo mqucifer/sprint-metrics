@@ -31,7 +31,7 @@ def calculate_cycle_time_and_lead_time(
 
 
 def calculate_throughput(cards: Iterable[Card | Mapping[str, object]]) -> int:
-    """Return the number of completed cards in the sprint.
+    """Return the count of completed cards in the sprint, as a whole count.
 
     Throughput is the count of cards that have reached the completed state.
     Cards still in flight do not count.
@@ -81,7 +81,7 @@ def calculate_wip_violations(
     cards: Iterable[Card | Mapping[str, object]],
     wip_limits: Mapping[str, int] | None = None,
 ) -> int:
-    """Return the number of states whose WIP limit was breached this sprint.
+    """Return the count of states whose WIP limit was breached this sprint, as a whole count.
 
     A state is in violation when more cards sat in it at the same time than its
     limit allows, at any point in the sprint — work that was started and
@@ -103,7 +103,7 @@ def calculate_blocked_aging(
     cards: Iterable[Card | Mapping[str, object]],
     as_of: date | None = None,
 ) -> int:
-    """Return the maximum number of days any card has been blocked in the sprint.
+    """Return the maximum number of whole days any card has been blocked in the sprint, in whole days.
 
     A card is considered blocked if it has a ``blocked_since`` date and has not
     yet been completed. The aging is measured from ``blocked_since`` to the
@@ -162,7 +162,7 @@ ALL_METRICS: frozenset[str] = frozenset(
 
 
 def calculate_first_attempt_rate(cards: Iterable[Card | Mapping[str, object]]) -> int:
-    """Return the percentage of completed cards that succeeded on the first attempt.
+    """Return the percentage of completed cards that succeeded on the first attempt, as a whole percent.
 
     A card succeeded on its first attempt when its ``attempts`` field is 1.
     Cards still in flight are ignored. When no cards are completed the rate is 0.
@@ -290,7 +290,7 @@ def metric_value(
 
 
 def calculate_points_delivered(cards: Iterable[Card | Mapping[str, object]]) -> int:
-    """Return the sum of points values on completed cards.
+    """Return the sum of points values on completed cards, in whole points.
 
     Cards still in flight are ignored. A completed card with no points value
     (``points`` is ``None``) contributes 0. An empty list returns 0.
@@ -426,7 +426,7 @@ def calculate_model_minutes_total(
 def calculate_input_tokens_middle(
     cards: Iterable[Card | Mapping[str, object]],
 ) -> int | None:
-    """Return the median input tokens across costed stories, or None when no story carries cost."""
+    """Return the median input tokens across costed stories, as a whole count, or None when no story carries cost."""
     costed = _costed_cards(cards)
     if not costed:
         return None
@@ -436,7 +436,7 @@ def calculate_input_tokens_middle(
 def calculate_input_tokens_total(
     cards: Iterable[Card | Mapping[str, object]],
 ) -> int | None:
-    """Return the total input tokens across costed stories, or None when no story carries cost."""
+    """Return the total input tokens across costed stories, as a whole count, or None when no story carries cost."""
     costed = _costed_cards(cards)
     if not costed:
         return None
@@ -446,7 +446,7 @@ def calculate_input_tokens_total(
 def calculate_output_tokens_middle(
     cards: Iterable[Card | Mapping[str, object]],
 ) -> int | None:
-    """Return the median output tokens across costed stories, or None when no story carries cost."""
+    """Return the median output tokens across costed stories, as a whole count, or None when no story carries cost."""
     costed = _costed_cards(cards)
     if not costed:
         return None
@@ -456,7 +456,7 @@ def calculate_output_tokens_middle(
 def calculate_output_tokens_total(
     cards: Iterable[Card | Mapping[str, object]],
 ) -> int | None:
-    """Return the total output tokens across costed stories, or None when no story carries cost."""
+    """Return the total output tokens across costed stories, as a whole count, or None when no story carries cost."""
     costed = _costed_cards(cards)
     if not costed:
         return None
