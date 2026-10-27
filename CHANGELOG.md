@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- The SERVICE_ENDPOINTS description for GET /trend now lists `release_frequency` and `dora_lead_time_days` as valid metrics, matching the actual endpoint behaviour and docs/metrics.md
+
 ### Removed
 
 ## [4.1.0] - 2026-10-26
