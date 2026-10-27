@@ -782,7 +782,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "input_tokens_middle, input_tokens_total, "
         "output_tokens_middle, output_tokens_total, "
         "cached_input_percent, reasoning_output_percent, "
-        "sent_backs_count. "
+        "sent_backs_count, release_frequency, dora_lead_time_days. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null.",

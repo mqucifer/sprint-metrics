@@ -5178,6 +5178,20 @@ def test_trend_accepts_no_escalation_measure():
     assert "escalation" not in trend
 
 
+def test_trend_description_lists_dora_metrics():
+    """The /trend endpoint description in SERVICE_ENDPOINTS lists
+    release_frequency and dora_lead_time_days as valid metrics."""
+    from sprint_metrics.service import SERVICE_ENDPOINTS
+
+    trend = next(desc for method, path, desc in SERVICE_ENDPOINTS if path == "/trend")
+    assert "release_frequency" in trend, (
+        "SERVICE_ENDPOINTS /trend description does not list release_frequency"
+    )
+    assert "dora_lead_time_days" in trend, (
+        "SERVICE_ENDPOINTS /trend description does not list dora_lead_time_days"
+    )
+
+
 @requires_db
 def test_escalated_event_is_stored_but_feeds_no_response():
     """#777 AC3: an escalated event is accepted and stored as before, but no
