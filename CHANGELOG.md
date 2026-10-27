@@ -6,6 +6,7 @@
 
 - GET /range now names the window it is judging: a top-level `window` object carrying the sprint labels at both ends (`start`, `end`), the count of sprints in the window (`sprint_count`), and which sprints had no data (`no_data`), so a gap reads as 'no data' not zero. The response `api_version` moves from "4" to "5"
 - GET /range carries each sprint's `dora` block with DORA's first two measures: `release_frequency` (how often epics ship, a whole count of distinct epics whose last story completes in the sprint) and `lead_time_days` (the mean, in whole days, of each released story's span from its creation to its epic's release moment); a sprint with events but no epic link reads both values as null (no data, not zero), and a sprint with no events reads the whole DORA block as null (#804, #807)
+- A new verdict module (`sprint_metrics.verdict`) carries the measure registry — for every scalar measure the /range sprint entry carries, its better direction (lower, higher, or none), its unit, and its precision — and a verdict that judges a first value against a last purely from that (measure, better-direction) pair: measures with a better direction carry "better", "worse" or "flat", measures without one (the first-attempt counts and the cost measures) carry the movement "up", "down" or "flat"; a new measure plugs into the window verdict with only a registry entry (#802)
 
 ### Changed
 
