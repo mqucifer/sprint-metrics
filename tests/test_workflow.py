@@ -29,6 +29,16 @@ def test_docker_job_range_filter_accounts_for_rework_key():
     )
 
 
+def test_docker_job_range_filter_accounts_for_window_key():
+    """The field-for-field /range comparison filters out the new window key,
+    the way it already filters out the removed escalation measures."""
+    text = _text()
+    filter_block = text.split("RANGE_FILTER='", 1)[1].split("'", 1)[0]
+    assert "del(.window)" in filter_block, (
+        "the docker job's /range comparison must account for the new window key"
+    )
+
+
 def test_docker_job_api_version_pin_matches_response_api_version():
     """AC9: every api_version pin in the docker job equals the response
     api_version in force (report.API_VERSION); the pin is not an assumed '4'."""
