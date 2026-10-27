@@ -4,6 +4,7 @@ import jsonschema
 import pytest
 
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, SPRINT_RANGE_SCHEMA
+from sprint_metrics.verdict import MEASURE_REGISTRY
 
 
 def test_trend_schema_top_level_structure():
@@ -120,6 +121,7 @@ def test_sprint_range_schema_accepts_all_null_sprint_entry():
             "end": "2026-11",
             "sprint_count": 1,
             "no_data": ["2026-11"],
+            "verdicts": {measure: None for measure in MEASURE_REGISTRY},
         },
         "sprints": {
             "2026-11": {
@@ -232,6 +234,16 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
         "output_tokens_middle": 1650,
         "output_tokens_total": 500,
     }
+    verdicts = {measure: None for measure in MEASURE_REGISTRY}
+    verdicts["cycle_time_days"] = {
+        "verdict": "flat",
+        "first_sprint": "2026-09",
+        "last_sprint": "2026-10",
+        "first_value": 5,
+        "last_value": 5,
+        "unit": "days",
+        "precision": "whole",
+    }
     response = {
         "api_version": "1",
         "window": {
@@ -239,6 +251,7 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
             "end": "2026-10",
             "sprint_count": 2,
             "no_data": [],
+            "verdicts": verdicts,
         },
         "sprints": {
             "2026-09": _range_entry(story_costs=[costed_story], cost=cost, prior=None, delta=None),
@@ -251,6 +264,54 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
         },
     }
     jsonschema.validate(response, SPRINT_RANGE_SCHEMA)
+
+
+def test_sprint_range_schema_declares_window_verdicts():
+    """AC7: SPRINT_RANGE_SCHEMA declares the window's verdicts object as required,
+    with exactly one required entry per registry measure; each entry is an
+    object-or-null carrying the seven fields, and the non-scalar items get no
+    entry."""
+    window_schema = SPRINT_RANGE_SCHEMA["properties"]["window"]
+    assert "verdicts" in window_schema["required"]
+    verdicts_schema = window_schema["properties"]["verdicts"]
+    assert verdicts_schema["type"] == "object"
+    assert set(verdicts_schema["required"]) == set(MEASURE_REGISTRY)
+    assert set(verdicts_schema["properties"]) == set(MEASURE_REGISTRY)
+    entry = verdicts_schema["properties"]["cycle_time_days"]
+    assert entry["type"] == ["object", "null"]
+    assert entry["required"] == [
+        "verdict",
+        "first_sprint",
+        "last_sprint",
+        "first_value",
+        "last_value",
+        "unit",
+        "precision",
+    ]
+    for non_scalar in (
+        "failure_breakdown",
+        "top_failure_causes",
+        "superseded_breakdown",
+        "story_costs",
+    ):
+        assert non_scalar not in verdicts_schema["properties"]
+
+
+def test_sprint_range_schema_rejects_window_missing_verdicts():
+    """AC7: a range response whose window object omits its verdicts is rejected
+    by SPRINT_RANGE_SCHEMA."""
+    bad = {
+        "api_version": "1",
+        "window": {
+            "start": "2026-11",
+            "end": "2026-11",
+            "sprint_count": 1,
+            "no_data": [],
+        },
+        "sprints": {},
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(bad, SPRINT_RANGE_SCHEMA)
 
 
 def test_sprint_range_schema_names_no_escalation_measure():
@@ -305,6 +366,7 @@ def test_sprint_range_schema_accepts_rework_answer():
             "end": "2024-04",
             "sprint_count": 2,
             "no_data": [],
+            "verdicts": {measure: None for measure in MEASURE_REGISTRY},
         },
         "sprints": {
             "2024-03": _range_entry(rework=rework, prior=None, delta=None),

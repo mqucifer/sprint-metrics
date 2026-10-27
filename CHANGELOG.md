@@ -11,6 +11,7 @@
 - GET /range carries each sprint's `cost_by_kind` answer: the sprint's working time split by story kind (addition and change), in whole minutes; a sprint whose stored story rows carry no kind reads null (no data, not zero), and a story whose kind is neither addition nor change contributes to neither (#805, #818)
 - GET /trend accepts the new `working_time_minutes` measure: the sprint's working-time total in whole minutes, null for a sprint with no events or no closed session window (#805)
 - GET /trend accepts the new `addition_working_time_minutes` and `change_working_time_minutes` measures: the sprint's working time for stories of the given kind in whole minutes, null where the sprint carries no kind data (#805, #818)
+- GET /range now answers, per measure, whether the window moves better or worse against the window's first and last data-bearing sprint: the window object carries a `verdicts` object with one entry per registry measure — better, worse or flat, or up, down or flat for a measure with no better direction — each entry naming both reference sprints and their values, with the unit and the precision; an entry reads null when the measure's value is missing in either reference sprint, or the window has fewer than two data-bearing sprints (a gap sprint is skipped, not read as zero; "flat" is the response's word for about the same) (#802)
 
 ### Changed
 

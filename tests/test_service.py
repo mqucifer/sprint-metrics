@@ -13,6 +13,7 @@ import pytest
 from sprint_metrics.card import Card
 from sprint_metrics.service import _compute_cost_summary, _median, _start_service, run
 from sprint_metrics.store import init_db
+from sprint_metrics.verdict import MEASURE_REGISTRY
 
 SPRINT_METRICS_DB = os.environ.get("SPRINT_METRICS_DB")
 
@@ -696,12 +697,11 @@ def test_range_response_metrics_and_keys():
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
         assert body["api_version"] == "7"
-        assert body["window"] == {
-            "start": "2024-01",
-            "end": "2024-02",
-            "sprint_count": 2,
-            "no_data": [],
-        }
+        assert body["window"]["start"] == "2024-01"
+        assert body["window"]["end"] == "2024-02"
+        assert body["window"]["sprint_count"] == 2
+        assert body["window"]["no_data"] == []
+        assert set(body["window"]["verdicts"]) == set(MEASURE_REGISTRY)
         assert set(body["sprints"].keys()) == {"2024-01", "2024-02"}
         assert body["sprints"]["2024-01"]["throughput"] == 1
         assert body["sprints"]["2024-01"]["cycle_time_days"] == 4
@@ -803,6 +803,334 @@ def test_range_window_empty_db():
         assert entry["throughput"] is None
         assert entry["story_costs"] == []
         assert entry["cost"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_verdict_judges_first_and_last_data_bearing():
+    """AC1: with events in 2024-01 (cycle_time_days 10) and 2024-03 (6) and none
+    in 2024-02, the window's cycle_time_days verdict is "better" and names the
+    first data-bearing sprint 2024-01 (value 10) and the last 2024-03 (value 6),
+    with unit days and precision whole; the gap sprint 2024-02 is skipped, not
+    read as zero. Also proves AC5 (one entry per registry measure, none for the
+    non-scalar items) and AC6 (each non-null entry carries exactly the verdict,
+    the two reference sprints and values, the unit and the precision)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('v1_a', 'v1_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v1_a",
+                event_type="started",
+                timestamp="2024-01-01T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v1_a",
+                event_type="finished",
+                timestamp="2024-01-11T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v1_b",
+                event_type="started",
+                timestamp="2024-03-01T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v1_b",
+                event_type="finished",
+                timestamp="2024-03-07T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-03")
+        assert status == 200
+        assert body["window"]["no_data"] == ["2024-02"]
+        verdicts = body["window"]["verdicts"]
+        assert verdicts["cycle_time_days"] == {
+            "verdict": "better",
+            "first_sprint": "2024-01",
+            "last_sprint": "2024-03",
+            "first_value": 10,
+            "last_value": 6,
+            "unit": "days",
+            "precision": "whole",
+        }
+        # AC5: exactly one entry per registry measure, keyed by name, and none
+        # for the non-scalar items.
+        assert set(verdicts) == set(MEASURE_REGISTRY)
+        for non_scalar in (
+            "failure_breakdown",
+            "top_failure_causes",
+            "superseded_breakdown",
+            "story_costs",
+        ):
+            assert non_scalar not in verdicts
+        # AC6: each non-null entry is self-contained with exactly these keys.
+        for entry in verdicts.values():
+            if entry is not None:
+                assert set(entry) == {
+                    "verdict",
+                    "first_sprint",
+                    "last_sprint",
+                    "first_value",
+                    "last_value",
+                    "unit",
+                    "precision",
+                }
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_verdicts_judged_against_their_direction():
+    """AC2: judged against each measure's better direction — the last
+    data-bearing sprint's throughput is higher (better), its
+    first_attempt_rate_percent is lower (worse, higher-is-better), its
+    model_minutes_total is higher (up, a movement-only measure), and a measure
+    equal in both reference sprints (points_delivered) reads flat."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('v2_a1', 'v2_b1', 'v2_b2')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01 (first): one costed card -> throughput 1, first-attempt 100,
+        # model_minutes_total 10, points_delivered 5.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v2_a1",
+                event_type="started",
+                timestamp="2024-01-02T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v2_a1",
+                event_type="finished",
+                timestamp="2024-01-05T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+                points=5,
+                attempts=1,
+                model_seconds=600,
+                input_tokens=1000,
+                cached_input_tokens=100,
+                output_tokens=500,
+                reasoning_output_tokens=50,
+            ),
+        )
+        # 2024-02 (last): two costed cards -> throughput 2, first-attempt 50,
+        # model_minutes_total 50, points_delivered 5.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v2_b1",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v2_b1",
+                event_type="finished",
+                timestamp="2024-02-05T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+                points=3,
+                attempts=1,
+                model_seconds=1800,
+                input_tokens=1000,
+                cached_input_tokens=100,
+                output_tokens=500,
+                reasoning_output_tokens=50,
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v2_b2",
+                event_type="started",
+                timestamp="2024-02-02T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v2_b2",
+                event_type="finished",
+                timestamp="2024-02-05T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+                points=2,
+                attempts=2,
+                model_seconds=1200,
+                input_tokens=1000,
+                cached_input_tokens=100,
+                output_tokens=500,
+                reasoning_output_tokens=50,
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        verdicts = body["window"]["verdicts"]
+        assert verdicts["throughput"]["verdict"] == "better"
+        assert verdicts["first_attempt_rate_percent"]["verdict"] == "worse"
+        assert verdicts["model_minutes_total"]["verdict"] == "up"
+        assert verdicts["points_delivered"]["verdict"] == "flat"
+        assert verdicts["throughput"]["first_value"] == 1
+        assert verdicts["throughput"]["last_value"] == 2
+        assert verdicts["first_attempt_rate_percent"]["first_value"] == 100
+        assert verdicts["first_attempt_rate_percent"]["last_value"] == 50
+        assert verdicts["model_minutes_total"]["first_value"] == 10
+        assert verdicts["model_minutes_total"]["last_value"] == 50
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_verdict_null_when_reference_value_missing():
+    """AC3: cycle_time_minutes is null in the window's first data-bearing sprint
+    (no card carries both sub-day timestamps) and a number in its last; the
+    verdict entry for cycle_time_minutes is null — no verdict is computed against
+    a missing number — while throughput still carries its verdict."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('v3_a', 'v3_b')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01 (first): finished event only -> the card is completed
+        # (throughput 1) but carries no started_at, so cycle_time_minutes is null.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v3_a",
+                event_type="finished",
+                timestamp="2024-01-07T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+        # 2024-03 (last): started + finished -> cycle_time_minutes is a number.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v3_b",
+                event_type="started",
+                timestamp="2024-03-03T10:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v3_b",
+                event_type="finished",
+                timestamp="2024-03-07T15:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-03")
+        assert status == 200
+        assert body["sprints"]["2024-01"]["cycle_time_minutes"] is None
+        assert isinstance(body["sprints"]["2024-03"]["cycle_time_minutes"], int)
+        verdicts = body["window"]["verdicts"]
+        assert verdicts["cycle_time_minutes"] is None
+        assert verdicts["throughput"] is not None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_window_single_data_bearing_sprint_verdicts_all_null():
+    """AC4: a window with exactly one data-bearing sprint answers 200, the
+    window object is present, and every measure's verdict entry is null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'v4_a'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v4_a",
+                event_type="started",
+                timestamp="2024-02-03T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="v4_a",
+                event_type="finished",
+                timestamp="2024-02-06T10:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        assert body["window"]["sprint_count"] == 2
+        assert body["window"]["no_data"] == ["2024-01"]
+        verdicts = body["window"]["verdicts"]
+        assert set(verdicts) == set(MEASURE_REGISTRY)
+        assert all(entry is None for entry in verdicts.values())
     finally:
         conn.close()
 
