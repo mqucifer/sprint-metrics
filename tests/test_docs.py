@@ -997,6 +997,16 @@ def test_service_md_trend_row_lists_cost_by_kind_measures():
     assert "change_working_time_minutes" in section
 
 
+def test_service_md_trend_row_lists_model_time_split_measures():
+    """AC4: the /trend row in docs/service.md names the
+    model_time_split_refinement_minutes and model_time_split_delivery_minutes
+    measures."""
+    text = (DOCS_DIR / "service.md").read_text()
+    section = _extract_marked_section(text, "service")
+    assert "model_time_split_refinement_minutes" in section
+    assert "model_time_split_delivery_minutes" in section
+
+
 def test_metrics_md_cost_names_match_service_metrics():
     """AC6: the cost measure names in the generated metrics table match the names
     in ALL_METRICS and _METRIC_COLUMNS exactly."""
@@ -1139,6 +1149,35 @@ def test_metrics_md_metrics_table_has_cost_by_kind_rows():
     assert "whole minutes" in chg_row
 
 
+def test_metrics_md_metrics_table_has_model_time_split_rows():
+    """AC4: docs/metrics.md's metrics table carries rows for
+    model_time_split_refinement_minutes and model_time_split_delivery_minutes,
+    stating what the split measures (model time, refinement against delivery),
+    its unit (whole minutes), and its null behaviour."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    table = _extract_marked_section(text, "metrics")
+    ref_row = next(
+        line for line in table.splitlines() if "`model_time_split_refinement_minutes`" in line
+    )
+    cells = [c.strip() for c in ref_row.split("|") if c.strip()]
+    assert cells[1] == "`model_time_split_refinement_minutes`"
+    assert "model time" in ref_row.lower()
+    assert "refinement" in ref_row.lower()
+    assert "whole minutes" in ref_row
+    assert "None" in ref_row or "null" in ref_row.lower()
+    del_row = next(
+        line for line in table.splitlines() if "`model_time_split_delivery_minutes`" in line
+    )
+    assert "delivery" in del_row.lower()
+    assert "whole minutes" in del_row
+    # A reader of docs/metrics.md learns what the split measures, its unit,
+    # and its null behaviour from the section outside the table.
+    section = text.split("### Model time split (refinement against delivery)")[1]
+    section = section.split("\n###")[0]
+    assert "whole minutes" in section
+    assert "null" in section.lower()
+
+
 def test_service_md_cost_example_is_complete():
     """AC7: the event-intake section has a complete cost-payload example with all
     five fields and non-negative integer values, in a copy-ready JSON block."""
@@ -1201,9 +1240,9 @@ def test_service_md_range_row_describes_roster_answer():
         assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
 
 
-def test_service_md_api_version_paragraph_describes_version_7():
+def test_service_md_api_version_paragraph_describes_version_8():
     """AC: docs/service.md's api_version paragraph states the response
-    api_version is '7', version '6' is retired, and intake keeps '1'."""
+    api_version is '8', version '7' is retired, and intake keeps '1'."""
     text = (DOCS_DIR / "service.md").read_text()
     # The /range and /trend api_version paragraph is outside the generated section
     paragraph = text.split("The /range and /trend responses carry their own")[1]
@@ -1212,10 +1251,10 @@ def test_service_md_api_version_paragraph_describes_version_7():
     if end == -1:
         end = len(paragraph)
     paragraph = paragraph[:end]
+    assert '"8"' in paragraph
     assert '"7"' in paragraph
-    assert '"6"' in paragraph
     assert "retired" in paragraph
-    assert "7.0.0" in paragraph
+    assert "8.0.0" in paragraph
     assert "Event intake" in paragraph
     assert '"1"' in paragraph
 

@@ -9162,3 +9162,335 @@ def test_sprint_range_schema_declares_cost_by_kind_on_sprint_entry():
     assert cbk["required"] == ["addition", "change"]
     assert cbk["properties"]["addition"] == {"type": "integer"}
     assert cbk["properties"]["change"] == {"type": "integer"}
+
+
+@requires_db
+def test_range_model_time_split_summed_whole_minutes():
+    """AC1: a sprint whose costed stories carry model-time splits has its
+    model_time_split answer carry the whole-minute totals, each story's split
+    converted to whole minutes and summed: refinement 30 and delivery 70 for a
+    story split 1200 s / 3600 s and a story split 600 s / 600 s."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('mts1', 'mts2')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-09'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts1",
+                event_type="finished",
+                timestamp="2024-09-05T12:00:00Z",
+                sprint="2024-09",
+                model_seconds=4800,
+                input_tokens=4000,
+                cached_input_tokens=1400,
+                output_tokens=900,
+                reasoning_output_tokens=300,
+                model_time_split={"refinement": 1200, "delivery": 3600},
+            ),
+        )
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts2",
+                event_type="finished",
+                timestamp="2024-09-06T12:00:00Z",
+                sprint="2024-09",
+                model_seconds=1200,
+                input_tokens=2000,
+                cached_input_tokens=600,
+                output_tokens=500,
+                reasoning_output_tokens=100,
+                model_time_split={"refinement": 600, "delivery": 600},
+            ),
+        )
+        status, body = _get_json(f"{base}/range?start=2024-09&end=2024-09")
+        assert status == 200
+        entry = body["sprints"]["2024-09"]
+        assert entry["model_time_split"] == {"refinement": 30, "delivery": 70}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_model_time_split_null_when_costed_but_no_split():
+    """AC2: a sprint whose costed stories carry the five-field cost payload but
+    no split (the pre-Goal payloads) has its model_time_split answer null —
+    no data, not zero."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'mts3'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-10'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts3",
+                event_type="finished",
+                timestamp="2024-10-05T12:00:00Z",
+                sprint="2024-10",
+                model_seconds=4800,
+                input_tokens=4000,
+                cached_input_tokens=1400,
+                output_tokens=900,
+                reasoning_output_tokens=300,
+            ),
+        )
+        status, body = _get_json(f"{base}/range?start=2024-10&end=2024-10")
+        assert status == 200
+        entry = body["sprints"]["2024-10"]
+        assert entry["cost"] is not None
+        assert entry["model_time_split"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_model_time_split_null_when_no_costed_stories():
+    """AC3: a sprint with no costed stories at all has its model_time_split
+    answer null, alongside the entry's null cost."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'mts4'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-11'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts4",
+                event_type="started",
+                timestamp="2024-11-05T09:00:00Z",
+                sprint="2024-11",
+            ),
+        )
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts4",
+                event_type="finished",
+                timestamp="2024-11-05T12:00:00Z",
+                sprint="2024-11",
+            ),
+        )
+        status, body = _get_json(f"{base}/range?start=2024-11&end=2024-11")
+        assert status == 200
+        entry = body["sprints"]["2024-11"]
+        assert entry["cost"] is None
+        assert entry["model_time_split"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_model_time_split_refinement_and_delivery():
+    """AC4: GET /trend?metric=model_time_split_refinement_minutes and
+    model_time_split_delivery_minutes return the per-sprint whole minutes
+    (null where no story carries the split)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('mts5', 'mts6', 'mts7')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-05', '2024-06')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        # 2024-05: two costed stories with splits
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts5",
+                event_type="finished",
+                timestamp="2024-05-05T12:00:00Z",
+                sprint="2024-05",
+                model_seconds=4800,
+                input_tokens=4000,
+                cached_input_tokens=1400,
+                output_tokens=900,
+                reasoning_output_tokens=300,
+                model_time_split={"refinement": 1200, "delivery": 3600},
+            ),
+        )
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts6",
+                event_type="finished",
+                timestamp="2024-05-06T12:00:00Z",
+                sprint="2024-05",
+                model_seconds=1200,
+                input_tokens=2000,
+                cached_input_tokens=600,
+                output_tokens=500,
+                reasoning_output_tokens=100,
+                model_time_split={"refinement": 600, "delivery": 600},
+            ),
+        )
+        # 2024-06: a costed story with no split (no data)
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts7",
+                event_type="finished",
+                timestamp="2024-06-05T12:00:00Z",
+                sprint="2024-06",
+                model_seconds=4800,
+                input_tokens=4000,
+                cached_input_tokens=1400,
+                output_tokens=900,
+                reasoning_output_tokens=300,
+            ),
+        )
+
+        status, body = _get_json(
+            f"{base}/trend?metric=model_time_split_refinement_minutes&start=2024-05&end=2024-06"
+        )
+        assert status == 200
+        assert body["metric"] == "model_time_split_refinement_minutes"
+        assert body["values"] == [
+            {"sprint": "2024-05", "value": 30},
+            {"sprint": "2024-06", "value": None},
+        ]
+
+        status, body = _get_json(
+            f"{base}/trend?metric=model_time_split_delivery_minutes&start=2024-05&end=2024-06"
+        )
+        assert status == 200
+        assert body["metric"] == "model_time_split_delivery_minutes"
+        assert body["values"] == [
+            {"sprint": "2024-05", "value": 70},
+            {"sprint": "2024-06", "value": None},
+        ]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_model_time_split_prior_and_delta():
+    """AC5: the flat split names appear in each later entry's prior and delta
+    (null where a sprint has no split data)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('mts8', 'mts9', 'mts10')"
+    )
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2025-03', '2025-04', '2025-05')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        # 2025-03: split 600 s / 1200 s -> 10 / 20 minutes
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts8",
+                event_type="finished",
+                timestamp="2025-03-05T12:00:00Z",
+                sprint="2025-03",
+                model_seconds=1800,
+                input_tokens=4000,
+                cached_input_tokens=1400,
+                output_tokens=900,
+                reasoning_output_tokens=300,
+                model_time_split={"refinement": 600, "delivery": 1200},
+            ),
+        )
+        # 2025-04: costed but no split (no data)
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts9",
+                event_type="finished",
+                timestamp="2025-04-05T12:00:00Z",
+                sprint="2025-04",
+                model_seconds=1800,
+                input_tokens=4000,
+                cached_input_tokens=1400,
+                output_tokens=900,
+                reasoning_output_tokens=300,
+            ),
+        )
+        # 2025-05: split 1200 s / 600 s -> 20 / 10 minutes
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="mts10",
+                event_type="finished",
+                timestamp="2025-05-05T12:00:00Z",
+                sprint="2025-05",
+                model_seconds=1800,
+                input_tokens=4000,
+                cached_input_tokens=1400,
+                output_tokens=900,
+                reasoning_output_tokens=300,
+                model_time_split={"refinement": 1200, "delivery": 600},
+            ),
+        )
+        status, body = _get_json(f"{base}/range?start=2025-03&end=2025-05")
+        assert status == 200
+        e1 = body["sprints"]["2025-03"]
+        e2 = body["sprints"]["2025-04"]
+        e3 = body["sprints"]["2025-05"]
+        assert e1["model_time_split"] == {"refinement": 10, "delivery": 20}
+        assert e2["model_time_split"] is None
+        assert e3["model_time_split"] == {"refinement": 20, "delivery": 10}
+        assert e1["prior"] is None
+        assert e1["delta"] is None
+        # 2024-13's prior reads 2024-12's split; its delta is null (no data).
+        assert e2["prior"]["model_time_split_refinement_minutes"] == 10
+        assert e2["prior"]["model_time_split_delivery_minutes"] == 20
+        assert e2["delta"]["model_time_split_refinement_minutes"] is None
+        assert e2["delta"]["model_time_split_delivery_minutes"] is None
+        # 2024-14's prior reads 2024-13's nulls; its delta is null too.
+        assert e3["prior"]["model_time_split_refinement_minutes"] is None
+        assert e3["prior"]["model_time_split_delivery_minutes"] is None
+        assert e3["delta"]["model_time_split_refinement_minutes"] is None
+        assert e3["delta"]["model_time_split_delivery_minutes"] is None
+    finally:
+        conn.close()
+
+
+def test_sprint_range_schema_declares_model_time_split_on_sprint_entry():
+    """AC5: SPRINT_RANGE_SCHEMA declares model_time_split as an optional
+    property of a sprint entry (not in required), with refinement and delivery
+    (integer); the flat split names appear in each later entry's prior and
+    delta (integer or null)."""
+    from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
+
+    sprint_entry = SPRINT_RANGE_SCHEMA["properties"]["sprints"]["additionalProperties"]
+    assert "model_time_split" not in sprint_entry["required"]
+    split = sprint_entry["properties"]["model_time_split"]
+    assert split["type"] == ["object", "null"]
+    assert split["required"] == ["refinement", "delivery"]
+    assert split["properties"]["refinement"] == {"type": "integer"}
+    assert split["properties"]["delivery"] == {"type": "integer"}
+    for which in ("prior", "delta"):
+        flat = sprint_entry["properties"][which]["properties"]
+        assert flat["model_time_split_refinement_minutes"] == {"type": ["integer", "null"]}
+        assert flat["model_time_split_delivery_minutes"] == {"type": ["integer", "null"]}
