@@ -462,6 +462,24 @@
               "total"
             ]
           },
+          "cost_by_kind": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "addition": {
+                "type": "integer"
+              },
+              "change": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "addition",
+              "change"
+            ]
+          },
           "prior": {
             "type": [
               "object",
@@ -589,6 +607,18 @@
                 ]
               },
               "working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "addition_working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_working_time_minutes": {
                 "type": [
                   "integer",
                   "null"
@@ -723,6 +753,18 @@
                 ]
               },
               "working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "addition_working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_working_time_minutes": {
                 "type": [
                   "integer",
                   "null"
