@@ -20,7 +20,11 @@ from opentelemetry._logs import SeverityNumber
 from opentelemetry.sdk._logs._internal import LogRecord
 from opentelemetry.trace import StatusCode
 
-from sprint_metrics.dora import calculate_dora
+from sprint_metrics.dora import (
+    calculate_dora,
+    calculate_dora_lead_time,
+    calculate_release_frequency,
+)
 from sprint_metrics.metrics import (
     ALL_METRICS,
     metric_value,
@@ -546,12 +550,21 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 500
                             return
                         values = []
+                        dora_data = None
+                        if metric in ("release_frequency", "dora_lead_time_days"):
+                            dora_data = query_dora_data(conn_holder[0], list(sprints.keys()))
                         for label in sprints:
                             if label not in has_events:
                                 value = None
                             elif metric == "sent_backs_count":
                                 returned = query_returned_events(conn_holder[0], label)
                                 value = calculate_sent_backs_count(returned)
+                            elif metric == "release_frequency":
+                                released = dora_data["released_epics"].get(label)
+                                value = calculate_release_frequency(released)
+                            elif metric == "dora_lead_time_days":
+                                spans = dora_data["story_spans_days"].get(label)
+                                value = calculate_dora_lead_time(spans)
                             else:
                                 value = metric_value(metric, sprints[label])
                             values.append({"sprint": label, "value": value})

@@ -8346,6 +8346,79 @@ def test_range_dora_null_block_when_no_events():
         conn.close()
 
 
+@requires_db
+def test_trend_release_frequency_and_lead_time():
+    """The /trend endpoint returns correct values for release_frequency and
+    dora_lead_time_days, not the failure_breakdown sum."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dtr_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: Epic E1 releases with one story (created 2024-01-01, finished 2024-01-05)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtr_a1",
+                event_type="finished",
+                timestamp="2024-01-05T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        # 2024-02: Epic E2 releases with two stories
+        # dtr_b1: created 2024-02-01, finished 2024-02-04
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtr_b1",
+                event_type="finished",
+                timestamp="2024-02-04T00:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ) | {"epic": "E2"},
+        )
+        # dtr_b2: created 2024-02-02, finished 2024-02-06 (last story of E2)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtr_b2",
+                event_type="finished",
+                timestamp="2024-02-06T00:00:00Z",
+                sprint="2024-02",
+                created="2024-02-02",
+            ) | {"epic": "E2"},
+        )
+
+        # Query release_frequency across both sprints
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=release_frequency&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["metric"] == "release_frequency"
+        assert body["values"][0] == {"sprint": "2024-01", "value": 1}
+        assert body["values"][1] == {"sprint": "2024-02", "value": 1}
+
+        # Query dora_lead_time_days across both sprints
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=dora_lead_time_days&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["metric"] == "dora_lead_time_days"
+        # 2024-01: span = 4 days (Jan 1 to Jan 5)
+        assert body["values"][0] == {"sprint": "2024-01", "value": 4}
+        # 2024-02: spans = 3 days (Feb 1 to Feb 4) and 4 days (Feb 2 to Feb 6)
+        # Mean = (3 + 4) / 2 = 3.5 → rounds to 4
+        assert body["values"][1] == {"sprint": "2024-02", "value": 4}
+    finally:
+        conn.close()
+
+
 def test_sprint_range_schema_declares_dora_on_sprint_entry():
     """AC4: SPRINT_RANGE_SCHEMA documents dora as an optional property per
     sprint entry (not in required), with release_frequency and lead_time_days
