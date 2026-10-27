@@ -17,14 +17,16 @@ C4Container
         Container(entry, "Image entry point: the service, no arguments (new in #751)", "Runs the service with no flags", "Python 3.12")
         Container(service, "HTTP service", "POST /sprints, POST /events, GET /range, GET /trend, GET /health, GET /schema/event, GET /schema/trend")
         Container(measures, "Measures and flags", "Pure metric calculations, thresholds, flags")
-        Container(store, "Postgres store", "Schema DDL, idempotent event upsert, sprint/range/trend queries; all SQL lives here")
+        Container(dora, "DORA calculations", "DORA's four measures, per sprint: release frequency and lead time for changes")
+        Container(store, "Postgres store", "Schema DDL, idempotent event upsert, sprint/range/trend queries; the per-sprint roster (stories completed, epics released, Goals achieved) is its query_roster_data; all SQL lives here")
         Container(contract, "Published contract", "api_version (responses 5, event intake 1; a new value per response change), JSON schemas in schemas/ pinned per tag, docs")
     }
     Rel(crew, entry, "Runs the image by tag (ghcr.io/mqucifer/sprint-metrics); tick = POST /sprints, POST /events, GET /range", "HTTP")
     Rel(site, service, "The sprint range the overview is built from", "HTTP")
     Rel(entry, service, "Starts the service process")
     Rel(service, measures, "Computes the measures each response carries")
-    Rel(service, store, "Reads and writes stored sprints and events")
+    Rel(service, dora, "Computes DORA's four measures per sprint")
+    Rel(service, store, "Reads and writes stored sprints and events, including the roster via query_roster_data")
     Rel(service, contract, "Stamps api_version into every response")
     Rel(store, pg, "sprint_metrics schema, own user", "SQL")
     Rel(service, otel, "Logs and traces over OTLP", "OTLP")
@@ -63,3 +65,8 @@ table/markdown/JSON/Prometheus out, threshold and metric-selection options,
 --scrape server) is gone (#751); the escalation measures are removed while
 the `escalated` event stays accepted and stored (#753); all SQL lives in
 `store.py`; the JSON schemas are pinned in `schemas/` at each release tag.
+The per-sprint roster and DORA's measures sit in different modules by design:
+the roster (stories completed, epics released, Goals achieved) is the
+`query_roster_data` SQL in `store.py`, attached by the service, because all
+SQL lives in `store.py`; `dora.py` owns the DORA calculations — pure
+functions, called by the service — only.
