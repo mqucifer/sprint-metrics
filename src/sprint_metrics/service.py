@@ -20,6 +20,11 @@ from opentelemetry._logs import SeverityNumber
 from opentelemetry.sdk._logs._internal import LogRecord
 from opentelemetry.trace import StatusCode
 
+from sprint_metrics.dora import (
+    calculate_dora,
+    calculate_dora_lead_time,
+    calculate_release_frequency,
+)
 from sprint_metrics.metrics import (
     ALL_METRICS,
     metric_value,
@@ -31,6 +36,7 @@ from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range
 from sprint_metrics.store import (
     init_db,
     insert_event,
+    query_dora_data,
     query_range,
     query_returned_events,
     query_roster_data,
@@ -458,6 +464,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_cost(result, sprints, labels, has_events)
                         _attach_range_rework(result, labels, rework)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
+                        _attach_range_dora(result, conn_holder[0], labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -543,12 +550,21 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 500
                             return
                         values = []
+                        dora_data = None
+                        if metric in ("release_frequency", "dora_lead_time_days"):
+                            dora_data = query_dora_data(conn_holder[0], list(sprints.keys()))
                         for label in sprints:
                             if label not in has_events:
                                 value = None
                             elif metric == "sent_backs_count":
                                 returned = query_returned_events(conn_holder[0], label)
                                 value = calculate_sent_backs_count(returned)
+                            elif metric == "release_frequency":
+                                released = dora_data["released_epics"].get(label)
+                                value = calculate_release_frequency(released)
+                            elif metric == "dora_lead_time_days":
+                                spans = dora_data["story_spans_days"].get(label)
+                                value = calculate_dora_lead_time(spans)
                             else:
                                 value = metric_value(metric, sprints[label])
                             values.append({"sprint": label, "value": value})
@@ -884,6 +900,25 @@ def _attach_range_roster(
             "released_epics": released,
             "achieved_goals": achieved,
         }
+
+
+def _attach_range_dora(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the DORA block to each range entry.
+
+    A sprint with no events carries dora null. A sprint with events but no
+    epic links carries dora with both values null (no data, not zero). A
+    sprint with epic links carries its release frequency and lead time.
+    """
+    dora_data = query_dora_data(conn, labels)
+    for label in labels:
+        if label not in has_events:
+            result["sprints"][label]["dora"] = None
+            continue
+        released = dora_data["released_epics"].get(label)
+        spans = dora_data["story_spans_days"].get(label)
+        result["sprints"][label]["dora"] = calculate_dora(released, spans)
 
 
 def _validate_cost_fields(card: dict) -> str | None:

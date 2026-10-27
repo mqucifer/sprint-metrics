@@ -197,7 +197,8 @@ jobs:
             | del(.sprints[] | .escalation_rate_percent, .escalation_count, .flags.escalation_rate_percent)
             | del(.sprints[] | (.prior, .delta) | objects | .escalation_rate_percent, .escalation_count)
             | del(.sprints[] | .rework)
-            | del(.sprints[] | .roster)'
+            | del(.sprints[] | .roster)
+            | del(.sprints[] | .dora)'
           if echo "$RANGE_BODY" | grep -q escalation; then
             echo "ERROR: GET /range still carries an escalation measure"
             exit 1

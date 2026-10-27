@@ -375,6 +375,30 @@
               "achieved_goals"
             ]
           },
+          "dora": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "release_frequency": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "release_frequency",
+              "lead_time_days"
+            ]
+          },
           "prior": {
             "type": [
               "object",

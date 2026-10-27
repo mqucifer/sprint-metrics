@@ -172,6 +172,14 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         },
                         "required": ["completed_stories", "released_epics", "achieved_goals"],
                     },
+                    "dora": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "release_frequency": {"type": ["integer", "null"]},
+                            "lead_time_days": {"type": ["integer", "null"]},
+                        },
+                        "required": ["release_frequency", "lead_time_days"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {

@@ -30,4 +30,6 @@ _METRIC_COLUMNS: dict[str, str] = {
     "cached_input_percent": "Cached input percent",
     "reasoning_output_percent": "Reasoning output percent",
     "sent_backs_count": "Sent backs count",
+    "release_frequency": "DORA release frequency",
+    "dora_lead_time_days": "DORA lead time for changes",
 }
