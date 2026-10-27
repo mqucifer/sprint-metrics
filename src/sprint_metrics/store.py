@@ -589,6 +589,34 @@ def query_card_kinds(conn: Connection, label: str) -> dict[str, str | None]:
     return result
 
 
+def query_model_time_splits(
+    conn: Connection, label: str
+) -> dict[str, tuple[int | None, int | None]]:
+    """Return the sprint's model-time splits, keyed by card_id.
+
+    For each card_id whose 'finished' row in the sprint carries a model-time
+    split, the (refinement, delivery) pair in model seconds. A card whose
+    finished row carries no split is absent from the result, so an empty
+    result means the sprint's stories carry no split (no data, not zero).
+    """
+    rows = conn.execute(
+        """
+        SELECT card_id, model_time_split_refinement, model_time_split_delivery
+        FROM sprint_metrics.board_events
+        WHERE sprint = %s
+          AND type = 'finished'
+          AND (model_time_split_refinement IS NOT NULL
+               OR model_time_split_delivery IS NOT NULL)
+        ORDER BY card_id
+        """,
+        (label,),
+    ).fetchall()
+    result: dict[str, tuple[int | None, int | None]] = {}
+    for card_id, refinement, delivery in rows:
+        result[card_id] = (refinement, delivery)
+    return result
+
+
 def query_roster_data(conn: Connection, labels: list[str]) -> dict:
     """Return the roster data for the given sprint labels.
 

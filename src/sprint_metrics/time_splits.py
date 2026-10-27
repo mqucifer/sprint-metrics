@@ -193,3 +193,44 @@ def cost_by_kind_total(
     if answer is None:
         return None
     return answer.get(kind, 0)
+
+
+def calculate_model_time_split(
+    splits: Mapping[str, tuple[int | None, int | None]],
+) -> dict | None:
+    """The sprint's model time split into refinement and delivery, in whole minutes.
+
+    ``splits`` maps each card_id to the (refinement, delivery) model seconds
+    its finished event's cost payload carried. Each story's two values are
+    converted to whole minutes (rounded, the model_minutes display unit) and
+    the sprint's split is the sum across the stories that carry a split, so a
+    story with a smaller refinement share pulls the sprint's refinement total
+    down against its delivery total. ``None`` when no story in the sprint
+    carries a split (the pre-Goal payloads, or no costed stories at all), so a
+    sprint without split data reads as no data, not zero.
+    """
+    if not splits:
+        return None
+    refinement = 0
+    delivery = 0
+    for refinement_seconds, delivery_seconds in splits.values():
+        if refinement_seconds is not None:
+            refinement += round(refinement_seconds / 60)
+        if delivery_seconds is not None:
+            delivery += round(delivery_seconds / 60)
+    return {"refinement": refinement, "delivery": delivery}
+
+
+def model_time_split_total(
+    splits: Mapping[str, tuple[int | None, int | None]],
+    part: str,
+) -> int | None:
+    """The sprint's model-time split total for the given part, in whole minutes.
+
+    Returns None when no story in the sprint carries a split (no data, not
+    zero). The ``part`` argument is 'refinement' or 'delivery'.
+    """
+    answer = calculate_model_time_split(splits)
+    if answer is None:
+        return None
+    return answer.get(part, 0)

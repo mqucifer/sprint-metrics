@@ -38,6 +38,7 @@ from sprint_metrics.store import (
     insert_event,
     query_card_kinds,
     query_dora_data,
+    query_model_time_splits,
     query_range,
     query_returned_events,
     query_roster_data,
@@ -51,8 +52,10 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
     calculate_cost_by_kind,
+    calculate_model_time_split,
     calculate_working_time,
     cost_by_kind_total,
+    model_time_split_total,
     working_time_total,
 )
 
@@ -481,6 +484,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_dora(result, conn_holder[0], labels, has_events)
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
+                        _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -589,6 +593,18 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     query_working_time_events(conn_holder[0], label),
                                     query_card_kinds(conn_holder[0], label),
                                     kind,
+                                )
+                            elif metric in (
+                                "model_time_split_refinement_minutes",
+                                "model_time_split_delivery_minutes",
+                            ):
+                                part = (
+                                    "refinement"
+                                    if metric == "model_time_split_refinement_minutes"
+                                    else "delivery"
+                                )
+                                value = model_time_split_total(
+                                    query_model_time_splits(conn_holder[0], label), part
                                 )
                             else:
                                 value = metric_value(metric, sprints[label])
@@ -801,7 +817,13 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "Each entry also carries a cost_by_kind answer: the sprint's "
         "working time split by story kind (addition and change), in "
         "whole minutes; a sprint whose stored story rows carry no "
-        "kind reads null (no data, not zero).",
+        "kind reads null (no data, not zero). "
+        "Each entry also carries a model_time_split answer: the "
+        "sprint's model time split into refinement and delivery, in "
+        "whole minutes (each story's split converted to whole minutes "
+        "and summed over the costed stories); a sprint whose stories "
+        "carry no model-time split (or no costed stories at all) "
+        "reads null (no data, not zero).",
     ),
     (
         "GET",
@@ -821,7 +843,9 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "cached_input_percent, reasoning_output_percent, "
         "sent_backs_count, release_frequency, dora_lead_time_days, "
         "working_time_minutes, addition_working_time_minutes, "
-        "change_working_time_minutes. "
+        "change_working_time_minutes, "
+        "model_time_split_refinement_minutes, "
+        "model_time_split_delivery_minutes. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null. working_time_minutes returns the sprint's "
@@ -829,7 +853,10 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "closed session window). addition_working_time_minutes and "
         "change_working_time_minutes return the sprint's working time for "
         "stories of the given kind in whole minutes (null where the sprint "
-        "carries no kind data).",
+        "carries no kind data). model_time_split_refinement_minutes and "
+        "model_time_split_delivery_minutes return the sprint's model time "
+        "split into refinement and delivery, in whole minutes (null where "
+        "no story in the sprint carries a split).",
     ),
     (
         "GET",
@@ -1053,6 +1080,63 @@ def _attach_range_cost_by_kind(
                 entry["prior"][name] = flat[prior_label][name]
         if isinstance(entry.get("delta"), dict):
             for name in ("addition_working_time_minutes", "change_working_time_minutes"):
+                cur, pri = flat[label][name], flat[prior_label][name]
+                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+def _attach_range_model_time_split(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the model-time split answer to each range entry, and its flat names to prior/delta.
+
+    A sprint with no events carries model_time_split null. A sprint with
+    events whose costed stories carry the five-field cost payload but no split
+    (the pre-Goal payloads), or a sprint with no costed stories at all, also
+    carries model_time_split null (no data, not zero; no backfill). For every
+    sprint after the first, the flat names model_time_split_refinement_minutes
+    and model_time_split_delivery_minutes appear in that entry's prior and
+    delta whenever those objects are present, null where the corresponding
+    sprint has no split data.
+    """
+    answers: dict[str, dict | None] = {}
+    flat: dict[str, dict[str, int | None]] = {}
+    for label in labels:
+        if label in has_events:
+            answer = calculate_model_time_split(query_model_time_splits(conn, label))
+            answers[label] = answer
+            if answer is not None:
+                flat[label] = {
+                    "model_time_split_refinement_minutes": answer["refinement"],
+                    "model_time_split_delivery_minutes": answer["delivery"],
+                }
+            else:
+                flat[label] = {
+                    "model_time_split_refinement_minutes": None,
+                    "model_time_split_delivery_minutes": None,
+                }
+        else:
+            answers[label] = None
+            flat[label] = {
+                "model_time_split_refinement_minutes": None,
+                "model_time_split_delivery_minutes": None,
+            }
+    for index, label in enumerate(labels):
+        entry = result["sprints"][label]
+        entry["model_time_split"] = answers[label]
+        if index == 0:
+            continue
+        prior_label = labels[index - 1]
+        if isinstance(entry.get("prior"), dict):
+            for name in (
+                "model_time_split_refinement_minutes",
+                "model_time_split_delivery_minutes",
+            ):
+                entry["prior"][name] = flat[prior_label][name]
+        if isinstance(entry.get("delta"), dict):
+            for name in (
+                "model_time_split_refinement_minutes",
+                "model_time_split_delivery_minutes",
+            ):
                 cur, pri = flat[label][name], flat[prior_label][name]
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 

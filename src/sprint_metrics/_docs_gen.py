@@ -104,6 +104,20 @@ def _generate_metrics_content() -> str:
             "'change', in whole minutes. None when no stored story row "
             "in the sprint carries a kind."
         ),
+        "model_time_split_refinement_minutes": (
+            "Return the sprint's model time spent in refinement, in whole "
+            "minutes — each story's refinement seconds converted to whole "
+            "minutes (the model_minutes display unit) and summed over the "
+            "costed stories. None when no story in the sprint carries a "
+            "model-time split."
+        ),
+        "model_time_split_delivery_minutes": (
+            "Return the sprint's model time spent in delivery, in whole "
+            "minutes — each story's delivery seconds converted to whole "
+            "minutes (the model_minutes display unit) and summed over the "
+            "costed stories. None when no story in the sprint carries a "
+            "model-time split."
+        ),
     }
 
     display_overrides: dict[str, str] = {
