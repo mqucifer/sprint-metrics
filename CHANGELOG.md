@@ -25,6 +25,7 @@
 - The /range and /trend responses carry `api_version` "9"; version "8" is retired because /range's shape changed (the per-sprint `idle` answer) and /trend gained the `idle_minutes` measure. Event intake keeps `api_version` "1"
 - The /range cost answer (per-story cost list, cost middle/total, the six flat cost names, and the range attachment) moves from `sprint_metrics.service` to `sprint_metrics.metrics`, so cost work lands in the one module that owns the cost calculations
 - The /range rework attachment (each range entry's rework object) and the rework answer's description fragment move from `sprint_metrics.service` to `sprint_metrics.rework`, so rework work lands in the one module that owns the rework calculation
+- The /range dora attachment (each range entry's dora block) and the dora answer's description fragment move from `sprint_metrics.service` to `sprint_metrics.dora`, so DORA work lands in the one file that owns the DORA calculations
 
 ### Fixed
 
