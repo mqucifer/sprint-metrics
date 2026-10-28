@@ -69,4 +69,5 @@ The per-sprint roster and DORA's measures sit in different modules by design:
 the roster (stories completed, epics released, Goals achieved) is the
 `query_roster_data` SQL in `store.py`, attached by the service, because all
 SQL lives in `store.py`; `dora.py` owns the DORA calculations — pure
-functions, called by the service — only.
+functions — and its range attachment (the /range dora block), called by
+the service.
