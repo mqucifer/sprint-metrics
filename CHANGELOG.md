@@ -23,6 +23,7 @@
 ### Changed
 
 - The /range and /trend responses carry `api_version` "9"; version "8" is retired because /range's shape changed (the per-sprint `idle` answer) and /trend gained the `idle_minutes` measure. Event intake keeps `api_version` "1"
+- The /range cost answer (per-story cost list, cost middle/total, the six flat cost names, and the range attachment) moves from `sprint_metrics.service` to `sprint_metrics.metrics`, so cost work lands in the one module that owns the cost calculations
 
 ### Fixed
 
