@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
+from sprint_metrics.metrics import _cost_flat
+
 # Each entry names a measure's better direction — "lower", "higher", or None
 # when the measure has no better direction (the first-attempt counts and the
 # cost measures only move, they do not improve or worsen) — its unit, and its
@@ -233,3 +235,35 @@ def window_verdicts(
             "precision": precision,
         }
     return verdicts
+
+
+def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str]) -> None:
+    """Attach the per-measure window verdict to the range's window object.
+
+    The window judges its first data-bearing sprint against its last, per
+    registry measure, so a gap sprint (no events) is skipped, not read as zero.
+    Each entry names both reference sprints and their values, with the unit and
+    precision; an entry is null when the measure's value is missing in either
+    reference sprint, or the window has fewer than two data-bearing sprints.
+    """
+    data_bearing = [label for label in labels if label in has_events]
+    flat: dict[str, dict[str, object]] = {}
+    for label in labels:
+        entry = result["sprints"][label]
+        values = dict(entry)
+        values.update(_cost_flat(entry.get("cost")))
+        flat[label] = values
+    result["window"]["verdicts"] = window_verdicts(flat, data_bearing, MEASURE_REGISTRY)
+
+
+_RANGE_VERDICT_DESCRIPTION = (
+    "The response also carries a verdicts "
+    "object with one entry per registry measure: it judges the window's "
+    "first and last data-bearing sprint (a gap sprint is skipped, not "
+    "read as zero) against each measure's better direction — better, "
+    "worse or flat, or up, down or flat for a measure with no better "
+    "direction — each entry naming both reference sprints and their "
+    "values, with the unit and the precision; an entry reads null when "
+    "the measure's value is missing in either reference sprint, or the "
+    "window has fewer than two data-bearing sprints. "
+)

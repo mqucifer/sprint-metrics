@@ -39,6 +39,7 @@
 - The /range working_time attachment (each range entry's working_time object and its flat `working_time_minutes` name in prior/delta) and the /range cost_by_kind attachment (each range entry's cost_by_kind object and its flat `addition_working_time_minutes` and `change_working_time_minutes` names in prior/delta), along with their description fragments, move from `sprint_metrics.service` to `sprint_metrics.time_splits`, so working-time work lands in the one file that owns the working-time calculations
 - The /range roster attachment (each range entry's roster object) and the roster answer's description fragment move from `sprint_metrics.service` to `sprint_metrics.store`, so roster work lands in the one file that owns the roster data query
 - The /range window attachment (the top-level `window` object naming the window the response is judging: `start`, `end`, `sprint_count`, `no_data`) and the window answer's description fragment move from `sprint_metrics.service` to `sprint_metrics.sprint_range`, so window work lands in the one module that owns the range base formatter
+- The /range verdict attachment (the window object's `verdicts` object with one entry per registry measure, judging the flat values of each range entry against the measure registry) and the verdict answer's description fragment move from `sprint_metrics.service` to `sprint_metrics.verdict`, so verdict work lands in the one file that owns the measure registry and the window verdict
 
 ### Fixed
 

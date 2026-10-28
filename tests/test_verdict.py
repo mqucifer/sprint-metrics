@@ -315,3 +315,47 @@ def test_standout_size_carries_unit_and_precision():
     assert result["biggest_improvement"]["precision"] == "whole"
     assert result["worst_dip"]["unit"] == "days"
     assert result["worst_dip"]["precision"] == "whole"
+
+
+def test_attach_range_verdict_lives_in_verdict_module():
+    """AC1: the verdict attachment is importable from sprint_metrics.verdict,
+    not from sprint_metrics.service, where _attach_range_verdict lived before
+    the move — the definition lives in the verdict module."""
+    from sprint_metrics.verdict import _attach_range_verdict
+
+    assert callable(_attach_range_verdict)
+    assert _attach_range_verdict.__module__ == "sprint_metrics.verdict"
+
+
+def test_range_verdict_description_fragment_lives_in_verdict_module():
+    """AC3: the verdict answer's description fragment is owned by verdict.py
+    and tells the reader what the generated /range row tells them about the
+    window verdict: the response carries a verdicts object with one entry per
+    registry measure; it judges the window's first and last data-bearing
+    sprint (a gap sprint is skipped, not read as zero) against each
+    measure's better direction — better, worse or flat, or up, down or flat
+    for a measure with no better direction — each entry naming both
+    reference sprints and their values, with the unit and the precision; an
+    entry reads null when the measure's value is missing in either reference
+    sprint, or the window has fewer than two data-bearing sprints."""
+    from sprint_metrics.service import SERVICE_ENDPOINTS
+    from sprint_metrics.verdict import _RANGE_VERDICT_DESCRIPTION
+
+    for phrase in (
+        "one entry per registry measure",
+        "first and last data-bearing sprint",
+        "skipped, not read as zero",
+        "better direction",
+        "better, worse or flat",
+        "up, down or flat",
+        "no better direction",
+        "naming both reference sprints and their values",
+        "unit and the precision",
+        "reads null when the measure's value is missing in either reference sprint",
+        "fewer than two data-bearing sprints",
+    ):
+        assert phrase in _RANGE_VERDICT_DESCRIPTION, f"fragment missing {phrase!r}"
+    # The generated /range row tells the reader exactly this: the fragment is
+    # composed into the /range endpoint description.
+    range_desc = next(desc for method, path, desc in SERVICE_ENDPOINTS if path == "/range")
+    assert _RANGE_VERDICT_DESCRIPTION in range_desc

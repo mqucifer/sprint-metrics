@@ -80,7 +80,12 @@ from sprint_metrics.time_splits import (
     model_time_split_total,
     working_time_total,
 )
-from sprint_metrics.verdict import MEASURE_REGISTRY, window_standouts, window_verdicts
+from sprint_metrics.verdict import (
+    _RANGE_VERDICT_DESCRIPTION,
+    MEASURE_REGISTRY,
+    _attach_range_verdict,
+    window_standouts,
+)
 
 VALID_EVENT_TYPES = frozenset(
     {
@@ -753,16 +758,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "/range",
         "Return metrics for a range of sprints in chronological order. "
         + _RANGE_WINDOW_DESCRIPTION
-        + "The response also carries a verdicts "
-        "object with one entry per registry measure: it judges the window's "
-        "first and last data-bearing sprint (a gap sprint is skipped, not "
-        "read as zero) against each measure's better direction — better, "
-        "worse or flat, or up, down or flat for a measure with no better "
-        "direction — each entry naming both reference sprints and their "
-        "values, with the unit and the precision; an entry reads null when "
-        "the measure's value is missing in either reference sprint, or the "
-        "window has fewer than two data-bearing sprints. "
-        "Each entry includes the prior-sprint delta. "
+        + _RANGE_VERDICT_DESCRIPTION
+        + "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
         + _RANGE_REWORK_DESCRIPTION
@@ -965,25 +962,6 @@ def _attach_range_idle(
                 if current_total is not None and prior_total is not None
                 else None
             )
-
-
-def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str]) -> None:
-    """Attach the per-measure window verdict to the range's window object.
-
-    The window judges its first data-bearing sprint against its last, per
-    registry measure, so a gap sprint (no events) is skipped, not read as zero.
-    Each entry names both reference sprints and their values, with the unit and
-    precision; an entry is null when the measure's value is missing in either
-    reference sprint, or the window has fewer than two data-bearing sprints.
-    """
-    data_bearing = [label for label in labels if label in has_events]
-    flat: dict[str, dict[str, object]] = {}
-    for label in labels:
-        entry = result["sprints"][label]
-        values = dict(entry)
-        values.update(_cost_flat(entry.get("cost")))
-        flat[label] = values
-    result["window"]["verdicts"] = window_verdicts(flat, data_bearing, MEASURE_REGISTRY)
 
 
 def _attach_range_standouts(result: dict, labels: list[str], has_events: set[str]) -> None:
