@@ -44,6 +44,8 @@ from sprint_metrics.rework import (
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
+    _RANGE_ROSTER_DESCRIPTION,
+    _attach_range_roster,
     init_db,
     insert_event,
     query_card_kinds,
@@ -52,7 +54,6 @@ from sprint_metrics.store import (
     query_model_time_splits,
     query_range,
     query_returned_events,
-    query_roster_data,
     query_sprint,
     query_sprint_span,
     query_started_count,
@@ -765,14 +766,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
         + _RANGE_REWORK_DESCRIPTION
-        + "Each entry also carries a roster naming, by identifier, "
-        "the stories that completed in that sprint, the epics that "
-        "released in that sprint (an epic releases in the sprint "
-        "where its last story's finished event is), and the Goals "
-        "that were achieved in that sprint (a Goal is achieved in "
-        "the sprint where its last epic releases). Sprints whose "
-        "stories carry no epic or goal link read null for the "
-        "corresponding roster part (no backfill). "
+        + _RANGE_ROSTER_DESCRIPTION
         + _RANGE_DORA_DESCRIPTION
         + _RANGE_WORKING_TIME_DESCRIPTION
         + _RANGE_COST_BY_KIND_DESCRIPTION
@@ -869,38 +863,6 @@ def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
         logger.emit(record)
     except Exception:
         pass
-
-
-def _attach_range_roster(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the roster to each range entry.
-
-    A sprint with no events carries roster null. A sprint with events carries
-    a roster object with completed_stories (always a list), released_epics
-    (a list when the sprint's finished events carry at least one epic link,
-    otherwise null), and achieved_goals (a list when the sprint's finished
-    events carry at least one goal link, otherwise null).
-    """
-    roster_data = query_roster_data(conn, labels)
-    for label in labels:
-        if label not in has_events:
-            result["sprints"][label]["roster"] = None
-            continue
-        completed = roster_data["completed"].get(label, [])
-        released = roster_data["released_epics"].get(label, [])
-        achieved = roster_data["achieved_goals"].get(label, [])
-        if label not in roster_data["sprints_with_epic"]:
-            released = None
-        if label not in roster_data["sprints_with_goal"]:
-            achieved = None
-        result["sprints"][label]["roster"] = {
-            "completed_stories": completed,
-            "released_epics": released,
-            "achieved_goals": achieved,
-        }
-
-
 
 
 def _attach_range_model_time_split(
