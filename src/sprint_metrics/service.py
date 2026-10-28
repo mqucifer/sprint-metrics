@@ -42,7 +42,12 @@ from sprint_metrics.rework import (
     extract_qa_returns,
 )
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
-from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
+from sprint_metrics.sprint_range import (
+    _RANGE_WINDOW_DESCRIPTION,
+    _attach_range_window,
+    _parse_sprint_label,
+    format_sprint_range_json,
+)
 from sprint_metrics.store import (
     _RANGE_ROSTER_DESCRIPTION,
     _attach_range_roster,
@@ -490,12 +495,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             return
                         body = format_sprint_range_json(sprints, labels)
                         result = json.loads(body)
-                        result["window"] = {
-                            "start": labels[0],
-                            "end": labels[-1],
-                            "sprint_count": len(labels),
-                            "no_data": [label for label in labels if label not in has_events],
-                        }
+                        _attach_range_window(result, labels, has_events)
                         _attach_range_cost(result, sprints, labels, has_events)
                         _attach_range_rework(result, labels, rework)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
@@ -752,8 +752,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "GET",
         "/range",
         "Return metrics for a range of sprints in chronological order. "
-        "The response carries a top-level window object naming the window "
-        "it is judging (start, end, sprint_count, no_data) and a verdicts "
+        + _RANGE_WINDOW_DESCRIPTION
+        + "The response also carries a verdicts "
         "object with one entry per registry measure: it judges the window's "
         "first and last data-bearing sprint (a gap sprint is skipped, not "
         "read as zero) against each measure's better direction — better, "
