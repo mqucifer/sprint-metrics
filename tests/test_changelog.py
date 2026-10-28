@@ -299,3 +299,34 @@ def test_rule_released_headings_dated():
     violations = check_released_headings_dated(mutated)
     assert violations, "expected a violation for non-ISO date"
     assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
+
+
+def test_no_test_pins_unreleased_added_content():
+    """A release cut moves [Unreleased] entries to the dated section and leaves
+    [Unreleased] Added empty. A test that asserts specific content in that
+    section fails after every release (the 1.3.1 cut dropped its pinned
+    [Unreleased] tests for this reason; #868 drops the range-verdict one).
+    No such test may remain in this module."""
+    import ast
+
+    source = Path(__file__).read_text()
+    tree = ast.parse(source)
+
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+            continue
+        if node.name == "test_no_test_pins_unreleased_added_content":
+            continue
+        segment = ast.get_source_segment(source, node)
+        if segment is None:
+            continue
+        # A pinned-content test reads the changelog, isolates the [Unreleased]
+        # Added body, and asserts a phrase or value is in it.
+        reads_changelog = "CHANGELOG.read_text()" in segment
+        isolates_added = "Added" in segment and "_unreleased_body_span" in segment
+        asserts_content = " in added" in segment
+        if reads_changelog and isolates_added and asserts_content:
+            raise AssertionError(
+                f"{node.name} pins specific content to [Unreleased] Added; "
+                "it will fail after any release cut (#868)"
+            )
