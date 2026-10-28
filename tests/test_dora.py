@@ -249,3 +249,27 @@ def test_calculate_dora_with_rework_data_includes_new_fields():
     assert result["change_failure_count"] == 1
     assert result["change_failure_rate_percent"] == 100
     assert result["mean_time_to_recovery_minutes"] == 1440
+
+
+def test_range_dora_description_fragment_lives_in_dora_module():
+    """AC3: the dora answer's description fragment is owned by dora.py and
+    tells the reader what the generated /range row tells them about dora:
+    each entry carries the sprint's DORA block — its release frequency and
+    lead time for changes — and a sprint whose finished events carry no
+    epic link reads null for both, not zero."""
+    from sprint_metrics.dora import _RANGE_DORA_DESCRIPTION
+    from sprint_metrics.service import SERVICE_ENDPOINTS
+
+    for phrase in (
+        "dora block",
+        "release frequency",
+        "lead time for changes",
+        "no epic link",
+        "null for both",
+        "not zero",
+    ):
+        assert phrase in _RANGE_DORA_DESCRIPTION, f"fragment missing {phrase!r}"
+    # The generated /range row tells the reader exactly this: the fragment is
+    # composed into the /range endpoint description.
+    range_desc = next(desc for method, path, desc in SERVICE_ENDPOINTS if path == "/range")
+    assert _RANGE_DORA_DESCRIPTION in range_desc

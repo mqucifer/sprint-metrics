@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sprint_metrics.store import query_dora_data, query_dora_rework_data
+
 
 def calculate_release_frequency(released_epics: list[str] | None) -> int | None:
     """Return the count of distinct epics released in the sprint, or None when no release can be derived.
@@ -171,3 +173,52 @@ def calculate_dora(
             )
         )
     return result
+
+
+def _attach_range_dora(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the DORA block to each range entry.
+
+    A sprint with no events carries dora null. A sprint with events but no
+    epic links carries dora with all values null (no data, not zero). A
+    sprint with epic links carries its release frequency, lead time,
+    change-failure count and rate, and mean-time-to-recovery.
+    """
+    dora_data = query_dora_data(conn, labels)
+    rework_data = query_dora_rework_data(conn, labels)
+    for label in labels:
+        if label not in has_events:
+            result["sprints"][label]["dora"] = None
+            continue
+        released = dora_data["released_epics"].get(label)
+        spans = dora_data["story_spans_days"].get(label)
+        # For change-failure, an epic "releases" in a sprint if it has at
+        # least one 'finished' event in that sprint. Compute this from the
+        # rework data (all finished events per epic across all sprints).
+        cf_released: list[str] | None = None
+        if rework_data["epic_finished"]:
+            cf_released = [
+                epic
+                for epic, events in rework_data["epic_finished"].items()
+                if any(sprint == label for _t, sprint in events)
+            ]
+            if not cf_released:
+                cf_released = []
+        result["sprints"][label]["dora"] = calculate_dora(
+            released,
+            spans,
+            sprint_label=label,
+            epic_finished=rework_data["epic_finished"],
+            epic_returned=rework_data["epic_returned"],
+            cf_released_epics=cf_released,
+        )
+
+
+_RANGE_DORA_DESCRIPTION = (
+    "Each entry also carries a dora block: the sprint's release frequency "
+    "(how often epics actually ship) and lead time for changes (the mean, "
+    "in whole days, of each released story's span from its creation to its "
+    "epic's release moment); a sprint whose finished events carry no epic "
+    "link reads null for both, not zero. "
+)
