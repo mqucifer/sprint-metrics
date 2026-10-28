@@ -232,3 +232,86 @@ def test_rework_without_qa_returns_keeps_old_shape():
     started and sent_backs — the old shape."""
     answer = calculate_rework(3, [("s1", "Review", "reason")])
     assert set(answer.keys()) == {"started", "sent_backs"}
+
+
+# --- Range attachment and description fragment ---
+
+
+def test_attach_range_rework_lives_in_rework_module():
+    """AC1: the rework attachment is importable from sprint_metrics.rework,
+    not from sprint_metrics.service, where _attach_range_rework lived before
+    the move — the definition lives in the rework module."""
+    from sprint_metrics.rework import _attach_range_rework
+
+    assert callable(_attach_range_rework)
+    assert _attach_range_rework.__module__ == "sprint_metrics.rework"
+
+
+def test_attach_range_rework_applies_each_entry_rework_object():
+    """AC1: applying the rework attachment from rework.py puts each entry's
+    rework object on its range entry: the sprint's started count, its labeled
+    sent_backs, and its qa_returns and by_step where present, as it does
+    today."""
+    from sprint_metrics.rework import _attach_range_rework, calculate_rework
+
+    rework = {
+        "2024-08": calculate_rework(
+            2,
+            [("s1", "Review", "contract_ruling")],
+            [("s2", "QA", "blocked_session")],
+        ),
+        "2024-09": calculate_rework(1, []),
+    }
+    labels = ["2024-08", "2024-09", "2024-10"]
+    result = {"sprints": {label: {} for label in labels}}
+    _attach_range_rework(result, labels, rework)
+
+    assert result["sprints"]["2024-08"]["rework"] == {
+        "started": 2,
+        "sent_backs": [
+            {"card_id": "s1", "send_backs": [{"step": "Review", "reason": "contract_ruling"}]}
+        ],
+        "qa_returns": [
+            {"card_id": "s2", "returns": [{"step": "QA", "reason": "blocked_session"}]}
+        ],
+        "by_step": {"sent_backs": {"Review": 1}, "qa_returns": {"QA": 1}},
+    }
+    assert result["sprints"]["2024-09"]["rework"] == {"started": 1, "sent_backs": None}
+    # The no-events sprint has no rework object: rework null, not zero.
+    assert result["sprints"]["2024-10"]["rework"] is None
+
+
+def test_range_rework_description_fragment_lives_in_rework_module():
+    """AC4: the rework answer's description fragment is owned by rework.py and
+    tells the reader what the generated /range row tells them about rework:
+    each entry carries two labeled parts — sent_backs (the stories sent back
+    to the Business Analyst, its returned events, out of the stories started
+    that sprint, each story named by its identifier, each send-back carrying
+    the step it was sent back from and the reason) and qa_returns (the
+    review/QA returns, each carrying the step it was returned from and the
+    cause); a send-back counts in the sprint of the returned event; by_step
+    groups each part's returns by step; sprints with no events return
+    all-null values, rework included."""
+    from sprint_metrics.rework import _RANGE_REWORK_DESCRIPTION
+    from sprint_metrics.service import SERVICE_ENDPOINTS
+
+    for phrase in (
+        "two labeled parts",
+        "sent_backs",
+        "Business Analyst",
+        "stories started",
+        "identifier",
+        "step it was sent back from",
+        "reason",
+        "qa_returns",
+        "step it was returned from",
+        "cause",
+        "sprint of the returned event",
+        "by_step groups",
+        "all-null",
+    ):
+        assert phrase in _RANGE_REWORK_DESCRIPTION, f"fragment missing {phrase!r}"
+    # The generated /range row tells the reader exactly this: the fragment is
+    # composed into the /range endpoint description.
+    range_desc = next(desc for method, path, desc in SERVICE_ENDPOINTS if path == "/range")
+    assert _RANGE_REWORK_DESCRIPTION in range_desc

@@ -116,3 +116,32 @@ def calculate_rework(
         by_step["qa_returns"] = _by_step(qa_returns)
         result["by_step"] = by_step
     return result
+
+
+def _attach_range_rework(result: dict, labels: list[str], rework: dict[str, dict]) -> None:
+    """Attach the rework answer to each range entry.
+
+    An entry for a sprint with no events carries rework null, so pre-rollout
+    history reads as no data, not zero. An entry for a sprint with events
+    carries its started count and its sent-backs, or null sent-backs when the
+    sprint holds no 'returned' events.
+    """
+    for label in labels:
+        result["sprints"][label]["rework"] = rework.get(label)
+
+
+_RANGE_REWORK_DESCRIPTION = (
+    "Each entry also carries rework: two labeled parts — "
+    "sent_backs (the stories sent back to the Business Analyst, "
+    "its returned events, out of the stories started that sprint; "
+    "each sent-back story is named by its identifier, and each "
+    "send-back carries the step it was sent back from and the "
+    "reason) and qa_returns (the review/QA returns, using the "
+    "same (failure class, returning role) values as "
+    "failure_breakdown; each returned story is named by its "
+    "identifier, and each return carries the step it was "
+    "returned from and the cause). A send-back counts in the "
+    "sprint of the returned event. by_step groups each part's "
+    "returns by step. Sprints with no events return all-null "
+    "values, rework included. "
+)

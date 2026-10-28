@@ -21,17 +21,26 @@ from opentelemetry.sdk._logs._internal import LogRecord
 from opentelemetry.trace import StatusCode
 
 from sprint_metrics.dora import (
+    _RANGE_DORA_DESCRIPTION,
+    _attach_range_dora,
     calculate_change_failure_and_mttr,
-    calculate_dora,
     calculate_dora_lead_time,
     calculate_release_frequency,
 )
 from sprint_metrics.metrics import (
     ALL_METRICS,
+    _attach_range_cost,
+    _cost_flat,
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
-from sprint_metrics.rework import calculate_rework, calculate_sent_backs_count, extract_qa_returns
+from sprint_metrics.rework import (
+    _RANGE_REWORK_DESCRIPTION,
+    _attach_range_rework,
+    calculate_rework,
+    calculate_sent_backs_count,
+    extract_qa_returns,
+)
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
@@ -54,10 +63,12 @@ from sprint_metrics.store import (
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
-    calculate_cost_by_kind,
+    _RANGE_COST_BY_KIND_DESCRIPTION,
+    _RANGE_WORKING_TIME_DESCRIPTION,
+    _attach_range_cost_by_kind,
+    _attach_range_working_time,
     calculate_idle,
     calculate_model_time_split,
-    calculate_working_time,
     cost_by_kind_total,
     idle_minutes_total,
     model_time_split_total,
@@ -723,93 +734,6 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
     return actual_port
 
 
-def _compute_cost_summary(cards) -> tuple[list[dict], dict | None]:
-    """Compute the per-story cost list and the sprint's cost middle and total.
-
-    A card carries cost data when its model_seconds is not None; the per-story
-    cost is the total already stored on the card (the sum across roles). The two
-    percents on every story_costs item are the sprint's combined shares, not the
-    story's own. ``cost`` is the median (middle) and sum (total) of the three
-    measures over the costed stories. Returns ``([], None)`` when no card carries
-    cost data.
-    """
-    costed = [card for card in cards if card.model_seconds is not None]
-    if not costed:
-        return [], None
-    total_input = sum(card.input_tokens for card in costed)
-    total_cached = sum(card.cached_input_tokens for card in costed)
-    total_output = sum(card.output_tokens for card in costed)
-    total_reasoning = sum(card.reasoning_output_tokens for card in costed)
-    cached_input_percent = round(100 * total_cached / total_input) if total_input > 0 else 0
-    reasoning_output_percent = (
-        round(100 * total_reasoning / total_output) if total_output > 0 else 0
-    )
-    story_costs = [
-        {
-            "card_id": card.card_id,
-            "model_minutes": round(card.model_seconds / 60),
-            "input_tokens": card.input_tokens,
-            "cached_input_percent": cached_input_percent,
-            "output_tokens": card.output_tokens,
-            "reasoning_output_percent": reasoning_output_percent,
-        }
-        for card in costed
-    ]
-    per_story_minutes = [item["model_minutes"] for item in story_costs]
-    per_story_input = [item["input_tokens"] for item in story_costs]
-    per_story_output = [item["output_tokens"] for item in story_costs]
-    cost = {
-        "middle": {
-            "model_minutes": _median(per_story_minutes),
-            "input_tokens": _median(per_story_input),
-            "output_tokens": _median(per_story_output),
-        },
-        "total": {
-            "model_minutes": sum(per_story_minutes),
-            "input_tokens": sum(per_story_input),
-            "output_tokens": sum(per_story_output),
-        },
-    }
-    return story_costs, cost
-
-
-def _median(values: list[int]) -> int:
-    """The median of a list of whole numbers.
-
-    For an odd count this is the middle value; for an even count it is the
-    average of the two middle values, rounded (Python's round-half-to-even).
-    """
-    ordered = sorted(values)
-    mid = len(ordered) // 2
-    if len(ordered) % 2 == 1:
-        return ordered[mid]
-    return round((ordered[mid - 1] + ordered[mid]) / 2)
-
-
-_COST_FLAT_NAMES: tuple[str, ...] = (
-    "model_minutes_middle",
-    "model_minutes_total",
-    "input_tokens_middle",
-    "input_tokens_total",
-    "output_tokens_middle",
-    "output_tokens_total",
-)
-
-
-def _cost_flat(cost: dict | None) -> dict[str, int | None]:
-    """The six flat cost names from a cost middle/total dict; None each when cost is None."""
-    if cost is None:
-        return {name: None for name in _COST_FLAT_NAMES}
-    return {
-        "model_minutes_middle": cost["middle"]["model_minutes"],
-        "model_minutes_total": cost["total"]["model_minutes"],
-        "input_tokens_middle": cost["middle"]["input_tokens"],
-        "input_tokens_total": cost["total"]["input_tokens"],
-        "output_tokens_middle": cost["middle"]["output_tokens"],
-        "output_tokens_total": cost["total"]["output_tokens"],
-    }
-
-
 SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "POST",
@@ -840,20 +764,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
-        "Each entry also carries rework: two labeled parts — "
-        "sent_backs (the stories sent back to the Business Analyst, "
-        "its returned events, out of the stories started that sprint; "
-        "each sent-back story is named by its identifier, and each "
-        "send-back carries the step it was sent back from and the "
-        "reason) and qa_returns (the review/QA returns, using the "
-        "same (failure class, returning role) values as "
-        "failure_breakdown; each returned story is named by its "
-        "identifier, and each return carries the step it was "
-        "returned from and the cause). A send-back counts in the "
-        "sprint of the returned event. by_step groups each part's "
-        "returns by step. Sprints with no events return all-null "
-        "values, rework included. "
-        "Each entry also carries a roster naming, by identifier, "
+        + _RANGE_REWORK_DESCRIPTION
+        + "Each entry also carries a roster naming, by identifier, "
         "the stories that completed in that sprint, the epics that "
         "released in that sprint (an epic releases in the sprint "
         "where its last story's finished event is), and the Goals "
@@ -861,17 +773,10 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "the sprint where its last epic releases). Sprints whose "
         "stories carry no epic or goal link read null for the "
         "corresponding roster part (no backfill). "
-        "Each entry also carries a working_time answer: the minutes "
-        "the crew's sessions ran, per step of a story's pipeline "
-        "(a returned or attempt_failed row marks the step boundary; "
-        "a rework session is labeled by the step it is reworking), "
-        "plus the sprint's working-time total; a sprint with no "
-        "events (or no closed session window) reads null. "
-        "Each entry also carries a cost_by_kind answer: the sprint's "
-        "working time split by story kind (addition and change), in "
-        "whole minutes; a sprint whose stored story rows carry no "
-        "kind reads null (no data, not zero). "
-        "Each entry also carries a model_time_split answer: the "
+        + _RANGE_DORA_DESCRIPTION
+        + _RANGE_WORKING_TIME_DESCRIPTION
+        + _RANGE_COST_BY_KIND_DESCRIPTION
+        + "Each entry also carries a model_time_split answer: the "
         "sprint's model time split into refinement and delivery, in "
         "whole minutes (each story's split converted to whole minutes "
         "and summed over the costed stories); a sprint whose stories "
@@ -966,59 +871,6 @@ def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
         pass
 
 
-def _attach_range_cost(
-    result: dict,
-    sprints: dict[str, list],
-    labels: list[str],
-    has_events: set[str],
-) -> None:
-    """Attach cost to each range entry: ``story_costs`` and ``cost`` on the entry, and
-    the six flat cost names on its prior and delta.
-
-    An entry for a sprint with no events has its own values nulled (story_costs [],
-    cost None) but keeps its prior and delta, since every range entry carries the
-    prior-sprint delta (docs/service.md). The flat names in prior and delta are null where the
-    corresponding sprint has no costed stories, so a cost delta is never computed
-    against a missing cost.
-    """
-    for i, label in enumerate(labels):
-        if label not in has_events:
-            entry = result["sprints"][label]
-            for key in entry:
-                if key not in ("prior", "delta"):
-                    entry[key] = None
-            entry["story_costs"] = []
-            entry["cost"] = None
-            continue
-        entry = result["sprints"][label]
-        story_costs, cost = _compute_cost_summary(sprints[label])
-        entry["story_costs"] = story_costs
-        entry["cost"] = cost
-        if i > 0 and labels[i - 1] not in has_events:
-            entry["prior"] = None
-            entry["delta"] = None
-        elif i > 0:
-            prior_cost = _compute_cost_summary(sprints[labels[i - 1]])[1]
-            prior_flat = _cost_flat(prior_cost)
-            current_flat = _cost_flat(cost)
-            for name in _COST_FLAT_NAMES:
-                entry["prior"][name] = prior_flat[name]
-                cur, pri = current_flat[name], prior_flat[name]
-                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
-
-
-def _attach_range_rework(result: dict, labels: list[str], rework: dict[str, dict]) -> None:
-    """Attach the rework answer to each range entry.
-
-    An entry for a sprint with no events carries rework null, so pre-rollout
-    history reads as no data, not zero. An entry for a sprint with events
-    carries its started count and its sent-backs, or null sent-backs when the
-    sprint holds no 'returned' events.
-    """
-    for label in labels:
-        result["sprints"][label]["rework"] = rework.get(label)
-
-
 def _attach_range_roster(
     result: dict, conn, labels: list[str], has_events: set[str]
 ) -> None:
@@ -1049,136 +901,6 @@ def _attach_range_roster(
         }
 
 
-def _attach_range_dora(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the DORA block to each range entry.
-
-    A sprint with no events carries dora null. A sprint with events but no
-    epic links carries dora with all values null (no data, not zero). A
-    sprint with epic links carries its release frequency, lead time,
-    change-failure count and rate, and mean-time-to-recovery.
-    """
-    dora_data = query_dora_data(conn, labels)
-    rework_data = query_dora_rework_data(conn, labels)
-    for label in labels:
-        if label not in has_events:
-            result["sprints"][label]["dora"] = None
-            continue
-        released = dora_data["released_epics"].get(label)
-        spans = dora_data["story_spans_days"].get(label)
-        # For change-failure, an epic "releases" in a sprint if it has at
-        # least one 'finished' event in that sprint. Compute this from the
-        # rework data (all finished events per epic across all sprints).
-        cf_released: list[str] | None = None
-        if rework_data["epic_finished"]:
-            cf_released = [
-                epic
-                for epic, events in rework_data["epic_finished"].items()
-                if any(sprint == label for _t, sprint in events)
-            ]
-            if not cf_released:
-                cf_released = []
-        result["sprints"][label]["dora"] = calculate_dora(
-            released,
-            spans,
-            sprint_label=label,
-            epic_finished=rework_data["epic_finished"],
-            epic_returned=rework_data["epic_returned"],
-            cf_released_epics=cf_released,
-        )
-
-
-def _attach_range_working_time(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the working-time answer to each range entry, and its flat name to prior/delta.
-
-    A sprint with no events carries working_time null, matching the other
-    null metrics. A sprint with events but no closed session window (its cards
-    carry only date-level fields, or its sessions never closed) also carries
-    working_time null — no data, not zero. For every sprint after the first,
-    the flat working_time_minutes name appears in that entry's prior and delta
-    whenever those objects are present, null where the corresponding sprint
-    has no working-time data.
-    """
-    answers: dict[str, dict | None] = {}
-    totals: dict[str, int | None] = {}
-    for label in labels:
-        if label in has_events:
-            answer = calculate_working_time(query_working_time_events(conn, label))
-            answers[label] = answer
-            totals[label] = answer["total"] if answer is not None else None
-        else:
-            answers[label] = None
-            totals[label] = None
-    for index, label in enumerate(labels):
-        entry = result["sprints"][label]
-        entry["working_time"] = answers[label]
-        if index == 0:
-            continue
-        prior_label = labels[index - 1]
-        current_total = totals[label]
-        prior_total = totals[prior_label]
-        if isinstance(entry.get("prior"), dict):
-            entry["prior"]["working_time_minutes"] = prior_total
-        if isinstance(entry.get("delta"), dict):
-            entry["delta"]["working_time_minutes"] = (
-                current_total - prior_total
-                if current_total is not None and prior_total is not None
-                else None
-            )
-
-
-def _attach_range_cost_by_kind(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the cost-by-kind answer to each range entry, and its flat names to prior/delta.
-
-    A sprint with no events carries cost_by_kind null. A sprint with events but
-    whose stored story rows carry no kind also carries cost_by_kind null (no
-    data, not zero; no backfill). For every sprint after the first, the flat
-    names addition_working_time_minutes and change_working_time_minutes appear
-    in that entry's prior and delta whenever those objects are present, null
-    where the corresponding sprint has no kind data.
-    """
-    answers: dict[str, dict | None] = {}
-    flat: dict[str, dict[str, int | None]] = {}
-    for label in labels:
-        if label in has_events:
-            events = query_working_time_events(conn, label)
-            kinds = query_card_kinds(conn, label)
-            answer = calculate_cost_by_kind(events, kinds)
-            answers[label] = answer
-            if answer is not None:
-                flat[label] = {
-                    "addition_working_time_minutes": answer["addition"],
-                    "change_working_time_minutes": answer["change"],
-                }
-            else:
-                flat[label] = {
-                    "addition_working_time_minutes": None,
-                    "change_working_time_minutes": None,
-                }
-        else:
-            answers[label] = None
-            flat[label] = {
-                "addition_working_time_minutes": None,
-                "change_working_time_minutes": None,
-            }
-    for index, label in enumerate(labels):
-        entry = result["sprints"][label]
-        entry["cost_by_kind"] = answers[label]
-        if index == 0:
-            continue
-        prior_label = labels[index - 1]
-        if isinstance(entry.get("prior"), dict):
-            for name in ("addition_working_time_minutes", "change_working_time_minutes"):
-                entry["prior"][name] = flat[prior_label][name]
-        if isinstance(entry.get("delta"), dict):
-            for name in ("addition_working_time_minutes", "change_working_time_minutes"):
-                cur, pri = flat[label][name], flat[prior_label][name]
-                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 
 
 def _attach_range_model_time_split(

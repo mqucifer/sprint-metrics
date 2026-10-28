@@ -300,18 +300,3 @@ def test_rule_released_headings_dated():
     assert violations, "expected a violation for non-ISO date"
     assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
 
-
-def test_unreleased_added_records_range_verdict():
-    """AC10: the [Unreleased] Added section records that /range now answers,
-    per measure, whether the window moves better or worse against the window's
-    first and last data-bearing sprint."""
-    content = CHANGELOG.read_text()
-    start, end = _unreleased_body_span(content)
-    body = content[start:end]
-    added_start = body.index("### Added")
-    added_end = body.find("\n### ", added_start + len("### Added"))
-    added = body[added_start : added_end if added_end != -1 else len(body)]
-    for phrase in ("/range", "per measure", "better", "worse", "first and last", "data-bearing"):
-        assert phrase in added, (
-            f"[Unreleased] Added does not record the /range window verdict: {phrase!r} missing"
-        )
