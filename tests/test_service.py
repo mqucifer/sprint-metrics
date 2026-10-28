@@ -9291,57 +9291,57 @@ def test_range_dora_change_failure_null_when_no_releases():
 
 @requires_db
 def test_range_dora_mttr_completed_recovery():
-    """AC3: a bad release whose epic re-releases → MTTR is the recovery span in whole minutes."""
+    """AC3: a bad release whose epic re-releases in a later sprint → MTTR is the recovery span in whole minutes."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dmt_%'")
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
     conn.commit()
 
     port = _start_service(conn, 0)
     try:
-        # Epic E1: story 1 finished 2024-01-10T00:00:00Z (release moment)
+        # Epic E1: story 1 finished 2024-01-30T00:00:00Z (sprint 2024-01, release moment)
         _post_events(
             f"http://127.0.0.1:{port}/events",
             _make_event(
                 card_id="dmt_e1s1",
                 event_type="finished",
-                timestamp="2024-01-10T00:00:00Z",
+                timestamp="2024-01-30T00:00:00Z",
                 sprint="2024-01",
                 created="2024-01-01",
             ) | {"epic": "E1"},
         )
-        # Epic E1: returned event 2024-01-11T00:00:00Z (after release moment)
+        # Epic E1: returned event 2024-01-31T00:00:00Z (after release moment, in sprint 2024-01)
         _post_events(
             f"http://127.0.0.1:{port}/events",
             _make_event(
                 card_id="dmt_e1r1",
                 event_type="returned",
-                timestamp="2024-01-11T00:00:00Z",
+                timestamp="2024-01-31T00:00:00Z",
                 sprint="2024-01",
                 created="2024-01-02",
             ) | {"epic": "E1"},
         )
-        # Epic E1: story 2 finished 2024-01-13T00:00:00Z (re-release)
+        # Epic E1: story 2 finished 2024-02-02T00:00:00Z (sprint 2024-02, re-release)
         _post_events(
             f"http://127.0.0.1:{port}/events",
             _make_event(
                 card_id="dmt_e1s2",
                 event_type="finished",
-                timestamp="2024-01-13T00:00:00Z",
-                sprint="2024-01",
+                timestamp="2024-02-02T00:00:00Z",
+                sprint="2024-02",
                 created="2024-01-03",
             ) | {"epic": "E1"},
         )
 
-        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
         dora = body["sprints"]["2024-01"]["dora"]
         assert dora["change_failure_count"] == 1
         assert dora["change_failure_rate_percent"] == 100
-        # Recovery span: 2024-01-13 - 2024-01-11 = 2 days = 2880 minutes
+        # Recovery span: 2024-02-02 - 2024-01-31 = 2 days = 2880 minutes
         assert dora["mean_time_to_recovery_minutes"] == 2880
     finally:
         conn.close()
