@@ -302,18 +302,14 @@ def test_rule_released_headings_dated():
 
 
 def test_post_release_unreleased_added_is_empty_and_safe():
-    """AC2: After a release cut, [Unreleased] Added is empty. No test in this
-    module must assert specific content in [Unreleased] Added: the range-verdict
-    test (#809 AC10) pinned phrases to [Unreleased] Added and failed after every
-    release cut; it has been removed (#868). Verify the stale test is gone and
-    that the structural checks stay green on a post-release [Unreleased]."""
-    # The stale test pinned specific /range phrases to [Unreleased] Added.
-    # On a post-release changelog those phrases are absent, so that assertion
-    # fails. Verify the stale test is gone so no such assertion remains.
-    source = Path(__file__).read_text()
-    assert not re.search(r"^def test_unreleased_added_records_range_verdict\b", source, re.MULTILINE), (
-        "A test pins [Unreleased] Added content; it fails after any release cut. "
-        "Remove it (#868)."
+    """AC2: After a release cut, [Unreleased] Added is empty. The range-verdict
+    test (#809 AC10) pinned /range phrases to [Unreleased] Added and failed on
+    an empty section; it has been removed (#868). Verify no test in this module
+    pins [Unreleased] Added content, and that the structural rules stay green
+    on a post-release [Unreleased]."""
+    assert "test_unreleased_added_records_range_verdict" not in globals(), (
+        "test_unreleased_added_records_range_verdict pins [Unreleased] Added "
+        "content; it fails after any release cut. Remove it (#868)."
     )
 
     # Structural checks must not flag an empty [Unreleased] body:
