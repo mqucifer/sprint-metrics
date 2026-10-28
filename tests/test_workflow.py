@@ -20,48 +20,48 @@ def _text() -> str:
 
 
 def test_docker_job_range_filter_accounts_for_rework_key():
-    """AC9: the field-for-field /range comparison filters out the new rework key,
-    the way it already filters out the removed escalation measures."""
+    """The field-for-field /range comparison is derived from the previous
+    response's key structure, not a hand-edited deletion list: a new key
+    (like rework) is accepted without a per-release edit of the list."""
     text = _text()
-    filter_block = text.split("RANGE_FILTER='", 1)[1].split("'", 1)[0]
-    assert ".rework" in filter_block, (
-        "the docker job's /range comparison must account for the new rework key"
+    assert "RANGE_FILTER" not in text, (
+        "the docker job's /range comparison must not reference a hand-edited deletion list"
+    )
+    assert "def project" in text, (
+        "the docker job's /range comparison must derive the acceptable keys from the previous response"
     )
 
 
 def test_docker_job_range_filter_accounts_for_window_key():
-    """The field-for-field /range comparison filters out the new window key,
-    the way it already filters out the removed escalation measures."""
+    """The field-for-field /range comparison handles top-level keys by
+    projecting the new response onto the previous response's key set,
+    so a new top-level key (like window) is accepted without a deletion entry."""
     text = _text()
-    filter_block = text.split("RANGE_FILTER='", 1)[1].split("'", 1)[0]
-    assert "del(.window)" in filter_block, (
-        "the docker job's /range comparison must account for the new window key"
+    assert "with_entries" in text, (
+        "the docker job's /range comparison must project object keys from the previous response"
+    )
+    assert "has($k)" in text, (
+        "the docker job's /range comparison must select only keys the previous response carries"
     )
 
 
 def test_docker_job_range_filter_accounts_for_window_verdicts():
-    """AC9: the field-for-field /range comparison filters out the new per-measure
-    window verdicts, the way it already filters out the other keys the earlier
-    image does not carry."""
+    """The field-for-field /range comparison is recursive: nested keys
+    (like window.verdicts) are handled by the same projection at every level,
+    so no per-key entry is needed for deeply nested additions."""
     text = _text()
-    filter_block = text.split("RANGE_FILTER='", 1)[1].split("'", 1)[0]
-    assert "del(.window.verdicts)" in filter_block, (
-        "the docker job's /range comparison must account for the new window verdicts"
+    assert "project($ref[$k])" in text, (
+        "the docker job's /range comparison must recurse into nested objects"
     )
 
 
 def test_docker_job_range_filter_accounts_for_working_time_key():
-    """The field-for-field /range comparison filters out the new per-sprint
-    working_time answer and the working_time_minutes prior/delta name, the way
-    it already filters out the rework and roster answers the earlier image does
-    not carry."""
+    """The field-for-field /range comparison handles array elements
+    (like per-sprint working_time) by iterating the previous response's
+    array length, so new per-sprint keys need no deletion entry."""
     text = _text()
-    filter_block = text.split("RANGE_FILTER='", 1)[1].split("'", 1)[0]
-    assert "del(.sprints[] | .working_time)" in filter_block, (
-        "the docker job's /range comparison must account for the new working_time key"
-    )
-    assert ".working_time_minutes" in filter_block, (
-        "the docker job's /range comparison must account for the new working_time_minutes prior/delta name"
+    assert "range(0; $ref | length)" in text, (
+        "the docker job's /range comparison must iterate array elements by the previous response's length"
     )
 
 
