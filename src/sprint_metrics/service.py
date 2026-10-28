@@ -33,7 +33,13 @@ from sprint_metrics.metrics import (
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
-from sprint_metrics.rework import calculate_rework, calculate_sent_backs_count, extract_qa_returns
+from sprint_metrics.rework import (
+    _RANGE_REWORK_DESCRIPTION,
+    _attach_range_rework,
+    calculate_rework,
+    calculate_sent_backs_count,
+    extract_qa_returns,
+)
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import _parse_sprint_label, format_sprint_range_json
 from sprint_metrics.store import (
@@ -755,20 +761,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
-        "Each entry also carries rework: two labeled parts — "
-        "sent_backs (the stories sent back to the Business Analyst, "
-        "its returned events, out of the stories started that sprint; "
-        "each sent-back story is named by its identifier, and each "
-        "send-back carries the step it was sent back from and the "
-        "reason) and qa_returns (the review/QA returns, using the "
-        "same (failure class, returning role) values as "
-        "failure_breakdown; each returned story is named by its "
-        "identifier, and each return carries the step it was "
-        "returned from and the cause). A send-back counts in the "
-        "sprint of the returned event. by_step groups each part's "
-        "returns by step. Sprints with no events return all-null "
-        "values, rework included. "
-        "Each entry also carries a roster naming, by identifier, "
+        + _RANGE_REWORK_DESCRIPTION
+        + "Each entry also carries a roster naming, by identifier, "
         "the stories that completed in that sprint, the epics that "
         "released in that sprint (an epic releases in the sprint "
         "where its last story's finished event is), and the Goals "
@@ -879,18 +873,6 @@ def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
         logger.emit(record)
     except Exception:
         pass
-
-
-def _attach_range_rework(result: dict, labels: list[str], rework: dict[str, dict]) -> None:
-    """Attach the rework answer to each range entry.
-
-    An entry for a sprint with no events carries rework null, so pre-rollout
-    history reads as no data, not zero. An entry for a sprint with events
-    carries its started count and its sent-backs, or null sent-backs when the
-    sprint holds no 'returned' events.
-    """
-    for label in labels:
-        result["sprints"][label]["rework"] = rework.get(label)
 
 
 def _attach_range_roster(
