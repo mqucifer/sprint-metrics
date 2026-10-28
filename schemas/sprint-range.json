@@ -16,7 +16,12 @@
         "start",
         "end",
         "sprint_count",
-        "no_data"
+        "no_data",
+        "verdicts",
+        "biggest_improvement",
+        "worst_dip",
+        "turns",
+        "too_short"
       ],
       "properties": {
         "start": {
@@ -33,6 +38,843 @@
           "items": {
             "type": "string"
           }
+        },
+        "verdicts": {
+          "type": "object",
+          "required": [
+            "cycle_time_days",
+            "lead_time_days",
+            "cycle_time_minutes",
+            "lead_time_minutes",
+            "throughput",
+            "points_delivered",
+            "wip_violations",
+            "blocked_aging_days",
+            "first_attempt_rate_percent",
+            "first_attempt_numerator",
+            "first_attempt_denominator",
+            "superseded_count",
+            "superseded_points",
+            "model_minutes_middle",
+            "model_minutes_total",
+            "input_tokens_middle",
+            "input_tokens_total",
+            "output_tokens_middle",
+            "output_tokens_total"
+          ],
+          "properties": {
+            "cycle_time_days": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "lead_time_days": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "cycle_time_minutes": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "lead_time_minutes": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "throughput": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "points_delivered": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "wip_violations": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "blocked_aging_days": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "first_attempt_rate_percent": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "first_attempt_numerator": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "first_attempt_denominator": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "superseded_count": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "superseded_points": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "model_minutes_middle": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "model_minutes_total": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "input_tokens_middle": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "input_tokens_total": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "output_tokens_middle": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "output_tokens_total": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            }
+          }
+        },
+        "biggest_improvement": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "measure": {
+              "type": "string"
+            },
+            "from_sprint": {
+              "type": "string"
+            },
+            "to_sprint": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "precision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "measure",
+            "from_sprint",
+            "to_sprint",
+            "size",
+            "unit",
+            "precision"
+          ]
+        },
+        "worst_dip": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "measure": {
+              "type": "string"
+            },
+            "from_sprint": {
+              "type": "string"
+            },
+            "to_sprint": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "precision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "measure",
+            "from_sprint",
+            "to_sprint",
+            "size",
+            "unit",
+            "precision"
+          ]
+        },
+        "turns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sprint": {
+                "type": "string"
+              },
+              "measure": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sprint",
+              "measure"
+            ]
+          }
+        },
+        "too_short": {
+          "type": "boolean"
         }
       }
     },

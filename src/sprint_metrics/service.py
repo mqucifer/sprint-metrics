@@ -58,6 +58,7 @@ from sprint_metrics.time_splits import (
     model_time_split_total,
     working_time_total,
 )
+from sprint_metrics.verdict import MEASURE_REGISTRY, window_standouts, window_verdicts
 
 VALID_EVENT_TYPES = frozenset(
     {
@@ -485,6 +486,8 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
+                        _attach_range_verdict(result, labels, has_events)
+                        _attach_range_standouts(result, labels, has_events)
                         self._send_json(200, result)
                         status = 200
                         return
@@ -783,7 +786,15 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "/range",
         "Return metrics for a range of sprints in chronological order. "
         "The response carries a top-level window object naming the window "
-        "it is judging (start, end, sprint_count, no_data). "
+        "it is judging (start, end, sprint_count, no_data) and a verdicts "
+        "object with one entry per registry measure: it judges the window's "
+        "first and last data-bearing sprint (a gap sprint is skipped, not "
+        "read as zero) against each measure's better direction — better, "
+        "worse or flat, or up, down or flat for a measure with no better "
+        "direction — each entry naming both reference sprints and their "
+        "values, with the unit and the precision; an entry reads null when "
+        "the measure's value is missing in either reference sprint, or the "
+        "window has fewer than two data-bearing sprints. "
         "Each entry includes the prior-sprint delta. "
         "failure_breakdown and top_failure_causes count returns, "
         "one per return, by (failure class, returning role). "
@@ -1139,6 +1150,47 @@ def _attach_range_model_time_split(
             ):
                 cur, pri = flat[label][name], flat[prior_label][name]
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str]) -> None:
+    """Attach the per-measure window verdict to the range's window object.
+
+    The window judges its first data-bearing sprint against its last, per
+    registry measure, so a gap sprint (no events) is skipped, not read as zero.
+    Each entry names both reference sprints and their values, with the unit and
+    precision; an entry is null when the measure's value is missing in either
+    reference sprint, or the window has fewer than two data-bearing sprints.
+    """
+    data_bearing = [label for label in labels if label in has_events]
+    flat: dict[str, dict[str, object]] = {}
+    for label in labels:
+        entry = result["sprints"][label]
+        values = dict(entry)
+        values.update(_cost_flat(entry.get("cost")))
+        flat[label] = values
+    result["window"]["verdicts"] = window_verdicts(flat, data_bearing, MEASURE_REGISTRY)
+
+
+def _attach_range_standouts(result: dict, labels: list[str], has_events: set[str]) -> None:
+    """Attach the window's standouts to the range's window object.
+
+    The standouts are the window's biggest improvement, worst dip, the sprints
+    where a measure turned, and the too-short flag. A gap sprint (no events) is
+    bridged, not read as zero. Ties are broken by the earlier sprint pair, then
+    the measure earlier in the registry order.
+    """
+    data_bearing = [label for label in labels if label in has_events]
+    flat: dict[str, dict[str, object]] = {}
+    for label in labels:
+        entry = result["sprints"][label]
+        values = dict(entry)
+        values.update(_cost_flat(entry.get("cost")))
+        flat[label] = values
+    standouts = window_standouts(flat, data_bearing, MEASURE_REGISTRY)
+    result["window"]["biggest_improvement"] = standouts["biggest_improvement"]
+    result["window"]["worst_dip"] = standouts["worst_dip"]
+    result["window"]["turns"] = standouts["turns"]
+    result["window"]["too_short"] = standouts["too_short"]
 
 
 def _validate_cost_fields(card: dict) -> str | None:

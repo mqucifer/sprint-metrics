@@ -602,6 +602,31 @@ def test_service_md_sprint_range_descriptions_state_per_return_semantics():
     )
 
 
+def test_service_md_window_verdict_described_in_handwritten_range_section():
+    """AC8: the hand-written /range section in docs/service.md tells the reader
+    that the window verdicts compare the window's first and last data-bearing
+    sprint, that a measure with a missing number gets no verdict, and what
+    "flat" means."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    anchor = before.index("The window object also carries a `verdicts`")
+    verdict_section = before[anchor : anchor + 700]
+    assert "first and last data-bearing sprint" in verdict_section, (
+        "hand-written /range section does not state the verdict compares the "
+        "window's first and last data-bearing sprint"
+    )
+    assert "skipped, not read as zero" in verdict_section, (
+        "hand-written /range section does not state a gap sprint is skipped, not read as zero"
+    )
+    assert "no verdict" in verdict_section, (
+        "hand-written /range section does not state a missing number gets no verdict"
+    )
+    assert '"Flat"' in verdict_section, (
+        "hand-written /range section does not define what 'flat' means"
+    )
+
+
 def test_service_md_handwritten_section_survives_docs_gen(tmp_path):
     """AC2: running generate_file on docs/service.md leaves the hand-written
     content before BEGIN:service byte-identical, confirming it resides outside
