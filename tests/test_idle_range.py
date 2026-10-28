@@ -7,8 +7,6 @@ running) against the sprint's total registered duration, in whole minutes.
 from __future__ import annotations
 
 import psycopg
-
-from sprint_metrics.store import init_db
 from test_service import (
     SPRINT_METRICS_DB,
     _get_json,
@@ -17,6 +15,8 @@ from test_service import (
     _start_service,
     requires_db,
 )
+
+from sprint_metrics.store import init_db
 
 
 def _register_sprint(conn, name: str, start: str, end: str, timezone: str = "UTC") -> None:
