@@ -185,3 +185,27 @@ def format_sprint_range_json(
         "sprints": per_sprint,
     }
     return json.dumps(report)
+
+
+def _attach_range_window(result: dict, labels: list[str], has_events: set[str]) -> None:
+    """Attach the top-level window object to the range response.
+
+    The window names the sprints the response is judging: start, the
+    first sprint label; end, the last sprint label; sprint_count, the
+    number of sprints in the window; and no_data, the sprint labels
+    that had no events.
+    """
+    result["window"] = {
+        "start": labels[0],
+        "end": labels[-1],
+        "sprint_count": len(labels),
+        "no_data": [label for label in labels if label not in has_events],
+    }
+
+
+_RANGE_WINDOW_DESCRIPTION = (
+    "The response carries a top-level window object naming the window "
+    "it is judging: start (the first sprint label), end (the last "
+    "sprint label), sprint_count (the number of sprints in the "
+    "window), and no_data (the sprint labels that had no events). "
+)
