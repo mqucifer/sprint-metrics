@@ -1307,3 +1307,34 @@ def test_metrics_md_names_dora_measures():
     )
     assert "whole days" in lead_row
     assert "epic's release moment" in lead_row
+
+
+def test_metrics_md_idle_time_section_states_span_minus_session_time():
+    """AC: docs/metrics.md's idle-time section states the idle time is the registered
+    sprint span minus the in-span session time, in whole minutes; the span is taken in
+    the sprint's registered timezone; a session window is clamped to the span; a rework
+    session never re-sent as 'started' reads as idle (the working-time fidelity bound);
+    and a sprint with no events or no registered definition reads null (the whole span
+    is not reported as idle when no session ran)."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    section = re.sub(
+        r"\s+",
+        " ",
+        text.split("### Idle time against the sprint's duration", 1)[1].split("\n### ", 1)[0],
+    )
+    # The idle time is the registered span minus the in-span session time, in whole minutes.
+    assert "registered span minus the in-span session time" in section
+    assert "whole minutes" in section
+    # The span is taken in the sprint's registered timezone.
+    assert "registered timezone" in section
+    # A session window is clamped to the span.
+    assert "clamped to the span" in section
+    # The working-time fidelity bound: a rework session never re-sent as 'started'
+    # reads as idle.
+    assert "never re-sent as" in section and "reads as idle" in section
+    assert "fidelity bound" in section
+    # The whole span is not reported as idle when no session ran.
+    assert "whole span is not reported as idle" in section
+    # The idle_minutes table row names the unit (whole minutes).
+    row = next(line for line in text.splitlines() if "`idle_minutes`" in line)
+    assert "whole minutes" in row
