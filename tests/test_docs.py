@@ -522,6 +522,39 @@ def test_service_md_trend_row_describes_response_shape():
     assert "JSON null" in row, "trend row does not state gap sprints return JSON null"
 
 
+def test_service_md_trend_row_names_dora_measures_with_units():
+    """AC4: the /trend row in docs/service.md's generated section lists DORA's four
+    measures among the valid metrics, names their units (releases per sprint,
+    whole days, whole percent, whole minutes), and states that a sprint without
+    a derivable DORA value returns JSON null."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    section = _extract_marked_section(text, "service")
+    trend_rows = [line for line in section.splitlines() if "/trend" in line]
+    assert trend_rows, "no /trend row found in generated section"
+    row = trend_rows[0]
+    for metric in (
+        "release_frequency",
+        "dora_lead_time_days",
+        "change_failure_rate_percent",
+        "mean_time_to_recovery_minutes",
+    ):
+        assert metric in row, f"trend row does not list {metric} as a valid metric"
+    assert "releases per sprint" in row, (
+        "trend row does not name release frequency's unit as releases per sprint"
+    )
+    assert "whole days" in row, "trend row does not name DORA lead time's unit as whole days"
+    assert "whole percent" in row, (
+        "trend row does not name the change-failure rate's unit as whole percent"
+    )
+    assert "whole minutes" in row, (
+        "trend row does not name mean time to recovery's unit as whole minutes"
+    )
+    assert "without a derivable DORA value" in row and "JSON null" in row, (
+        "trend row does not state that a sprint without a derivable DORA value returns JSON null"
+    )
+
+
 def test_service_md_documents_superseded_event():
     """AC1: the hand-written content before BEGIN:service in docs/service.md names
     'superseded' as an accepted event type, describes because accepting 'sponsor'
@@ -1285,16 +1318,20 @@ def test_service_md_api_version_paragraph_describes_version_9():
 
 
 def test_metrics_md_names_dora_measures():
-    """AC3: docs/metrics.md's generated table names the two DORA measures with
+    """AC3: docs/metrics.md's generated table names the DORA measures with
     their plain-English display names, metric keys, units, and precision."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = _extract_marked_section(text, "metrics")
-    # Both DORA display names are present
+    # All DORA display names are present
     assert "DORA release frequency" in section
     assert "DORA lead time for changes" in section
-    # Both metric keys are present
+    assert "DORA change failure rate" in section
+    assert "DORA mean time to recovery" in section
+    # All metric keys are present
     assert "`release_frequency`" in section
     assert "`dora_lead_time_days`" in section
+    assert "`change_failure_rate_percent`" in section
+    assert "`mean_time_to_recovery_minutes`" in section
     # Release frequency states its unit (whole count) and what it measures
     release_row = next(
         line for line in section.splitlines() if "`release_frequency`" in line
@@ -1307,6 +1344,17 @@ def test_metrics_md_names_dora_measures():
     )
     assert "whole days" in lead_row
     assert "epic's release moment" in lead_row
+    # Change-failure rate states it is a rate (share of releases that came back)
+    cf_row = next(
+        line for line in section.splitlines() if "`change_failure_rate_percent`" in line
+    )
+    assert "whole percent" in cf_row
+    assert "came back with rework" in cf_row
+    # MTTR states its unit (whole minutes)
+    mttr_row = next(
+        line for line in section.splitlines() if "`mean_time_to_recovery_minutes`" in line
+    )
+    assert "whole minutes" in mttr_row
 
 
 def test_metrics_md_idle_time_section_states_span_minus_session_time():
