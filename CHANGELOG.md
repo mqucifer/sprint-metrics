@@ -4,6 +4,16 @@
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.2.0] - 2026-10-28
+
+### Added
+
 - GET /range now names the window it is judging: a top-level `window` object carrying the sprint labels at both ends (`start`, `end`), the count of sprints in the window (`sprint_count`), and which sprints had no data (`no_data`), so a gap reads as 'no data' not zero. The response `api_version` moves from "4" to "5"
 - GET /range carries each sprint's `dora` block with DORA's first two measures: `release_frequency` (how often epics ship, a whole count of distinct epics whose last story completes in the sprint) and `lead_time_days` (the mean, in whole days, of each released story's span from its creation to its epic's release moment); a sprint with events but no epic link reads both values as null (no data, not zero), and a sprint with no events reads the whole DORA block as null (#804, #807)
 - GET /range carries DORA's change-failure rate and mean time to recovery per sprint: the `dora` block now also carries `change_failure_count` (the count of the sprint's releases that came back with rework, shown alongside its rate), `change_failure_rate_percent` (the whole percent of the sprint's releases that came back with rework, the change-failure rate), and `mean_time_to_recovery_minutes` (the mean, in whole minutes, of the completed recovery spans from the 'returned' event to the epic's next release moment); a sprint with releases but no rework reads count 0 and rate 0, a sprint with no releases or no epic link reads all three as null (no data, not zero) (#812, #813)
