@@ -497,3 +497,131 @@ def calculate_reasoning_output_percent(
     total_output = sum(card.output_tokens for card in costed)
     total_reasoning = sum(card.reasoning_output_tokens for card in costed)
     return round(100 * total_reasoning / total_output) if total_output > 0 else 0
+
+
+def _compute_cost_summary(cards) -> tuple[list[dict], dict | None]:
+    """Compute the per-story cost list and the sprint's cost middle and total.
+
+    A card carries cost data when its model_seconds is not None; the per-story
+    cost is the total already stored on the card (the sum across roles). The two
+    percents on every story_costs item are the sprint's combined shares, not the
+    story's own. ``cost`` is the median (middle) and sum (total) of the three
+    measures over the costed stories. Returns ``([], None)`` when no card carries
+    cost data.
+    """
+    costed = [card for card in cards if card.model_seconds is not None]
+    if not costed:
+        return [], None
+    total_input = sum(card.input_tokens for card in costed)
+    total_cached = sum(card.cached_input_tokens for card in costed)
+    total_output = sum(card.output_tokens for card in costed)
+    total_reasoning = sum(card.reasoning_output_tokens for card in costed)
+    cached_input_percent = round(100 * total_cached / total_input) if total_input > 0 else 0
+    reasoning_output_percent = (
+        round(100 * total_reasoning / total_output) if total_output > 0 else 0
+    )
+    story_costs = [
+        {
+            "card_id": card.card_id,
+            "model_minutes": round(card.model_seconds / 60),
+            "input_tokens": card.input_tokens,
+            "cached_input_percent": cached_input_percent,
+            "output_tokens": card.output_tokens,
+            "reasoning_output_percent": reasoning_output_percent,
+        }
+        for card in costed
+    ]
+    per_story_minutes = [item["model_minutes"] for item in story_costs]
+    per_story_input = [item["input_tokens"] for item in story_costs]
+    per_story_output = [item["output_tokens"] for item in story_costs]
+    cost = {
+        "middle": {
+            "model_minutes": _median(per_story_minutes),
+            "input_tokens": _median(per_story_input),
+            "output_tokens": _median(per_story_output),
+        },
+        "total": {
+            "model_minutes": sum(per_story_minutes),
+            "input_tokens": sum(per_story_input),
+            "output_tokens": sum(per_story_output),
+        },
+    }
+    return story_costs, cost
+
+
+_COST_FLAT_NAMES: tuple[str, ...] = (
+    "model_minutes_middle",
+    "model_minutes_total",
+    "input_tokens_middle",
+    "input_tokens_total",
+    "output_tokens_middle",
+    "output_tokens_total",
+)
+
+
+def _cost_flat(cost: dict | None) -> dict[str, int | None]:
+    """The six flat cost names from a cost middle/total dict; None each when cost is None."""
+    if cost is None:
+        return {name: None for name in _COST_FLAT_NAMES}
+    return {
+        "model_minutes_middle": cost["middle"]["model_minutes"],
+        "model_minutes_total": cost["total"]["model_minutes"],
+        "input_tokens_middle": cost["middle"]["input_tokens"],
+        "input_tokens_total": cost["total"]["input_tokens"],
+        "output_tokens_middle": cost["middle"]["output_tokens"],
+        "output_tokens_total": cost["total"]["output_tokens"],
+    }
+
+
+def _attach_range_cost(
+    result: dict,
+    sprints: dict[str, list],
+    labels: list[str],
+    has_events: set[str],
+) -> None:
+    """Attach cost to each range entry: ``story_costs`` and ``cost`` on the entry, and
+    the six flat cost names on its prior and delta.
+
+    An entry for a sprint with no events has its own values nulled (story_costs [],
+    cost None) but keeps its prior and delta, since every range entry carries the
+    prior-sprint delta (docs/service.md). The flat names in prior and delta are null where the
+    corresponding sprint has no costed stories, so a cost delta is never computed
+    against a missing cost.
+    """
+    for i, label in enumerate(labels):
+        if label not in has_events:
+            entry = result["sprints"][label]
+            for key in entry:
+                if key not in ("prior", "delta"):
+                    entry[key] = None
+            entry["story_costs"] = []
+            entry["cost"] = None
+            continue
+        entry = result["sprints"][label]
+        story_costs, cost = _compute_cost_summary(sprints[label])
+        entry["story_costs"] = story_costs
+        entry["cost"] = cost
+        if i > 0 and labels[i - 1] not in has_events:
+            entry["prior"] = None
+            entry["delta"] = None
+        elif i > 0:
+            prior_cost = _compute_cost_summary(sprints[labels[i - 1]])[1]
+            prior_flat = _cost_flat(prior_cost)
+            current_flat = _cost_flat(cost)
+            for name in _COST_FLAT_NAMES:
+                entry["prior"][name] = prior_flat[name]
+                cur, pri = current_flat[name], prior_flat[name]
+                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+_RANGE_COST_DESCRIPTION = (
+    "Each entry also carries a cost answer: the per-story cost list "
+    "(story_costs, each costed story's model minutes, input and output tokens, "
+    "and the sprint's combined cached-input and reasoning-output percents) and "
+    "the sprint's cost middle and total (the median and sum of the three "
+    "measures across costed stories). The six flat cost names "
+    "(model_minutes_middle, model_minutes_total, input_tokens_middle, "
+    "input_tokens_total, output_tokens_middle, output_tokens_total) appear on "
+    "each entry's prior and delta. A sprint with no costed stories reads null "
+    "for cost, not zero."
+)
