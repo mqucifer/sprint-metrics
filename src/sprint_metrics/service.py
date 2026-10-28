@@ -63,10 +63,12 @@ from sprint_metrics.store import (
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
-    calculate_cost_by_kind,
+    _RANGE_COST_BY_KIND_DESCRIPTION,
+    _RANGE_WORKING_TIME_DESCRIPTION,
+    _attach_range_cost_by_kind,
+    _attach_range_working_time,
     calculate_idle,
     calculate_model_time_split,
-    calculate_working_time,
     cost_by_kind_total,
     idle_minutes_total,
     model_time_split_total,
@@ -772,17 +774,9 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "stories carry no epic or goal link read null for the "
         "corresponding roster part (no backfill). "
         + _RANGE_DORA_DESCRIPTION
-        + "Each entry also carries a working_time answer: the minutes "
-        "the crew's sessions ran, per step of a story's pipeline "
-        "(a returned or attempt_failed row marks the step boundary; "
-        "a rework session is labeled by the step it is reworking), "
-        "plus the sprint's working-time total; a sprint with no "
-        "events (or no closed session window) reads null. "
-        "Each entry also carries a cost_by_kind answer: the sprint's "
-        "working time split by story kind (addition and change), in "
-        "whole minutes; a sprint whose stored story rows carry no "
-        "kind reads null (no data, not zero). "
-        "Each entry also carries a model_time_split answer: the "
+        + _RANGE_WORKING_TIME_DESCRIPTION
+        + _RANGE_COST_BY_KIND_DESCRIPTION
+        + "Each entry also carries a model_time_split answer: the "
         "sprint's model time split into refinement and delivery, in "
         "whole minutes (each story's split converted to whole minutes "
         "and summed over the costed stories); a sprint whose stories "
@@ -907,96 +901,6 @@ def _attach_range_roster(
         }
 
 
-def _attach_range_working_time(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the working-time answer to each range entry, and its flat name to prior/delta.
-
-    A sprint with no events carries working_time null, matching the other
-    null metrics. A sprint with events but no closed session window (its cards
-    carry only date-level fields, or its sessions never closed) also carries
-    working_time null — no data, not zero. For every sprint after the first,
-    the flat working_time_minutes name appears in that entry's prior and delta
-    whenever those objects are present, null where the corresponding sprint
-    has no working-time data.
-    """
-    answers: dict[str, dict | None] = {}
-    totals: dict[str, int | None] = {}
-    for label in labels:
-        if label in has_events:
-            answer = calculate_working_time(query_working_time_events(conn, label))
-            answers[label] = answer
-            totals[label] = answer["total"] if answer is not None else None
-        else:
-            answers[label] = None
-            totals[label] = None
-    for index, label in enumerate(labels):
-        entry = result["sprints"][label]
-        entry["working_time"] = answers[label]
-        if index == 0:
-            continue
-        prior_label = labels[index - 1]
-        current_total = totals[label]
-        prior_total = totals[prior_label]
-        if isinstance(entry.get("prior"), dict):
-            entry["prior"]["working_time_minutes"] = prior_total
-        if isinstance(entry.get("delta"), dict):
-            entry["delta"]["working_time_minutes"] = (
-                current_total - prior_total
-                if current_total is not None and prior_total is not None
-                else None
-            )
-
-
-def _attach_range_cost_by_kind(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the cost-by-kind answer to each range entry, and its flat names to prior/delta.
-
-    A sprint with no events carries cost_by_kind null. A sprint with events but
-    whose stored story rows carry no kind also carries cost_by_kind null (no
-    data, not zero; no backfill). For every sprint after the first, the flat
-    names addition_working_time_minutes and change_working_time_minutes appear
-    in that entry's prior and delta whenever those objects are present, null
-    where the corresponding sprint has no kind data.
-    """
-    answers: dict[str, dict | None] = {}
-    flat: dict[str, dict[str, int | None]] = {}
-    for label in labels:
-        if label in has_events:
-            events = query_working_time_events(conn, label)
-            kinds = query_card_kinds(conn, label)
-            answer = calculate_cost_by_kind(events, kinds)
-            answers[label] = answer
-            if answer is not None:
-                flat[label] = {
-                    "addition_working_time_minutes": answer["addition"],
-                    "change_working_time_minutes": answer["change"],
-                }
-            else:
-                flat[label] = {
-                    "addition_working_time_minutes": None,
-                    "change_working_time_minutes": None,
-                }
-        else:
-            answers[label] = None
-            flat[label] = {
-                "addition_working_time_minutes": None,
-                "change_working_time_minutes": None,
-            }
-    for index, label in enumerate(labels):
-        entry = result["sprints"][label]
-        entry["cost_by_kind"] = answers[label]
-        if index == 0:
-            continue
-        prior_label = labels[index - 1]
-        if isinstance(entry.get("prior"), dict):
-            for name in ("addition_working_time_minutes", "change_working_time_minutes"):
-                entry["prior"][name] = flat[prior_label][name]
-        if isinstance(entry.get("delta"), dict):
-            for name in ("addition_working_time_minutes", "change_working_time_minutes"):
-                cur, pri = flat[label][name], flat[prior_label][name]
-                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 
 
 def _attach_range_model_time_split(
