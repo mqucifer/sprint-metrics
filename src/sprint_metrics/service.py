@@ -902,7 +902,17 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "carries no kind data). model_time_split_refinement_minutes and "
         "model_time_split_delivery_minutes return the sprint's model time "
         "split into refinement and delivery, in whole minutes (null where "
-        "no story in the sprint carries a split).",
+        "no story in the sprint carries a split). "
+        "release_frequency returns the sprint's count of distinct epics "
+        "released, in releases per sprint. dora_lead_time_days returns the "
+        "mean lead time for changes, in whole days. "
+        "change_failure_count and change_failure_rate_percent return the "
+        "sprint's change-failure rate in whole percent (the rate is shown "
+        "alongside its count). mean_time_to_recovery_minutes returns the "
+        "mean time to recovery, in whole minutes. A sprint without a "
+        "derivable DORA value (no events, or no epic link, or no epic "
+        "release for the change-failure and recovery measures) returns "
+        "JSON null.",
     ),
     (
         "GET",

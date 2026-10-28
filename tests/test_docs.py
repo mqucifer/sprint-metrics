@@ -522,6 +522,39 @@ def test_service_md_trend_row_describes_response_shape():
     assert "JSON null" in row, "trend row does not state gap sprints return JSON null"
 
 
+def test_service_md_trend_row_names_dora_measures_with_units():
+    """AC4: the /trend row in docs/service.md's generated section lists DORA's four
+    measures among the valid metrics, names their units (releases per sprint,
+    whole days, whole percent, whole minutes), and states that a sprint without
+    a derivable DORA value returns JSON null."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    section = _extract_marked_section(text, "service")
+    trend_rows = [line for line in section.splitlines() if "/trend" in line]
+    assert trend_rows, "no /trend row found in generated section"
+    row = trend_rows[0]
+    for metric in (
+        "release_frequency",
+        "dora_lead_time_days",
+        "change_failure_rate_percent",
+        "mean_time_to_recovery_minutes",
+    ):
+        assert metric in row, f"trend row does not list {metric} as a valid metric"
+    assert "releases per sprint" in row, (
+        "trend row does not name release frequency's unit as releases per sprint"
+    )
+    assert "whole days" in row, "trend row does not name DORA lead time's unit as whole days"
+    assert "whole percent" in row, (
+        "trend row does not name the change-failure rate's unit as whole percent"
+    )
+    assert "whole minutes" in row, (
+        "trend row does not name mean time to recovery's unit as whole minutes"
+    )
+    assert "without a derivable DORA value" in row and "JSON null" in row, (
+        "trend row does not state that a sprint without a derivable DORA value returns JSON null"
+    )
+
+
 def test_service_md_documents_superseded_event():
     """AC1: the hand-written content before BEGIN:service in docs/service.md names
     'superseded' as an accepted event type, describes because accepting 'sponsor'

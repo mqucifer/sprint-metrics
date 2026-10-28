@@ -25,6 +25,7 @@
 ### Fixed
 
 - The SERVICE_ENDPOINTS description for GET /trend now lists `release_frequency` and `dora_lead_time_days` as valid metrics, matching the actual endpoint behaviour and docs/metrics.md
+- The GET /trend row in docs/service.md now states DORA's four measures' units — `release_frequency` in releases per sprint, `dora_lead_time_days` in whole days, `change_failure_rate_percent` in whole percent (shown alongside its `change_failure_count`), and `mean_time_to_recovery_minutes` in whole minutes — and states that a sprint without a derivable DORA value (no events, or no epic link, or no epic release for the change-failure and recovery measures) returns JSON null
 
 ### Removed
 

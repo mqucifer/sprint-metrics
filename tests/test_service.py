@@ -9433,6 +9433,253 @@ def test_range_dora_change_failure_null_when_no_epic_links():
 
 
 @requires_db
+def test_trend_dora_measures_match_the_range_dora_values():
+    """AC1: GET /trend answers each of DORA's four measures across a range of
+    sprints with derivable values: one value per sprint, each value a whole
+    number in the measure's unit equal to the same sprint's /range DORA value,
+    and the response carries the service's api_version."""
+    import psycopg
+
+    from sprint_metrics.report import API_VERSION
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dtd_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: epics E1 and E2 release; E1 comes back with rework
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtd_e1s1",
+                event_type="finished",
+                timestamp="2024-01-30T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtd_e2s1",
+                event_type="finished",
+                timestamp="2024-01-12T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-05",
+            ) | {"epic": "E2"},
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtd_e1r1",
+                event_type="returned",
+                timestamp="2024-01-31T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-02",
+            ) | {"epic": "E1"},
+        )
+        # 2024-02: E1 re-releases (its recovery completes) and E3 releases
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtd_e1s2",
+                event_type="finished",
+                timestamp="2024-02-02T00:00:00Z",
+                sprint="2024-02",
+                created="2024-01-03",
+            ) | {"epic": "E1"},
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtd_e3s1",
+                event_type="finished",
+                timestamp="2024-02-10T00:00:00Z",
+                sprint="2024-02",
+                created="2024-02-05",
+            ) | {"epic": "E3"},
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        range_dora = {
+            label: body["sprints"][label]["dora"] for label in ("2024-01", "2024-02")
+        }
+
+        # The /range values, in each measure's unit
+        assert range_dora["2024-01"]["release_frequency"] == 1
+        assert range_dora["2024-01"]["lead_time_days"] == 20
+        assert range_dora["2024-01"]["change_failure_count"] == 1
+        assert range_dora["2024-01"]["change_failure_rate_percent"] == 50
+        assert range_dora["2024-01"]["mean_time_to_recovery_minutes"] == 2880
+        assert range_dora["2024-02"]["release_frequency"] == 2
+        assert range_dora["2024-02"]["lead_time_days"] == 18
+        assert range_dora["2024-02"]["change_failure_count"] == 0
+        assert range_dora["2024-02"]["change_failure_rate_percent"] == 0
+        assert range_dora["2024-02"]["mean_time_to_recovery_minutes"] is None
+
+        trend_metric_to_range_key = {
+            "release_frequency": "release_frequency",
+            "dora_lead_time_days": "lead_time_days",
+            "change_failure_count": "change_failure_count",
+            "change_failure_rate_percent": "change_failure_rate_percent",
+            "mean_time_to_recovery_minutes": "mean_time_to_recovery_minutes",
+        }
+        for metric, range_key in trend_metric_to_range_key.items():
+            status, body = _get_json(
+                f"http://127.0.0.1:{port}/trend?metric={metric}&start=2024-01&end=2024-02"
+            )
+            assert status == 200
+            assert body["api_version"] == API_VERSION
+            assert body["metric"] == metric
+            assert [entry["sprint"] for entry in body["values"]] == ["2024-01", "2024-02"]
+            for entry in body["values"]:
+                assert entry["value"] == range_dora[entry["sprint"]][range_key]
+                if entry["value"] is not None:
+                    assert type(entry["value"]) is int, (
+                        f"{metric} for {entry['sprint']} is not a whole number"
+                    )
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_dora_measures_null_where_no_data_other_sprints_answered():
+    """AC2: a sprint with no stored events, and a sprint whose stored stories
+    carry no derivable epic link, read JSON null for each DORA measure while
+    the other sprints in the range are still answered."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dtn_%'")
+    conn.execute(
+        "DELETE FROM sprint_metrics.board_events WHERE sprint IN "
+        "('2024-01', '2024-02', '2024-03', '2024-04')"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: E1 releases and comes back with rework; E2 releases
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtn_e1s1",
+                event_type="finished",
+                timestamp="2024-01-15T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtn_e1r1",
+                event_type="returned",
+                timestamp="2024-01-16T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-05",
+            ) | {"epic": "E1"},
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtn_e2s1",
+                event_type="finished",
+                timestamp="2024-01-20T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-10",
+            ) | {"epic": "E2"},
+        )
+        # 2024-02: no events at all
+        # 2024-03: events, but the stored story carries no epic link
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtn_plain",
+                event_type="finished",
+                timestamp="2024-03-10T00:00:00Z",
+                sprint="2024-03",
+                created="2024-03-01",
+            ),
+        )
+        # 2024-04: E1 re-releases (its recovery completes) and E3 releases
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtn_e1s2",
+                event_type="finished",
+                timestamp="2024-04-02T00:00:00Z",
+                sprint="2024-04",
+                created="2024-01-20",
+            ) | {"epic": "E1"},
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dtn_e3s1",
+                event_type="finished",
+                timestamp="2024-04-20T00:00:00Z",
+                sprint="2024-04",
+                created="2024-04-01",
+            ) | {"epic": "E3"},
+        )
+
+        answered = {
+            "release_frequency": {"2024-01": 1, "2024-04": 2},
+            "dora_lead_time_days": {"2024-01": 51, "2024-04": 46},
+            "change_failure_count": {"2024-01": 1, "2024-04": 0},
+            "change_failure_rate_percent": {"2024-01": 50, "2024-04": 0},
+            "mean_time_to_recovery_minutes": {"2024-01": 110880},
+        }
+        for metric, expected_values in answered.items():
+            status, body = _get_json(
+                f"http://127.0.0.1:{port}/trend?metric={metric}&start=2024-01&end=2024-04"
+            )
+            assert status == 200
+            values = {entry["sprint"]: entry["value"] for entry in body["values"]}
+            assert values["2024-02"] is None, (
+                f"{metric}: the sprint with no events is not JSON null"
+            )
+            assert values["2024-03"] is None, (
+                f"{metric}: the sprint with no derivable epic link is not JSON null"
+            )
+            for label, expected in expected_values.items():
+                assert values[label] == expected, (
+                    f"{metric}: {label} not answered with {expected!r} (got {values[label]!r})"
+                )
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_refuses_metric_names_outside_the_accepted_measures():
+    """AC3: accepting DORA's four measure names changes nothing about the
+    refusal of a metric that is not one of the accepted measures: 400 with an
+    'unknown metric' error naming the metric."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        for metric in ("lead_time_for_changes", "dora_recovery_minutes", "bogus_metric"):
+            status, body = _get_json(
+                f"http://127.0.0.1:{port}/trend?metric={metric}&start=2024-01&end=2024-02"
+            )
+            assert status == 400
+            assert "unknown metric" in body["error"]
+            assert metric in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_range_working_time_per_step_and_total():
     """AC1: a sprint whose story ran a session started->attempt_failed (150 min)
     and a rework session started->finished (240 min) carries working_time with
