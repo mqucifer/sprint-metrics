@@ -9096,7 +9096,7 @@ def test_trend_release_frequency_and_lead_time():
 
 def test_sprint_range_schema_declares_dora_on_sprint_entry():
     """AC4: SPRINT_RANGE_SCHEMA documents dora as an optional property per
-    sprint entry (not in required), with release_frequency and lead_time_days
+    sprint entry (not in required), with all five DORA measures
     (integer-or-null)."""
     from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
 
@@ -9106,13 +9106,330 @@ def test_sprint_range_schema_declares_dora_on_sprint_entry():
     # dora is in properties
     dora_schema = sprint_entry["properties"]["dora"]
     assert dora_schema["type"] == ["object", "null"]
-    assert dora_schema["required"] == ["release_frequency", "lead_time_days"]
+    assert dora_schema["required"] == [
+        "release_frequency",
+        "lead_time_days",
+        "change_failure_count",
+        "change_failure_rate_percent",
+        "mean_time_to_recovery_minutes",
+    ]
     assert dora_schema["properties"]["release_frequency"] == {
         "type": ["integer", "null"],
     }
     assert dora_schema["properties"]["lead_time_days"] == {
         "type": ["integer", "null"],
     }
+    assert dora_schema["properties"]["change_failure_count"] == {
+        "type": ["integer", "null"],
+    }
+    assert dora_schema["properties"]["change_failure_rate_percent"] == {
+        "type": ["integer", "null"],
+    }
+    assert dora_schema["properties"]["mean_time_to_recovery_minutes"] == {
+        "type": ["integer", "null"],
+    }
+
+
+@requires_db
+def test_range_dora_change_failure_count_and_rate():
+    """AC1: a sprint with two epic releases, one with a returned event after
+    its release moment, reports change_failure_count 1 and rate 50."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dcf_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Epic E1: one story, finished 2024-01-10T00:00:00Z (release moment)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dcf_e1s1",
+                event_type="finished",
+                timestamp="2024-01-10T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        # Epic E1: a returned event on a story after the release moment
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dcf_e1r1",
+                event_type="returned",
+                timestamp="2024-01-11T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-02",
+            ) | {"epic": "E1"},
+        )
+        # Epic E2: one story, finished 2024-01-12T00:00:00Z (release moment)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dcf_e2s1",
+                event_type="finished",
+                timestamp="2024-01-12T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-03",
+            ) | {"epic": "E2"},
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        dora = body["sprints"]["2024-01"]["dora"]
+        assert dora["release_frequency"] == 2
+        assert dora["change_failure_count"] == 1
+        assert dora["change_failure_rate_percent"] == 50
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_dora_change_failure_zero_when_no_rework():
+    """AC2: a sprint with releases but no returned event after release moments
+    reports change_failure_count 0 and rate 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dcz_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Epic E1: one story, finished 2024-01-10T00:00:00Z
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dcz_e1s1",
+                event_type="finished",
+                timestamp="2024-01-10T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        # Epic E2: one story, finished 2024-01-12T00:00:00Z
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dcz_e2s1",
+                event_type="finished",
+                timestamp="2024-01-12T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-02",
+            ) | {"epic": "E2"},
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        dora = body["sprints"]["2024-01"]["dora"]
+        assert dora["change_failure_count"] == 0
+        assert dora["change_failure_rate_percent"] == 0
+        assert dora["mean_time_to_recovery_minutes"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_dora_change_failure_null_when_no_releases():
+    """AC2: a sprint with no releases at all reports JSON null for both."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dcn_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-01: Epic E1 releases (one story)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dcn_e1s1",
+                event_type="finished",
+                timestamp="2024-01-10T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        # 2024-02: no epic-link events (no releases)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dcn_noepic",
+                event_type="finished",
+                timestamp="2024-02-10T00:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
+        assert status == 200
+        # 2024-01 has a release → has values
+        dora1 = body["sprints"]["2024-01"]["dora"]
+        assert dora1["release_frequency"] == 1
+        assert dora1["change_failure_count"] == 0
+        assert dora1["change_failure_rate_percent"] == 0
+        # 2024-02 has no epic-link events → all DORA values null
+        dora2 = body["sprints"]["2024-02"]["dora"]
+        assert dora2 is not None
+        assert dora2["release_frequency"] is None
+        assert dora2["change_failure_count"] is None
+        assert dora2["change_failure_rate_percent"] is None
+        assert dora2["mean_time_to_recovery_minutes"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_dora_mttr_completed_recovery():
+    """AC3: a bad release whose epic re-releases → MTTR is the recovery span in whole minutes."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dmt_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Epic E1: story 1 finished 2024-01-10T00:00:00Z (release moment)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dmt_e1s1",
+                event_type="finished",
+                timestamp="2024-01-10T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        # Epic E1: returned event 2024-01-11T00:00:00Z (after release moment)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dmt_e1r1",
+                event_type="returned",
+                timestamp="2024-01-11T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-02",
+            ) | {"epic": "E1"},
+        )
+        # Epic E1: story 2 finished 2024-01-13T00:00:00Z (re-release)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dmt_e1s2",
+                event_type="finished",
+                timestamp="2024-01-13T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-03",
+            ) | {"epic": "E1"},
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        dora = body["sprints"]["2024-01"]["dora"]
+        assert dora["change_failure_count"] == 1
+        assert dora["change_failure_rate_percent"] == 100
+        # Recovery span: 2024-01-13 - 2024-01-11 = 2 days = 2880 minutes
+        assert dora["mean_time_to_recovery_minutes"] == 2880
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_dora_mttr_none_when_no_completed_recovery():
+    """AC3: a bad release whose epic never re-releases → MTTR is null (not zero)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dmt2_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # Epic E1: story 1 finished 2024-01-10T00:00:00Z (release moment)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dmt2_e1s1",
+                event_type="finished",
+                timestamp="2024-01-10T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ) | {"epic": "E1"},
+        )
+        # Epic E1: returned event 2024-01-11T00:00:00Z (after release moment)
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dmt2_e1r1",
+                event_type="returned",
+                timestamp="2024-01-11T00:00:00Z",
+                sprint="2024-01",
+                created="2024-01-02",
+            ) | {"epic": "E1"},
+        )
+        # No re-release for E1
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        dora = body["sprints"]["2024-01"]["dora"]
+        assert dora["change_failure_count"] == 1
+        assert dora["change_failure_rate_percent"] == 100
+        assert dora["mean_time_to_recovery_minutes"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_dora_change_failure_null_when_no_epic_links():
+    """AC4: a sprint whose stories carry no epic link → all DORA values null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id LIKE 'dnc_%'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-01'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # A finished story with no epic link
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="dnc_s1",
+                event_type="finished",
+                timestamp="2024-01-07T10:00:00Z",
+                sprint="2024-01",
+                created="2024-01-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        dora = body["sprints"]["2024-01"]["dora"]
+        assert dora is not None
+        assert dora["release_frequency"] is None
+        assert dora["lead_time_days"] is None
+        assert dora["change_failure_count"] is None
+        assert dora["change_failure_rate_percent"] is None
+        assert dora["mean_time_to_recovery_minutes"] is None
+    finally:
+        conn.close()
 
 
 @requires_db

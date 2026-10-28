@@ -1285,16 +1285,20 @@ def test_service_md_api_version_paragraph_describes_version_8():
 
 
 def test_metrics_md_names_dora_measures():
-    """AC3: docs/metrics.md's generated table names the two DORA measures with
+    """AC3: docs/metrics.md's generated table names the DORA measures with
     their plain-English display names, metric keys, units, and precision."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = _extract_marked_section(text, "metrics")
-    # Both DORA display names are present
+    # All DORA display names are present
     assert "DORA release frequency" in section
     assert "DORA lead time for changes" in section
-    # Both metric keys are present
+    assert "DORA change failure rate" in section
+    assert "DORA mean time to recovery" in section
+    # All metric keys are present
     assert "`release_frequency`" in section
     assert "`dora_lead_time_days`" in section
+    assert "`change_failure_rate_percent`" in section
+    assert "`mean_time_to_recovery_minutes`" in section
     # Release frequency states its unit (whole count) and what it measures
     release_row = next(
         line for line in section.splitlines() if "`release_frequency`" in line
@@ -1307,3 +1311,14 @@ def test_metrics_md_names_dora_measures():
     )
     assert "whole days" in lead_row
     assert "epic's release moment" in lead_row
+    # Change-failure rate states it is a rate (share of releases that came back)
+    cf_row = next(
+        line for line in section.splitlines() if "`change_failure_rate_percent`" in line
+    )
+    assert "whole percent" in cf_row
+    assert "came back with rework" in cf_row
+    # MTTR states its unit (whole minutes)
+    mttr_row = next(
+        line for line in section.splitlines() if "`mean_time_to_recovery_minutes`" in line
+    )
+    assert "whole minutes" in mttr_row

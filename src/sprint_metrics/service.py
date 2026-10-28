@@ -21,6 +21,7 @@ from opentelemetry.sdk._logs._internal import LogRecord
 from opentelemetry.trace import StatusCode
 
 from sprint_metrics.dora import (
+    calculate_change_failure_and_mttr,
     calculate_dora,
     calculate_dora_lead_time,
     calculate_release_frequency,
@@ -38,6 +39,7 @@ from sprint_metrics.store import (
     insert_event,
     query_card_kinds,
     query_dora_data,
+    query_dora_rework_data,
     query_model_time_splits,
     query_range,
     query_returned_events,
@@ -574,8 +576,18 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             return
                         values = []
                         dora_data = None
+                        dora_rework_data = None
                         if metric in ("release_frequency", "dora_lead_time_days"):
                             dora_data = query_dora_data(conn_holder[0], list(sprints.keys()))
+                        if metric in (
+                            "change_failure_count",
+                            "change_failure_rate_percent",
+                            "mean_time_to_recovery_minutes",
+                        ):
+                            dora_data = query_dora_data(conn_holder[0], list(sprints.keys()))
+                            dora_rework_data = query_dora_rework_data(
+                                conn_holder[0], list(sprints.keys())
+                            )
                         for label in sprints:
                             if label not in has_events:
                                 value = None
@@ -588,6 +600,19 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             elif metric == "dora_lead_time_days":
                                 spans = dora_data["story_spans_days"].get(label)
                                 value = calculate_dora_lead_time(spans)
+                            elif metric in (
+                                "change_failure_count",
+                                "change_failure_rate_percent",
+                                "mean_time_to_recovery_minutes",
+                            ):
+                                released = dora_data["released_epics"].get(label)
+                                cf = calculate_change_failure_and_mttr(
+                                    released,
+                                    label,
+                                    dora_rework_data["epic_finished"],
+                                    dora_rework_data["epic_returned"],
+                                )
+                                value = cf[metric]
                             elif metric == "working_time_minutes":
                                 value = working_time_total(query_working_time_events(conn_holder[0], label))
                             elif metric in ("addition_working_time_minutes", "change_working_time_minutes"):
@@ -853,6 +878,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "output_tokens_middle, output_tokens_total, "
         "cached_input_percent, reasoning_output_percent, "
         "sent_backs_count, release_frequency, dora_lead_time_days, "
+        "change_failure_count, change_failure_rate_percent, "
+        "mean_time_to_recovery_minutes, "
         "working_time_minutes, addition_working_time_minutes, "
         "change_working_time_minutes, "
         "model_time_split_refinement_minutes, "
@@ -990,17 +1017,25 @@ def _attach_range_dora(
     """Attach the DORA block to each range entry.
 
     A sprint with no events carries dora null. A sprint with events but no
-    epic links carries dora with both values null (no data, not zero). A
-    sprint with epic links carries its release frequency and lead time.
+    epic links carries dora with all values null (no data, not zero). A
+    sprint with epic links carries its release frequency, lead time,
+    change-failure count and rate, and mean-time-to-recovery.
     """
     dora_data = query_dora_data(conn, labels)
+    rework_data = query_dora_rework_data(conn, labels)
     for label in labels:
         if label not in has_events:
             result["sprints"][label]["dora"] = None
             continue
         released = dora_data["released_epics"].get(label)
         spans = dora_data["story_spans_days"].get(label)
-        result["sprints"][label]["dora"] = calculate_dora(released, spans)
+        result["sprints"][label]["dora"] = calculate_dora(
+            released,
+            spans,
+            sprint_label=label,
+            epic_finished=rework_data["epic_finished"],
+            epic_returned=rework_data["epic_returned"],
+        )
 
 
 def _attach_range_working_time(

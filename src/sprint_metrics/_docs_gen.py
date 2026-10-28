@@ -90,6 +90,24 @@ def _generate_metrics_content() -> str:
             "epic's release moment, over each released story. None when no "
             "epic link is derivable."
         ),
+        "change_failure_count": (
+            "Return the count of the sprint's releases that came back with "
+            "rework (a 'returned' event on a story of the epic after the "
+            "release moment), as a whole count, shown alongside its rate. "
+            "None when no epic link is derivable."
+        ),
+        "change_failure_rate_percent": (
+            "Return the share of the sprint's releases that came back with "
+            "rework, as a whole percent (the change-failure rate), shown "
+            "alongside its count. None when no epic link is derivable."
+        ),
+        "mean_time_to_recovery_minutes": (
+            "Return the mean, in whole minutes, of the completed recovery "
+            "spans (from the 'returned' event to the epic's next release "
+            "moment) over the sprint's bad releases that re-released. "
+            "None when no epic link is derivable, or no bad release has "
+            "completed a recovery."
+        ),
         "working_time_minutes": (
             "Return the sprint's working-time total, in whole minutes — "
             "the sum of the crew's session windows (from a story's started "

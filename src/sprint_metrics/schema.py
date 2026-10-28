@@ -269,8 +269,17 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         "properties": {
                             "release_frequency": {"type": ["integer", "null"]},
                             "lead_time_days": {"type": ["integer", "null"]},
+                            "change_failure_count": {"type": ["integer", "null"]},
+                            "change_failure_rate_percent": {"type": ["integer", "null"]},
+                            "mean_time_to_recovery_minutes": {"type": ["integer", "null"]},
                         },
-                        "required": ["release_frequency", "lead_time_days"],
+                        "required": [
+                            "release_frequency",
+                            "lead_time_days",
+                            "change_failure_count",
+                            "change_failure_rate_percent",
+                            "mean_time_to_recovery_minutes",
+                        ],
                     },
                     "working_time": {
                         "type": ["object", "null"],

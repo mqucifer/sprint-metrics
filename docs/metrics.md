@@ -9,6 +9,8 @@ BEGIN:metrics
 | Addition working time | `addition_working_time_minutes` | Return the sprint's working time for stories whose kind is 'addition', in whole minutes. None when no stored story row in the sprint carries a kind. |
 | Blocked aging | `blocked_aging_days` | Return the maximum number of whole days any card has been blocked in the sprint, in whole days. |
 | Cached input percent | `cached_input_percent` | Return the sprint's cached-input share of input tokens as a whole percent, or None when no story carries cost. |
+| DORA change failure count | `change_failure_count` | Return the count of the sprint's releases that came back with rework (a 'returned' event on a story of the epic after the release moment), as a whole count, shown alongside its rate. None when no epic link is derivable. |
+| DORA change failure rate | `change_failure_rate_percent` | Return the share of the sprint's releases that came back with rework, as a whole percent (the change-failure rate), shown alongside its count. None when no epic link is derivable. |
 | Change working time | `change_working_time_minutes` | Return the sprint's working time for stories whose kind is 'change', in whole minutes. None when no stored story row in the sprint carries a kind. |
 | Cycle time | `cycle_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
 | Cycle time (min) | `cycle_time_minutes` | Return the mean cycle time in whole minutes over completed cards carrying sub-day timestamps. |
@@ -21,6 +23,7 @@ BEGIN:metrics
 | Input tokens (total) | `input_tokens_total` | Return the total input tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
 | Lead time (min) | `lead_time_minutes` | Return the mean lead time in whole minutes over completed cards carrying sub-day timestamps. |
+| DORA mean time to recovery | `mean_time_to_recovery_minutes` | Return the mean, in whole minutes, of the completed recovery spans (from the 'returned' event to the epic's next release moment) over the sprint's bad releases that re-released. None when no epic link is derivable, or no bad release has completed a recovery. |
 | Model minutes (middle) | `model_minutes_middle` | Return the median whole model minutes across costed stories, or None when no story carries cost. |
 | Model minutes (total) | `model_minutes_total` | Return the total whole model minutes across costed stories, or None when no story carries cost. |
 | Model time split (delivery) | `model_time_split_delivery_minutes` | Return the sprint's model time spent in delivery, in whole minutes — each story's delivery seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |

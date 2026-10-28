@@ -686,6 +686,53 @@ def query_roster_data(conn: Connection, labels: list[str]) -> dict:
     }
 
 
+def query_dora_rework_data(conn: Connection, labels: list[str]) -> dict:
+    """Return data for DORA change-failure and mean-time-to-recovery computation.
+
+    For each epic that has a 'finished' event in the given sprint labels,
+    returns all of that epic's 'finished' and 'returned' events across all
+    sprints (the recovery may span beyond the range).
+
+    Returns a dict with:
+    - 'epic_finished': {epic: [(event_time, sprint), ...]} sorted by event_time
+    - 'epic_returned': {epic: [event_time, ...]} sorted by event_time
+    """
+    placeholders = ",".join(["%s"] * len(labels))
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT epic FROM sprint_metrics.board_events
+        WHERE type = 'finished' AND epic IS NOT NULL AND sprint IN ({placeholders})
+        """,
+        labels,
+    ).fetchall()
+
+    epics = [epic for (epic,) in rows]
+    if not epics:
+        return {"epic_finished": {}, "epic_returned": {}}
+
+    placeholders2 = ",".join(["%s"] * len(epics))
+    rows = conn.execute(
+        f"""
+        SELECT epic, type, event_time, sprint
+        FROM sprint_metrics.board_events
+        WHERE epic IN ({placeholders2}) AND type IN ('finished', 'returned')
+        ORDER BY event_time
+        """,
+        epics,
+    ).fetchall()
+
+    epic_finished: dict[str, list] = {epic: [] for epic in epics}
+    epic_returned: dict[str, list] = {epic: [] for epic in epics}
+
+    for epic, event_type, event_time, sprint in rows:
+        if event_type == "finished":
+            epic_finished[epic].append((event_time, sprint))
+        elif event_type == "returned":
+            epic_returned[epic].append(event_time)
+
+    return {"epic_finished": epic_finished, "epic_returned": epic_returned}
+
+
 def query_dora_data(conn: Connection, labels: list[str]) -> dict:
     """Return DORA computation data for the given sprint labels.
 
