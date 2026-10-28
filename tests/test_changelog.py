@@ -302,17 +302,25 @@ def test_rule_released_headings_dated():
 
 
 def test_post_release_unreleased_added_is_empty_and_safe():
-    """AC2: After a release cut, [Unreleased] Added is empty. No check in this
-    module must produce a violation on that state. The range-verdict test
-    (#809 AC10) pinned specific phrases to [Unreleased] Added and failed after
-    every release cut; it is removed here (#868). Simulate the post-release
-    state and verify the structural checks stay green."""
+    """AC2: After a release cut, [Unreleased] Added is empty. No test in this
+    module must assert specific content in [Unreleased] Added: the range-verdict
+    test (#809 AC10) pinned phrases to [Unreleased] Added and failed after every
+    release cut; it has been removed (#868). Verify the stale test is gone and
+    that the structural checks stay green on a post-release [Unreleased]."""
+    # The stale test pinned specific /range phrases to [Unreleased] Added.
+    # On a post-release changelog those phrases are absent, so that assertion
+    # fails. Verify the stale test is gone so no such assertion remains.
+    source = Path(__file__).read_text()
+    assert not re.search(r"^def test_unreleased_added_records_range_verdict\b", source, re.MULTILINE), (
+        "A test pins [Unreleased] Added content; it fails after any release cut. "
+        "Remove it (#868)."
+    )
+
+    # Structural checks must not flag an empty [Unreleased] body:
     content = CHANGELOG.read_text()
     start, end = _unreleased_body_span(content)
     empty_body = "\n### Added\n\n### Changed\n\n### Fixed\n\n### Removed\n"
     simulated = content[:start] + empty_body + content[end:]
-
-    # Structural checks must not flag an empty [Unreleased] body:
     assert check_unreleased_first_and_subheadings(simulated) == []
 
     with open(PYPROJECT, "rb") as f:
@@ -322,15 +330,3 @@ def test_post_release_unreleased_added_is_empty_and_safe():
 
     check_day = max(s["date"] for s in _parse_released_sections(content))
     assert check_released_order_and_dates(simulated, check_day) == []
-
-    # The stale test asserted specific phrases in [Unreleased] Added.
-    # On the simulated post-release state those phrases are absent, so the
-    # assertion would fail. Verify the stale test is gone so no such
-    # assertion remains in this module.
-    import sys
-    mod = sys.modules[__name__]
-    stale = getattr(mod, "test_unreleased_added_records_range_verdict", None)
-    assert stale is None, (
-        "test_unreleased_added_records_range_verdict pins [Unreleased] Added content; "
-        "it fails after any release cut. Remove it (#868)."
-    )
