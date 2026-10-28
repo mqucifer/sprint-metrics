@@ -16,7 +16,8 @@ window reads null, matching the minute-based metrics' null behaviour.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 _TERMINAL = ("finished", "attempt_failed", "returned")
 
@@ -113,6 +114,120 @@ def working_time_total(
     """
     answer = calculate_working_time(events_by_card)
     return answer["total"] if answer is not None else None
+
+
+def _sprint_span_datetimes(
+    start_date: date, end_date: date, timezone: str
+) -> tuple[datetime, datetime]:
+    """The sprint's registered span as (start, end) datetimes in the registered timezone.
+
+    The span runs from the start of the registered start date to the end of the
+    registered end date (the day after it, at midnight), in the sprint's
+    registered timezone, so a day that is not twenty-four hours (a DST
+    transition) reads as the minutes that actually elapsed.
+    """
+    tz = ZoneInfo(timezone)
+    span_start = datetime(start_date.year, start_date.month, start_date.day, tzinfo=tz)
+    end = end_date + timedelta(days=1)
+    span_end = datetime(end.year, end.month, end.day, tzinfo=tz)
+    return span_start, span_end
+
+
+def _in_span_session_seconds(
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
+    span_start: datetime,
+    span_end: datetime,
+) -> float:
+    """Total seconds of session time inside the sprint span, per clamped window.
+
+    Each closed session window is clamped to the span — only the part inside the
+    registered span counts as session time — and a blocked card's blocked
+    interval within the clamped window is not counted. Summed across the
+    sprint's stories.
+    """
+    total = 0.0
+    for events in events_by_card.values():
+        open_window: datetime | None = None
+        blocked: list[datetime] = []
+        unblocked: list[datetime] = []
+        for event_type, event_time, _role in events:
+            if event_type == "started":
+                open_window = event_time
+                blocked = []
+                unblocked = []
+            elif event_type == "blocked":
+                if open_window is not None:
+                    blocked.append(event_time)
+            elif event_type == "unblocked":
+                if open_window is not None:
+                    unblocked.append(event_time)
+            elif event_type in _TERMINAL:
+                if open_window is not None:
+                    clamped_start = max(open_window, span_start)
+                    clamped_end = min(event_time, span_end)
+                    if clamped_end > clamped_start:
+                        blocked_seconds = _blocked_seconds(
+                            blocked, unblocked, clamped_start, clamped_end
+                        )
+                        window_seconds = (
+                            (clamped_end - clamped_start).total_seconds() - blocked_seconds
+                        )
+                        if window_seconds > 0:
+                            total += window_seconds
+                    open_window = None
+    return total
+
+
+def calculate_idle(
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
+    span: tuple[date, date, str] | None,
+) -> dict | None:
+    """The sprint's idle-time answer: the idle time against the sprint's total registered duration, in whole minutes.
+
+    ``events_by_card`` maps each card_id to its ordered
+    (event_type, event_time, failure_role) rows (the same shape the
+    working-time answer uses). ``span`` is the sprint's registered definition
+    (start_date, end_date, timezone), or None when the sprint has no registered
+    definition.
+
+    The span runs from the start of the registered start date to the end of the
+    registered end date, in the sprint's registered timezone. The total
+    duration is that span in whole minutes (null where the sprint is not
+    registered). The in-span session time is each closed session window clamped
+    to the span (a blocked card's blocked interval within the clamped window not
+    counted), summed across the sprint's stories. The idle time is the span
+    minus the in-span session time, in whole minutes; it is null where the
+    sprint is not registered or where no session ran inside the span — the whole
+    span is not reported as idle when no session ran.
+    """
+    if span is None:
+        return None
+    start_date, end_date, timezone = span
+    span_start, span_end = _sprint_span_datetimes(start_date, end_date, timezone)
+    span_seconds = (span_end - span_start).total_seconds()
+    sprint_duration_minutes = round(span_seconds / 60)
+    in_span_session_seconds = _in_span_session_seconds(events_by_card, span_start, span_end)
+    if in_span_session_seconds <= 0:
+        idle_minutes = None
+    else:
+        idle_minutes = round((span_seconds - in_span_session_seconds) / 60)
+    return {
+        "sprint_duration_minutes": sprint_duration_minutes,
+        "idle_minutes": idle_minutes,
+    }
+
+
+def idle_minutes_total(
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
+    span: tuple[date, date, str] | None,
+) -> int | None:
+    """The sprint's idle time in whole minutes, or None when the sprint is not registered or no session ran inside the span.
+
+    The same idle minutes the /range idle answer carries, answered on its own
+    for /trend and the prior/delta figures.
+    """
+    answer = calculate_idle(events_by_card, span)
+    return answer["idle_minutes"] if answer is not None else None
 
 
 def _card_total_minutes(

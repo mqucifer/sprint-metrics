@@ -159,6 +159,7 @@ ALL_METRICS: frozenset[str] = frozenset(
         "change_working_time_minutes",
         "model_time_split_refinement_minutes",
         "model_time_split_delivery_minutes",
+        "idle_minutes",
     }
 )
 

@@ -122,6 +122,15 @@ def _generate_metrics_content() -> str:
             "costed stories. None when no story in the sprint carries a "
             "model-time split."
         ),
+        "idle_minutes": (
+            "Return the sprint's idle time — the time that passed with no "
+            "session running against the sprint's total registered "
+            "duration — in whole minutes (the registered span minus the "
+            "in-span session time, in the sprint's registered timezone; a "
+            "session window clamped to the span, a rework session never "
+            "re-sent as 'started' reads as idle). None where the sprint is "
+            "not registered or no session ran inside the span."
+        ),
     }
 
     display_overrides: dict[str, str] = {

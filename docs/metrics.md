@@ -17,6 +17,7 @@ BEGIN:metrics
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards, as a whole count. |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1, as a whole count. |
 | First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt, as a whole percent. |
+| Idle time | `idle_minutes` | Return the sprint's idle time — the time that passed with no session running against the sprint's total registered duration — in whole minutes (the registered span minus the in-span session time, in the sprint's registered timezone; a session window clamped to the span, a rework session never re-sent as 'started' reads as idle). None where the sprint is not registered or no session ran inside the span. |
 | Input tokens (middle) | `input_tokens_middle` | Return the median input tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Input tokens (total) | `input_tokens_total` | Return the total input tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. |

@@ -567,6 +567,26 @@ def query_working_time_events(
     return result
 
 
+def query_sprint_span(conn: Connection, label: str) -> tuple[date, date, str] | None:
+    """Return the sprint's registered definition (start_date, end_date, timezone), or None.
+
+    The definition the idle-time answer is measured against: the span from the
+    start of the registered start date to the end of the registered end date, in
+    the sprint's registered timezone. ``None`` when the sprint has no registered
+    definition in the sprints table.
+    """
+    row = conn.execute(
+        """
+        SELECT start_date, end_date, timezone FROM sprint_metrics.sprints
+        WHERE name = %s
+        """,
+        (label,),
+    ).fetchone()
+    if row is None:
+        return None
+    return (row[0], row[1], row[2])
+
+
 def query_card_kinds(conn: Connection, label: str) -> dict[str, str | None]:
     """Return the sprint's story kinds, keyed by card_id.
 

@@ -43,6 +43,7 @@ from sprint_metrics.store import (
     query_returned_events,
     query_roster_data,
     query_sprint,
+    query_sprint_span,
     query_started_count,
     query_working_time_events,
     resolve_sprint_range,
@@ -52,9 +53,11 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
     calculate_cost_by_kind,
+    calculate_idle,
     calculate_model_time_split,
     calculate_working_time,
     cost_by_kind_total,
+    idle_minutes_total,
     model_time_split_total,
     working_time_total,
 )
@@ -486,6 +489,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
+                        _attach_range_idle(result, labels, conn_holder[0])
                         _attach_range_verdict(result, labels, has_events)
                         _attach_range_standouts(result, labels, has_events)
                         self._send_json(200, result)
@@ -608,6 +612,11 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 )
                                 value = model_time_split_total(
                                     query_model_time_splits(conn_holder[0], label), part
+                                )
+                            elif metric == "idle_minutes":
+                                value = idle_minutes_total(
+                                    query_working_time_events(conn_holder[0], label),
+                                    query_sprint_span(conn_holder[0], label),
                                 )
                             else:
                                 value = metric_value(metric, sprints[label])
@@ -834,7 +843,14 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "whole minutes (each story's split converted to whole minutes "
         "and summed over the costed stories); a sprint whose stories "
         "carry no model-time split (or no costed stories at all) "
-        "reads null (no data, not zero).",
+        "reads null (no data, not zero). "
+        "Each entry also carries an idle answer: the sprint's idle "
+        "time — the time that passed with no session running — "
+        "against the sprint's total registered duration, in whole "
+        "minutes (a session window clamped to the registered span; "
+        "a rework session never re-sent as started reads as idle); "
+        "a sprint with no events or no registered definition reads "
+        "null.",
     ),
     (
         "GET",
@@ -856,7 +872,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "working_time_minutes, addition_working_time_minutes, "
         "change_working_time_minutes, "
         "model_time_split_refinement_minutes, "
-        "model_time_split_delivery_minutes. "
+        "model_time_split_delivery_minutes, "
+        "idle_minutes. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null. working_time_minutes returns the sprint's "
@@ -867,7 +884,11 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "carries no kind data). model_time_split_refinement_minutes and "
         "model_time_split_delivery_minutes return the sprint's model time "
         "split into refinement and delivery, in whole minutes (null where "
-        "no story in the sprint carries a split).",
+        "no story in the sprint carries a split). idle_minutes returns the "
+        "sprint's idle time — the time that passed with no session running "
+        "against the sprint's total registered duration — in whole minutes "
+        "(null where the sprint is not registered or carries no session "
+        "timestamps).",
     ),
     (
         "GET",
@@ -1150,6 +1171,34 @@ def _attach_range_model_time_split(
             ):
                 cur, pri = flat[label][name], flat[prior_label][name]
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+def _attach_range_idle(result: dict, labels: list[str], conn) -> None:
+    """Attach the per-sprint idle-time answer to the range response.
+
+    Each sprint's entry carries its idle answer — the idle time (the time that
+    passed with no session running) against the sprint's total registered
+    duration, in whole minutes. A sprint with no events or no registered
+    definition reads null, and the flat ``idle_minutes`` name appears in each
+    later entry's prior and delta (null where a sprint has no data).
+    """
+    flat: dict[str, dict[str, object]] = {}
+    for index, label in enumerate(labels):
+        events_by_card = query_working_time_events(conn, label)
+        span = query_sprint_span(conn, label)
+        answer = calculate_idle(events_by_card, span)
+        flat[label] = {"idle_minutes": answer["idle_minutes"] if answer is not None else None}
+        result["sprints"][label]["idle"] = answer
+        if index == 0:
+            continue
+        prior_label = labels[index - 1]
+        entry = result["sprints"][label]
+        if entry["prior"] is not None:
+            entry["prior"]["idle_minutes"] = flat[prior_label]["idle_minutes"]
+        if entry["delta"] is not None:
+            cur = flat[label]["idle_minutes"]
+            pri = flat[prior_label]["idle_minutes"]
+            entry["delta"]["idle_minutes"] = cur - pri if cur is not None and pri is not None else None
 
 
 def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str]) -> None:

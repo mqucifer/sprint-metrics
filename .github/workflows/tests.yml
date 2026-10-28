@@ -186,8 +186,8 @@ jobs:
           PREVIOUS_BODY=$(tick 8081)
           echo "$RANGE_BODY"
           echo "OK: POST /sprints and POST /events returned 200, GET /range returned 200"
-          echo "$RANGE_BODY" | jq -e '.api_version == "8"' > /dev/null
-          echo "OK: api_version is 8"
+          echo "$RANGE_BODY" | jq -e '.api_version == "9"' > /dev/null
+          echo "OK: api_version is 9"
           # api_version is pinned above; every other field must match the earlier image,
           # except the escalation measures this release removes (#774, #775) and the
           # rework answer completed by the rework stories (#803, #813, #814), which
@@ -198,18 +198,20 @@ jobs:
           # standouts story (#810), all covered by del(.window), and the
           # working-time answer added by the working-time story (#805),
           # and the cost-by-kind answer added by the cost-by-kind story (#818),
-          # and the model-time split answer added by the model-time split story (#805).
+          # and the model-time split answer added by the model-time split story (#805),
+          # and the idle-time answer added by the idle-time story (#805).
           RANGE_FILTER='del(.api_version)
             | del(.window.verdicts)
             | del(.window)
             | del(.sprints[] | .escalation_rate_percent, .escalation_count, .flags.escalation_rate_percent)
-            | del(.sprints[] | (.prior, .delta) | objects | .escalation_rate_percent, .escalation_count, .working_time_minutes, .addition_working_time_minutes, .change_working_time_minutes, .model_time_split_refinement_minutes, .model_time_split_delivery_minutes)
+            | del(.sprints[] | (.prior, .delta) | objects | .escalation_rate_percent, .escalation_count, .working_time_minutes, .addition_working_time_minutes, .change_working_time_minutes, .model_time_split_refinement_minutes, .model_time_split_delivery_minutes, .idle_minutes)
             | del(.sprints[] | .rework)
             | del(.sprints[] | .roster)
             | del(.sprints[] | .dora)
             | del(.sprints[] | .working_time)
             | del(.sprints[] | .cost_by_kind)
-            | del(.sprints[] | .model_time_split)'
+            | del(.sprints[] | .model_time_split)
+            | del(.sprints[] | .idle)'
           if echo "$RANGE_BODY" | grep -q escalation; then
             echo "ERROR: GET /range still carries an escalation measure"
             exit 1

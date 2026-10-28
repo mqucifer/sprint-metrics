@@ -306,6 +306,14 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         },
                         "required": ["refinement", "delivery"],
                     },
+                    "idle": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "sprint_duration_minutes": {"type": "integer"},
+                            "idle_minutes": {"type": ["integer", "null"]},
+                        },
+                        "required": ["sprint_duration_minutes", "idle_minutes"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {
@@ -329,6 +337,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "model_time_split_delivery_minutes": {
                                 "type": ["integer", "null"]
                             },
+                            "idle_minutes": {"type": ["integer", "null"]},
                         },
                     },
                     "delta": {
@@ -354,6 +363,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "model_time_split_delivery_minutes": {
                                 "type": ["integer", "null"]
                             },
+                            "idle_minutes": {"type": ["integer", "null"]},
                         },
                     },
                 },
