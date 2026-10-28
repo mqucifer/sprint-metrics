@@ -11,7 +11,8 @@ from datetime import UTC, date
 import pytest
 
 from sprint_metrics.card import Card
-from sprint_metrics.service import _compute_cost_summary, _median, _start_service, run
+from sprint_metrics.metrics import _compute_cost_summary, _median
+from sprint_metrics.service import _start_service, run
 from sprint_metrics.store import init_db
 from sprint_metrics.verdict import MEASURE_REGISTRY
 
@@ -395,7 +396,7 @@ def _stub_range_result(labels):
 def test_attach_range_cost_entry_carries_cost_and_prior_delta():
     """AC1/AC9: each range entry carries story_costs and cost matching /sprint, and the
     second entry's prior and delta carry the six flat cost names (current minus prior)."""
-    from sprint_metrics.service import _attach_range_cost, _compute_cost_summary, _cost_flat
+    from sprint_metrics.metrics import _attach_range_cost, _compute_cost_summary, _cost_flat
 
     prior_cards = [
         _cost_card("p1", 1080, 2500, 1000, 600, 100),
@@ -449,7 +450,7 @@ def test_attach_range_cost_entry_carries_cost_and_prior_delta():
 def test_attach_range_cost_prior_no_costed_stories_nulls_cost():
     """AC2: the preceding sprint has events but no costed stories, so its non-null prior
     object carries null for the six cost values and the delta carries null for each."""
-    from sprint_metrics.service import _attach_range_cost
+    from sprint_metrics.metrics import _attach_range_cost
 
     prior_cards = [Card(created=date(2024, 1, 1), card_id="p")]
     current_cards = [
@@ -480,7 +481,7 @@ def test_attach_range_cost_prior_no_costed_stories_nulls_cost():
 def test_attach_range_cost_null_entry_for_no_events():
     """AC3: a range entry for a sprint with no events is the all-null entry, with
     story_costs an empty array and cost null, alongside the entry's other null metrics."""
-    from sprint_metrics.service import _attach_range_cost
+    from sprint_metrics.metrics import _attach_range_cost
 
     current_cards = [_cost_card("c1", 3480, 4000, 1800, 900, 200)]
     sprints = {"2024-01": [], "2024-02": current_cards}
