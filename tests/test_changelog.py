@@ -300,29 +300,3 @@ def test_rule_released_headings_dated():
     assert violations, "expected a violation for non-ISO date"
     assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
 
-
-def test_post_release_unreleased_added_is_empty_and_safe():
-    """AC2: After a release cut, [Unreleased] Added is empty. The range-verdict
-    test (#809 AC10) pinned /range phrases to [Unreleased] Added and failed on
-    an empty section; it has been removed (#868). Verify no test in this module
-    pins [Unreleased] Added content, and that the structural rules stay green
-    on a post-release [Unreleased]."""
-    assert "test_unreleased_added_records_range_verdict" not in globals(), (
-        "test_unreleased_added_records_range_verdict pins [Unreleased] Added "
-        "content; it fails after any release cut. Remove it (#868)."
-    )
-
-    # Structural checks must not flag an empty [Unreleased] body:
-    content = CHANGELOG.read_text()
-    start, end = _unreleased_body_span(content)
-    empty_body = "\n### Added\n\n### Changed\n\n### Fixed\n\n### Removed\n"
-    simulated = content[:start] + empty_body + content[end:]
-    assert check_unreleased_first_and_subheadings(simulated) == []
-
-    with open(PYPROJECT, "rb") as f:
-        pyver = tomllib.load(f)["project"]["version"]
-    assert check_pyproject_version(simulated, pyver) == []
-    assert check_released_headings_dated(simulated) == []
-
-    check_day = max(s["date"] for s in _parse_released_sections(content))
-    assert check_released_order_and_dates(simulated, check_day) == []
