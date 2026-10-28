@@ -301,32 +301,36 @@ def test_rule_released_headings_dated():
     assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
 
 
-def test_no_test_pins_unreleased_added_content():
-    """A release cut moves [Unreleased] entries to the dated section and leaves
-    [Unreleased] Added empty. A test that asserts specific content in that
-    section fails after every release (the 1.3.1 cut dropped its pinned
-    [Unreleased] tests for this reason; #868 drops the range-verdict one).
-    No such test may remain in this module."""
-    import ast
+def test_post_release_unreleased_added_is_empty_and_safe():
+    """AC2: After a release cut, [Unreleased] Added is empty. No check in this
+    module must produce a violation on that state. The range-verdict test
+    (#809 AC10) pinned specific phrases to [Unreleased] Added and failed after
+    every release cut; it is removed here (#868). Simulate the post-release
+    state and verify the structural checks stay green."""
+    content = CHANGELOG.read_text()
+    start, end = _unreleased_body_span(content)
+    empty_body = "\n### Added\n\n### Changed\n\n### Fixed\n\n### Removed\n"
+    simulated = content[:start] + empty_body + content[end:]
 
-    source = Path(__file__).read_text()
-    tree = ast.parse(source)
+    # Structural checks must not flag an empty [Unreleased] body:
+    assert check_unreleased_first_and_subheadings(simulated) == []
 
-    for node in tree.body:
-        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
-            continue
-        if node.name == "test_no_test_pins_unreleased_added_content":
-            continue
-        segment = ast.get_source_segment(source, node)
-        if segment is None:
-            continue
-        # A pinned-content test reads the changelog, isolates the [Unreleased]
-        # Added body, and asserts a phrase or value is in it.
-        reads_changelog = "CHANGELOG.read_text()" in segment
-        isolates_added = "Added" in segment and "_unreleased_body_span" in segment
-        asserts_content = " in added" in segment
-        if reads_changelog and isolates_added and asserts_content:
-            raise AssertionError(
-                f"{node.name} pins specific content to [Unreleased] Added; "
-                "it will fail after any release cut (#868)"
-            )
+    with open(PYPROJECT, "rb") as f:
+        pyver = tomllib.load(f)["project"]["version"]
+    assert check_pyproject_version(simulated, pyver) == []
+    assert check_released_headings_dated(simulated) == []
+
+    check_day = max(s["date"] for s in _parse_released_sections(content))
+    assert check_released_order_and_dates(simulated, check_day) == []
+
+    # The stale test asserted specific phrases in [Unreleased] Added.
+    # On the simulated post-release state those phrases are absent, so the
+    # assertion would fail. Verify the stale test is gone so no such
+    # assertion remains in this module.
+    import sys
+    mod = sys.modules[__name__]
+    stale = getattr(mod, "test_unreleased_added_records_range_verdict", None)
+    assert stale is None, (
+        "test_unreleased_added_records_range_verdict pins [Unreleased] Added content; "
+        "it fails after any release cut. Remove it (#868)."
+    )
