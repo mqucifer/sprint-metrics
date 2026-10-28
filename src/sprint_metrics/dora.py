@@ -51,13 +51,14 @@ def calculate_change_failure_and_mttr(
 ) -> dict:
     """Return the sprint's change-failure count, rate, and mean-time-to-recovery.
 
-    A release is "bad" (came back with rework) when, after its release moment,
-    a story of the epic carries a 'returned' event. The change-failure count is
-    the number of bad releases in the sprint; the rate is the whole percent of
-    the sprint's releases that came back with rework, shown alongside its count.
-    The mean time to recovery is the mean, in whole minutes, of the completed
-    recovery spans (from the 'returned' event to the epic's next release
-    moment), over the bad releases that re-released.
+    A release is "bad" (came back with rework) when, after its release moment
+    (the latest 'finished' event for that epic in the sprint), a story of the
+    epic carries a 'returned' event. The change-failure count is the number of
+    bad releases in the sprint; the rate is the whole percent of the sprint's
+    releases that came back with rework, shown alongside its count. The mean
+    time to recovery is the mean, in whole minutes, of the completed recovery
+    spans (from the 'returned' event to the epic's next release moment), over
+    the bad releases that re-released.
 
     All three values are None when no epic link is derivable (released_epics
     is None) or when no epic releases in the sprint (released_epics is empty).
@@ -79,6 +80,7 @@ def calculate_change_failure_and_mttr(
 
     bad_release_count = 0
     recovery_spans_minutes: list[float] = []
+    release_count = 0
 
     for epic in released_epics:
         # Find the release moment: the latest 'finished' event for this epic in this sprint
@@ -89,6 +91,7 @@ def calculate_change_failure_and_mttr(
         ]
         if not epic_events:
             continue
+        release_count += 1
         release_moment = max(epic_events)
 
         # Find returned events after the release moment
@@ -113,8 +116,15 @@ def calculate_change_failure_and_mttr(
             span_minutes = (next_finished - first_returned).total_seconds() / 60
             recovery_spans_minutes.append(span_minutes)
 
+    if release_count == 0:
+        return {
+            "change_failure_count": None,
+            "change_failure_rate_percent": None,
+            "mean_time_to_recovery_minutes": None,
+        }
+
     count = bad_release_count
-    rate = round(count / len(released_epics) * 100)
+    rate = round(count / release_count * 100)
 
     if recovery_spans_minutes:
         mttr = round(sum(recovery_spans_minutes) / len(recovery_spans_minutes))
@@ -134,6 +144,7 @@ def calculate_dora(
     sprint_label: str | None = None,
     epic_finished: dict[str, list[tuple[datetime, str]]] | None = None,
     epic_returned: dict[str, list[datetime]] | None = None,
+    cf_released_epics: list[str] | None = None,
 ) -> dict:
     """Return the sprint's DORA block.
 
@@ -144,16 +155,19 @@ def calculate_dora(
 
     When ``sprint_label``, ``epic_finished`` and ``epic_returned`` are all
     provided, the block also carries the change-failure count, rate, and
-    mean-time-to-recovery.
+    mean-time-to-recovery. ``cf_released_epics`` is the list of epics that
+    have at least one 'finished' event in the sprint (used for the
+    change-failure measure); when omitted, ``released_epics`` is used.
     """
     result = {
         "release_frequency": calculate_release_frequency(released_epics),
         "lead_time_days": calculate_dora_lead_time(story_spans_days),
     }
     if sprint_label is not None and epic_finished is not None and epic_returned is not None:
+        cf_epics = cf_released_epics if cf_released_epics is not None else released_epics
         result.update(
             calculate_change_failure_and_mttr(
-                released_epics, sprint_label, epic_finished, epic_returned
+                cf_epics, sprint_label, epic_finished, epic_returned
             )
         )
     return result

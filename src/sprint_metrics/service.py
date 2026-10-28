@@ -605,9 +605,17 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 "change_failure_rate_percent",
                                 "mean_time_to_recovery_minutes",
                             ):
-                                released = dora_data["released_epics"].get(label)
+                                cf_epics: list[str] | None = None
+                                if dora_rework_data["epic_finished"]:
+                                    cf_epics = [
+                                        epic
+                                        for epic, events in dora_rework_data["epic_finished"].items()
+                                        if any(sprint == label for _t, sprint in events)
+                                    ]
+                                    if not cf_epics:
+                                        cf_epics = []
                                 cf = calculate_change_failure_and_mttr(
-                                    released,
+                                    cf_epics,
                                     label,
                                     dora_rework_data["epic_finished"],
                                     dora_rework_data["epic_returned"],
@@ -1029,12 +1037,25 @@ def _attach_range_dora(
             continue
         released = dora_data["released_epics"].get(label)
         spans = dora_data["story_spans_days"].get(label)
+        # For change-failure, an epic "releases" in a sprint if it has at
+        # least one 'finished' event in that sprint. Compute this from the
+        # rework data (all finished events per epic across all sprints).
+        cf_released: list[str] | None = None
+        if rework_data["epic_finished"]:
+            cf_released = [
+                epic
+                for epic, events in rework_data["epic_finished"].items()
+                if any(sprint == label for _t, sprint in events)
+            ]
+            if not cf_released:
+                cf_released = []
         result["sprints"][label]["dora"] = calculate_dora(
             released,
             spans,
             sprint_label=label,
             epic_finished=rework_data["epic_finished"],
             epic_returned=rework_data["epic_returned"],
+            cf_released_epics=cf_released,
         )
 
 

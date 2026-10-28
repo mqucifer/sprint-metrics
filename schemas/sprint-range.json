@@ -55,6 +55,9 @@
             "first_attempt_denominator",
             "superseded_count",
             "superseded_points",
+            "change_failure_count",
+            "change_failure_rate_percent",
+            "mean_time_to_recovery_minutes",
             "model_minutes_middle",
             "model_minutes_total",
             "input_tokens_middle",
@@ -520,6 +523,120 @@
               ]
             },
             "superseded_points": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "change_failure_count": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "change_failure_rate_percent": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "mean_time_to_recovery_minutes": {
               "type": [
                 "object",
                 "null"
@@ -1261,11 +1378,32 @@
                   "integer",
                   "null"
                 ]
+              },
+              "change_failure_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_failure_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "mean_time_to_recovery_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
               }
             },
             "required": [
               "release_frequency",
-              "lead_time_days"
+              "lead_time_days",
+              "change_failure_count",
+              "change_failure_rate_percent",
+              "mean_time_to_recovery_minutes"
             ]
           },
           "working_time": {
