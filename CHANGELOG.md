@@ -36,6 +36,7 @@
 - The /range cost answer (per-story cost list, cost middle/total, the six flat cost names, and the range attachment) moves from `sprint_metrics.service` to `sprint_metrics.metrics`, so cost work lands in the one module that owns the cost calculations
 - The /range rework attachment (each range entry's rework object) and the rework answer's description fragment move from `sprint_metrics.service` to `sprint_metrics.rework`, so rework work lands in the one module that owns the rework calculation
 - The /range dora attachment (each range entry's dora block) and the dora answer's description fragment move from `sprint_metrics.service` to `sprint_metrics.dora`, so DORA work lands in the one file that owns the DORA calculations
+- The /range working_time attachment (each range entry's working_time object and its flat `working_time_minutes` name in prior/delta) and the /range cost_by_kind attachment (each range entry's cost_by_kind object and its flat `addition_working_time_minutes` and `change_working_time_minutes` names in prior/delta), along with their description fragments, move from `sprint_metrics.service` to `sprint_metrics.time_splits`, so working-time work lands in the one file that owns the working-time calculations
 
 ### Fixed
 
