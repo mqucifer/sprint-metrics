@@ -489,7 +489,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
-                        _attach_range_idle(result, labels, conn_holder[0])
+                        _attach_range_idle(result, conn_holder[0], labels, has_events)
                         _attach_range_verdict(result, labels, has_events)
                         _attach_range_standouts(result, labels, has_events)
                         self._send_json(200, result)
@@ -1173,32 +1173,49 @@ def _attach_range_model_time_split(
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 
 
-def _attach_range_idle(result: dict, labels: list[str], conn) -> None:
-    """Attach the per-sprint idle-time answer to the range response.
+def _attach_range_idle(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the per-sprint idle-time answer to the range response, and its flat name to prior/delta.
 
     Each sprint's entry carries its idle answer — the idle time (the time that
     passed with no session running) against the sprint's total registered
-    duration, in whole minutes. A sprint with no events or no registered
-    definition reads null, and the flat ``idle_minutes`` name appears in each
-    later entry's prior and delta (null where a sprint has no data).
+    duration, in whole minutes. A sprint with no events carries idle null,
+    matching the other null metrics; a sprint with events but no registered
+    definition (or no session ran inside the span) carries its idle time as
+    null (the whole span is not reported as idle when no session ran). The flat
+    ``idle_minutes`` name appears in each later entry's prior and delta, null
+    where a sprint has no data.
     """
-    flat: dict[str, dict[str, object]] = {}
+    answers: dict[str, dict | None] = {}
+    totals: dict[str, int | None] = {}
+    for label in labels:
+        if label in has_events:
+            answer = calculate_idle(
+                query_working_time_events(conn, label),
+                query_sprint_span(conn, label),
+            )
+            answers[label] = answer
+            totals[label] = answer["idle_minutes"] if answer is not None else None
+        else:
+            answers[label] = None
+            totals[label] = None
     for index, label in enumerate(labels):
-        events_by_card = query_working_time_events(conn, label)
-        span = query_sprint_span(conn, label)
-        answer = calculate_idle(events_by_card, span)
-        flat[label] = {"idle_minutes": answer["idle_minutes"] if answer is not None else None}
-        result["sprints"][label]["idle"] = answer
+        entry = result["sprints"][label]
+        entry["idle"] = answers[label]
         if index == 0:
             continue
         prior_label = labels[index - 1]
-        entry = result["sprints"][label]
-        if entry["prior"] is not None:
-            entry["prior"]["idle_minutes"] = flat[prior_label]["idle_minutes"]
-        if entry["delta"] is not None:
-            cur = flat[label]["idle_minutes"]
-            pri = flat[prior_label]["idle_minutes"]
-            entry["delta"]["idle_minutes"] = cur - pri if cur is not None and pri is not None else None
+        current_total = totals[label]
+        prior_total = totals[prior_label]
+        if isinstance(entry.get("prior"), dict):
+            entry["prior"]["idle_minutes"] = prior_total
+        if isinstance(entry.get("delta"), dict):
+            entry["delta"]["idle_minutes"] = (
+                current_total - prior_total
+                if current_total is not None and prior_total is not None
+                else None
+            )
 
 
 def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str]) -> None:
