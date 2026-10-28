@@ -1,10 +1,11 @@
 """Tests for the CI docker job's /range comparison in .github/workflows/tests.yml.
 
 The docker job is the project's field-for-field check that a release's image still
-answers /range the way the previous main's image did, modulo the changes the story
-declares. The story's change (a new per-sprint ``rework`` key) must be accounted
-for in that comparison, and the job's api_version pin must track the version in
-force rather than a constant assumed to hold across the Goal.
+answers /range the way the previous main's image did. The comparison is derived
+from the previous response's key structure: every key the previous response carries
+must have the same value in the new response, while new keys are accepted without
+a per-release edit of a deletion list. The job's api_version pin must track the
+version in force rather than a constant assumed to hold across the Goal.
 """
 
 import re
