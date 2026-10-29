@@ -256,6 +256,28 @@ def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str])
     result["window"]["verdicts"] = window_verdicts(flat, data_bearing, MEASURE_REGISTRY)
 
 
+def _attach_range_standouts(result: dict, labels: list[str], has_events: set[str]) -> None:
+    """Attach the window's standouts to the range's window object.
+
+    The standouts are the window's biggest improvement, worst dip, the sprints
+    where a measure turned, and the too-short flag. A gap sprint (no events) is
+    bridged, not read as zero. Ties are broken by the earlier sprint pair, then
+    the measure earlier in the registry order.
+    """
+    data_bearing = [label for label in labels if label in has_events]
+    flat: dict[str, dict[str, object]] = {}
+    for label in labels:
+        entry = result["sprints"][label]
+        values = dict(entry)
+        values.update(_cost_flat(entry.get("cost")))
+        flat[label] = values
+    standouts = window_standouts(flat, data_bearing, MEASURE_REGISTRY)
+    result["window"]["biggest_improvement"] = standouts["biggest_improvement"]
+    result["window"]["worst_dip"] = standouts["worst_dip"]
+    result["window"]["turns"] = standouts["turns"]
+    result["window"]["too_short"] = standouts["too_short"]
+
+
 _RANGE_VERDICT_DESCRIPTION = (
     "The response also carries a verdicts "
     "object with one entry per registry measure: it judges the window's "

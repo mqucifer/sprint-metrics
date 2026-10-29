@@ -28,9 +28,9 @@ from sprint_metrics.dora import (
     calculate_release_frequency,
 )
 from sprint_metrics.metrics import (
+    _RANGE_COST_DESCRIPTION,
     ALL_METRICS,
     _attach_range_cost,
-    _cost_flat,
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
@@ -70,11 +70,13 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
     _RANGE_COST_BY_KIND_DESCRIPTION,
+    _RANGE_IDLE_DESCRIPTION,
+    _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
     _RANGE_WORKING_TIME_DESCRIPTION,
     _attach_range_cost_by_kind,
+    _attach_range_idle,
+    _attach_range_model_time_split,
     _attach_range_working_time,
-    calculate_idle,
-    calculate_model_time_split,
     cost_by_kind_total,
     idle_minutes_total,
     model_time_split_total,
@@ -82,9 +84,8 @@ from sprint_metrics.time_splits import (
 )
 from sprint_metrics.verdict import (
     _RANGE_VERDICT_DESCRIPTION,
-    MEASURE_REGISTRY,
+    _attach_range_standouts,
     _attach_range_verdict,
-    window_standouts,
 )
 
 VALID_EVENT_TYPES = frozenset(
@@ -740,6 +741,36 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
     return actual_port
 
 
+# The part of the /range description that is not specific to any one answer:
+# the response's shape (the per-entry prior-sprint delta and the per-return
+# semantics of failure_breakdown and top_failure_causes).
+_RANGE_BASE_DESCRIPTION = (
+    "Return metrics for a range of sprints in chronological order. "
+    "Each entry includes the prior-sprint delta. "
+    "failure_breakdown and top_failure_causes count returns, "
+    "one per return, by (failure class, returning role). "
+)
+
+# One description fragment per /range answer, owned by its concern module, in
+# the order the answers are laid out in the generated /range rows. Adding a new
+# /range measure adds one fragment here and one row to the generated table.
+_RANGE_ANSWER_DESCRIPTIONS = (
+    _RANGE_WINDOW_DESCRIPTION,
+    _RANGE_VERDICT_DESCRIPTION,
+    _RANGE_COST_DESCRIPTION,
+    _RANGE_REWORK_DESCRIPTION,
+    _RANGE_ROSTER_DESCRIPTION,
+    _RANGE_DORA_DESCRIPTION,
+    _RANGE_WORKING_TIME_DESCRIPTION,
+    _RANGE_COST_BY_KIND_DESCRIPTION,
+    _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
+    _RANGE_IDLE_DESCRIPTION,
+)
+
+# The composed /range description: the base plus every answer's fragment.
+_RANGE_DESCRIPTION = _RANGE_BASE_DESCRIPTION + "".join(_RANGE_ANSWER_DESCRIPTIONS)
+
+
 SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "POST",
@@ -756,30 +787,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "GET",
         "/range",
-        "Return metrics for a range of sprints in chronological order. "
-        + _RANGE_WINDOW_DESCRIPTION
-        + _RANGE_VERDICT_DESCRIPTION
-        + "Each entry includes the prior-sprint delta. "
-        "failure_breakdown and top_failure_causes count returns, "
-        "one per return, by (failure class, returning role). "
-        + _RANGE_REWORK_DESCRIPTION
-        + _RANGE_ROSTER_DESCRIPTION
-        + _RANGE_DORA_DESCRIPTION
-        + _RANGE_WORKING_TIME_DESCRIPTION
-        + _RANGE_COST_BY_KIND_DESCRIPTION
-        + "Each entry also carries a model_time_split answer: the "
-        "sprint's model time split into refinement and delivery, in "
-        "whole minutes (each story's split converted to whole minutes "
-        "and summed over the costed stories); a sprint whose stories "
-        "carry no model-time split (or no costed stories at all) "
-        "reads null (no data, not zero). "
-        "Each entry also carries an idle answer: the sprint's idle "
-        "time — the time that passed with no session running — "
-        "against the sprint's total registered duration, in whole "
-        "minutes (a session window clamped to the registered span; "
-        "a rework session never re-sent as started reads as idle); "
-        "a sprint with no events or no registered definition reads "
-        "null.",
+        _RANGE_DESCRIPTION,
     ),
     (
         "GET",
@@ -862,128 +870,6 @@ def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
         pass
 
 
-def _attach_range_model_time_split(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the model-time split answer to each range entry, and its flat names to prior/delta.
-
-    A sprint with no events carries model_time_split null. A sprint with
-    events whose costed stories carry the five-field cost payload but no split
-    (the pre-Goal payloads), or a sprint with no costed stories at all, also
-    carries model_time_split null (no data, not zero; no backfill). For every
-    sprint after the first, the flat names model_time_split_refinement_minutes
-    and model_time_split_delivery_minutes appear in that entry's prior and
-    delta whenever those objects are present, null where the corresponding
-    sprint has no split data.
-    """
-    answers: dict[str, dict | None] = {}
-    flat: dict[str, dict[str, int | None]] = {}
-    for label in labels:
-        if label in has_events:
-            answer = calculate_model_time_split(query_model_time_splits(conn, label))
-            answers[label] = answer
-            if answer is not None:
-                flat[label] = {
-                    "model_time_split_refinement_minutes": answer["refinement"],
-                    "model_time_split_delivery_minutes": answer["delivery"],
-                }
-            else:
-                flat[label] = {
-                    "model_time_split_refinement_minutes": None,
-                    "model_time_split_delivery_minutes": None,
-                }
-        else:
-            answers[label] = None
-            flat[label] = {
-                "model_time_split_refinement_minutes": None,
-                "model_time_split_delivery_minutes": None,
-            }
-    for index, label in enumerate(labels):
-        entry = result["sprints"][label]
-        entry["model_time_split"] = answers[label]
-        if index == 0:
-            continue
-        prior_label = labels[index - 1]
-        if isinstance(entry.get("prior"), dict):
-            for name in (
-                "model_time_split_refinement_minutes",
-                "model_time_split_delivery_minutes",
-            ):
-                entry["prior"][name] = flat[prior_label][name]
-        if isinstance(entry.get("delta"), dict):
-            for name in (
-                "model_time_split_refinement_minutes",
-                "model_time_split_delivery_minutes",
-            ):
-                cur, pri = flat[label][name], flat[prior_label][name]
-                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
-
-
-def _attach_range_idle(
-    result: dict, conn, labels: list[str], has_events: set[str]
-) -> None:
-    """Attach the per-sprint idle-time answer to the range response, and its flat name to prior/delta.
-
-    Each sprint's entry carries its idle answer — the idle time (the time that
-    passed with no session running) against the sprint's total registered
-    duration, in whole minutes. A sprint with no events carries idle null,
-    matching the other null metrics; a sprint with events but no registered
-    definition (or no session ran inside the span) carries its idle time as
-    null (the whole span is not reported as idle when no session ran). The flat
-    ``idle_minutes`` name appears in each later entry's prior and delta, null
-    where a sprint has no data.
-    """
-    answers: dict[str, dict | None] = {}
-    totals: dict[str, int | None] = {}
-    for label in labels:
-        if label in has_events:
-            answer = calculate_idle(
-                query_working_time_events(conn, label),
-                query_sprint_span(conn, label),
-            )
-            answers[label] = answer
-            totals[label] = answer["idle_minutes"] if answer is not None else None
-        else:
-            answers[label] = None
-            totals[label] = None
-    for index, label in enumerate(labels):
-        entry = result["sprints"][label]
-        entry["idle"] = answers[label]
-        if index == 0:
-            continue
-        prior_label = labels[index - 1]
-        current_total = totals[label]
-        prior_total = totals[prior_label]
-        if isinstance(entry.get("prior"), dict):
-            entry["prior"]["idle_minutes"] = prior_total
-        if isinstance(entry.get("delta"), dict):
-            entry["delta"]["idle_minutes"] = (
-                current_total - prior_total
-                if current_total is not None and prior_total is not None
-                else None
-            )
-
-
-def _attach_range_standouts(result: dict, labels: list[str], has_events: set[str]) -> None:
-    """Attach the window's standouts to the range's window object.
-
-    The standouts are the window's biggest improvement, worst dip, the sprints
-    where a measure turned, and the too-short flag. A gap sprint (no events) is
-    bridged, not read as zero. Ties are broken by the earlier sprint pair, then
-    the measure earlier in the registry order.
-    """
-    data_bearing = [label for label in labels if label in has_events]
-    flat: dict[str, dict[str, object]] = {}
-    for label in labels:
-        entry = result["sprints"][label]
-        values = dict(entry)
-        values.update(_cost_flat(entry.get("cost")))
-        flat[label] = values
-    standouts = window_standouts(flat, data_bearing, MEASURE_REGISTRY)
-    result["window"]["biggest_improvement"] = standouts["biggest_improvement"]
-    result["window"]["worst_dip"] = standouts["worst_dip"]
-    result["window"]["turns"] = standouts["turns"]
-    result["window"]["too_short"] = standouts["too_short"]
 
 
 def _validate_cost_fields(card: dict) -> str | None:

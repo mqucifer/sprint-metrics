@@ -362,21 +362,30 @@ def test_service_md_has_handwritten_intro():
 
 def test_service_md_generated_section_contains_all_endpoints():
     """AC2: the text between BEGIN:service and END:service in docs/service.md
-    lists exactly the service's endpoints: GET /metrics and GET /sprint are gone."""
+    lists exactly the service's endpoints, with the /range endpoint laid out per
+    measure: one row per concern module's description fragment, in between the
+    fixed first and last rows. GET /metrics and GET /sprint are gone."""
     path = DOCS_DIR / "service.md"
     text = path.read_text()
     section = _extract_marked_section(text, "service")
     lines = section.splitlines()
     rows = [line.split("|") for line in lines if line.startswith("| GET") or line.startswith("| POST")]
     endpoints = [(row[1].strip(), row[2].strip()) for row in rows]
-    assert endpoints == [
-        ("POST", "/sprints"),
-        ("POST", "/events"),
-        ("GET", "/range"),
+    # The fixed rows at either end of the table.
+    assert endpoints[0] == ("POST", "/sprints")
+    assert endpoints[1] == ("POST", "/events")
+    assert endpoints[-3:] == [
         ("GET", "/trend"),
         ("GET", "/schema/event"),
         ("GET", "/health"),
     ]
+    # Everything in between is a per-measure GET /range row: the base row plus
+    # one row per concern module's description fragment.
+    range_rows = endpoints[2:-3]
+    assert len(range_rows) > 1, "expected the /range endpoint laid out per measure"
+    assert all(endpoint == ("GET", "/range") for endpoint in range_rows), (
+        "rows between POST /events and GET /trend are not all GET /range rows"
+    )
 
 
 def test_service_md_prose_lists_endpoints_and_documents_metrics_410():
@@ -1098,9 +1107,11 @@ def test_service_md_range_row_describes_rework_answer():
     each sprint's entry carries the stories sent back to the business analyst,
     out of the stories started that sprint, each naming the story, the step it
     was sent back from, and why — and that a send-back counts in the sprint of
-    the returned event."""
+    the returned event. The /range rows are laid out per measure, so the rework
+    content lives in its own row."""
     section = _extract_marked_section((DOCS_DIR / "service.md").read_text(), "service")
-    row = next(line for line in section.splitlines() if line.startswith("| GET | /range"))
+    range_rows = [line for line in section.splitlines() if line.startswith("| GET | /range")]
+    row = next(line for line in range_rows if "rework" in line)
     for phrase in (
         "rework",
         "Business Analyst",
@@ -1110,7 +1121,7 @@ def test_service_md_range_row_describes_rework_answer():
         "reason",
         "sprint of the returned event",
     ):
-        assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
+        assert phrase in row, f"GET /range rework row missing {phrase!r}: {row}"
 
 
 def test_metrics_md_computation_details_describes_rework_answer():
@@ -1283,9 +1294,12 @@ def test_no_documentation_shows_a_cli_flag():
 def test_service_md_range_row_describes_roster_answer():
     """AC5: the GET /range row in docs/service.md's generated section describes
     the roster: per-sprint completed stories, released epics and achieved Goals
-    by identifier; sprints whose stories carry no links read null (no backfill)."""
+    by identifier; sprints whose stories carry no links read null (no backfill).
+    The /range rows are laid out per measure, so the roster content lives in its
+    own row."""
     section = _extract_marked_section((DOCS_DIR / "service.md").read_text(), "service")
-    row = next(line for line in section.splitlines() if line.startswith("| GET | /range"))
+    range_rows = [line for line in section.splitlines() if line.startswith("| GET | /range")]
+    row = next(line for line in range_rows if "roster" in line)
     for phrase in (
         "roster",
         "completed",
@@ -1295,7 +1309,7 @@ def test_service_md_range_row_describes_roster_answer():
         "null",
         "no backfill",
     ):
-        assert phrase in row, f"GET /range row missing {phrase!r}: {row}"
+        assert phrase in row, f"GET /range roster row missing {phrase!r}: {row}"
 
 
 def test_service_md_api_version_paragraph_describes_version_9():
