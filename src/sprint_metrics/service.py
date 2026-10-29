@@ -31,7 +31,6 @@ from sprint_metrics.metrics import (
     _RANGE_COST_DESCRIPTION,
     ALL_METRICS,
     _attach_range_cost,
-    _cost_flat,
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
@@ -85,9 +84,8 @@ from sprint_metrics.time_splits import (
 )
 from sprint_metrics.verdict import (
     _RANGE_VERDICT_DESCRIPTION,
-    MEASURE_REGISTRY,
+    _attach_range_standouts,
     _attach_range_verdict,
-    window_standouts,
 )
 
 VALID_EVENT_TYPES = frozenset(
@@ -872,28 +870,6 @@ def _emit_log(severity: SeverityNumber, body: str, attributes: dict) -> None:
         pass
 
 
-
-
-def _attach_range_standouts(result: dict, labels: list[str], has_events: set[str]) -> None:
-    """Attach the window's standouts to the range's window object.
-
-    The standouts are the window's biggest improvement, worst dip, the sprints
-    where a measure turned, and the too-short flag. A gap sprint (no events) is
-    bridged, not read as zero. Ties are broken by the earlier sprint pair, then
-    the measure earlier in the registry order.
-    """
-    data_bearing = [label for label in labels if label in has_events]
-    flat: dict[str, dict[str, object]] = {}
-    for label in labels:
-        entry = result["sprints"][label]
-        values = dict(entry)
-        values.update(_cost_flat(entry.get("cost")))
-        flat[label] = values
-    standouts = window_standouts(flat, data_bearing, MEASURE_REGISTRY)
-    result["window"]["biggest_improvement"] = standouts["biggest_improvement"]
-    result["window"]["worst_dip"] = standouts["worst_dip"]
-    result["window"]["turns"] = standouts["turns"]
-    result["window"]["too_short"] = standouts["too_short"]
 
 
 def _validate_cost_fields(card: dict) -> str | None:
