@@ -1,88 +1,129 @@
 # Architecture
 
-The system as built (2026-10-26, last release 4.0.0): Goal
-mqucifer/sprint-metrics#749's target diagram, corrected to what the code
+The system as built (2026-10-28, last release 4.2.0): Goal
+mqucifer/sprint-metrics#750's target diagram, corrected to what the code
 shows. This file is the repository's diagram of record: each Goal's target
 diagram is drawn from it, and becomes it once the Goal is done (ADR 0036).
 Update it when the code changes.
 
 ```mermaid
-C4Container
-    title sprint-metrics, as the repository has it, after Goal 749 of mqucifer/sprint-metrics
-    Person(crew, "The crew", "Every tick: sends sprints and events, reads one sprint range back")
-    System(site, "Crew-presentation site", "The Sponsor's sprint overview, built from that range")
-    System(otel, "Observability backend", "Ingests the service's OpenTelemetry logs and traces over OTLP")
-    System(pg, "Shared Postgres server", "Holds the service's own sprint_metrics schema and user")
-    Boundary(img, "sprint-metrics container image") {
-        Container(entry, "Image entry point: the service, no arguments (new in #751)", "Runs the service with no flags", "Python 3.12")
-        Container(service, "HTTP service", "POST /sprints, POST /events, GET /range, GET /trend, GET /health, GET /schema/event, GET /schema/trend")
-        Container(measures, "Measures and flags", "Pure metric calculations, thresholds, flags")
-        Container(dora, "DORA calculations", "DORA's four measures, per sprint: release frequency and lead time for changes")
-        Container(store, "Postgres store", "Schema DDL, idempotent event upsert, sprint/range/trend queries; the per-sprint roster (stories completed, epics released, Goals achieved) is its query_roster_data; all SQL lives here")
-        Container(contract, "Published contract", "api_version (responses 5, event intake 1; a new value per response change), JSON schemas in schemas/ pinned per tag, docs")
+C4Component
+    title sprint-metrics, as the repository has it, after Goal 750 of mqucifer/sprint-metrics
+    Boundary(pkg, "sprint_metrics package") {
+        Component(svc, "service.py", "Stateful HTTP service and entry point: event intake (superset: 'returned' type, epic/goal/kind links, cost split), sprint registration, /range and /trend queries, /health, and the JSON schemas served at /schema/event and /schema/trend.")
+        Component(card, "card.py", "Card dataclass and card parsing.")
+        Component(metrics, "metrics.py", "Pure per-sprint metric calculations: cycle/lead time, throughput, WIP, blocked aging, first-attempt, failure breakdown, cost measures.")
+        Component(win, "verdict.py (new, #802)", "Window verdict across the range: better/worse/flat per measure (first vs last data-bearing sprint, against each measure's better direction) plus standouts: biggest improvement, worst dip, turn sprints. Owns the measure registry with each measure's better direction.")
+        Component(rwk, "rework.py (new, #803)", "Rework at every step: stories sent back to refinement via 'returned' events — out of those started, from which step, why — alongside the review/QA returns already shipped; per sprint and across sprints.")
+        Component(dst, "dora.py (new, #804)", "DORA's four measures per sprint: release frequency, lead time for changes, change failure, mean time to recovery — derived from epic/goal links and the stored story events (epic release = last story's finished event).")
+        Component(tim, "time_splits.py (new, #805)", "Working time per session window, idle time against the registered sprint span, cost by story kind, model-time split refinement vs delivery.")
+        Component(thresholds, "thresholds.py", "Built-in default thresholds and flag calculation.")
+        Component(report, "report.py", "API_VERSION and metric display names.")
+        Component(sr, "sprint_range.py", "Sprint-label parsing and the per-sprint range JSON; the top-level window object of the /range response.")
+        Component(schema, "schema.py", "JSON Schema documents: event intake gains 'returned', goal, kind and the cost split; sprint-range and trend schemas gain the new measures.")
+        Component(store, "store.py", "Postgres persistence: board_events (new goal and kind columns; epic stored on every row that carries it; 'returned' in the type CHECK) and sprints; the per-sprint roster (stories completed, epics released, Goals achieved) and its /range attachment; query functions for session windows, started counts, returned rows, epic/goal/kind, DORA and roster data.")
+        Component(otel, "telemetry.py", "OpenTelemetry setup: tracer, logger, OTLP exporter.")
+        Component(docgen, "_docs_gen.py", "Dev tool: regenerates the marked docs/ sections and the schemas/ files from the code, now including the new measures.")
     }
-    Rel(crew, entry, "Runs the image by tag (ghcr.io/mqucifer/sprint-metrics); tick = POST /sprints, POST /events, GET /range", "HTTP")
-    Rel(site, service, "The sprint range the overview is built from", "HTTP")
-    Rel(entry, service, "Starts the service process")
-    Rel(service, measures, "Computes the measures each response carries")
-    Rel(service, dora, "Computes DORA's four measures per sprint")
-    Rel(service, store, "Reads and writes stored sprints and events, including the roster via query_roster_data")
-    Rel(service, contract, "Stamps api_version into every response")
-    Rel(store, pg, "sprint_metrics schema, own user", "SQL")
-    Rel(service, otel, "Logs and traces over OTLP", "OTLP")
-UpdateElementStyle(entry, $borderColor="green")
+    ContainerDb(db, "Postgres", "sprint_metrics schema: board_events and sprints; new columns goal and kind; 'returned' rows; epic/goal/kind on every row that carries them.")
+
+    Rel(svc, metrics, "computes per-sprint metrics from reconstructed cards")
+    Rel(svc, win, "the window verdict and standouts over the range's per-sprint values")
+    Rel(svc, rwk, "per-sprint rework answers")
+    Rel(svc, dst, "per-sprint DORA answers")
+    Rel(svc, tim, "per-sprint working-time, idle, cost-by-kind and model-split answers")
+    Rel(svc, report, "API_VERSION")
+    Rel(svc, sr, "range parsing and range JSON")
+    Rel(svc, schema, "event-intake and trend schemas")
+    Rel(svc, store, "upserts events, answers queries")
+    Rel(svc, otel, "tracer and logger per request")
+    Rel(sr, thresholds, "flags against the defaults")
+    Rel(dst, store, "epic and goal links per story")
+    Rel(tim, store, "session windows, sprint spans, card kinds and model splits")
+    Rel(store, card, "reconstructs Card objects from stored rows")
+    Rel(store, db, "all SQL")
+    Rel(schema, win, "the measure registry names the window's verdict entries")
+    Rel(docgen, metrics, "reads the calculate_* docstrings and ALL_METRICS")
+    Rel(docgen, report, "reads _METRIC_COLUMNS")
+    Rel(docgen, thresholds, "reads DEFAULT_THRESHOLDS")
+    Rel(docgen, schema, "reads the schema documents")
+    Rel(docgen, svc, "reads SERVICE_ENDPOINTS, the /range base and the per-answer description fragments")
+UpdateElementStyle(win, $borderColor="green")
+UpdateElementStyle(rwk, $borderColor="green")
+UpdateElementStyle(dst, $borderColor="green")
+UpdateElementStyle(tim, $borderColor="green")
 ```
 
 ## Where the build differs from the target
 
-- **The response `api_version` is "5", not "3".** The target expected one
-  bump per remaining epic: "2 after #752, 3 after #753". In the build each
-  response change bumped the value in its own release: GET /sprint retired
-  with release 2.0.0 (`api_version` "2"), the custom Prometheus GET /metrics
-  and the single-sprint response contract retired with release 3.0.0 ("3"),
-  #753's escalation removal shipped in release 4.0.0 ("4"), and the
-  per-sprint roster that GET /range now carries (stories #804 and #806, not
-  yet released) retired "4" — `sprint_metrics.report.API_VERSION` is "5".
-  Event intake keeps `api_version` "1" throughout, as the target has it.
-- **The observability backend scrapes no OTEL metrics.** The target describes
-  it as also scraping the service's OTEL metrics. The build emits none:
-  `telemetry.py` configures only an OTLP span exporter and an OTLP log
-  exporter, and the service's custom Prometheus GET /metrics endpoint — the
-  only scrapeable metrics surface — was retired in 3.0.0. The diagram above
-  drops the scrape from the backend's description and from the OTLP relation.
-- **The two endpoint retirements are attributed to different epics.** The
-  target credits both GET /sprint and GET /metrics to #752. In the build,
-  GET /sprint answered 410 from story #768, which shipped in release 2.0.0
-  alongside epic #751's CLI retirement, and GET /metrics was retired in epic
-  #752 with release 3.0.0. The service's shape is as the target draws it;
-  the endpoint list above is the present one, and the retirements the
-  target's labels carried — GET /sprint (410 since 2.0.0) and the custom
-  Prometheus GET /metrics (retired in 3.0.0) — are named here instead.
-- **Two /range attachments still live in `service.py`.** The record has
-  each /range answer in one concern module, from its calculation to its
-  response attachment to its description fragment, with `service.py`
-  composing the response and holding no per-answer attachment logic. The
-  build breaks that for the model-time-split and idle answers:
-  `service.py` defines `_attach_range_model_time_split` and
-  `_attach_range_idle` with their full query/calculate/attach loops, and
-  carries their /range description sentences inline in
-  `SERVICE_ENDPOINTS` rather than as fragments. Their calculations
-  (`calculate_model_time_split`, `calculate_idle`) and the same-shaped
-  attachments and fragments of the working-time and cost-by-kind answers
-  already live in `time_splits.py`, which owns all four answers'
-  calculations; moving the two attachments and their description
-  fragments into `time_splits.py` was triaged from the QA finding on
-  #861, and changes no /range output.
+- **The roster lives in `store.py`, not `dora.py`.** The target places
+  "roster per sprint: stories completed, epics released, Goals achieved"
+  inside `dora.py`. In the build `dora.py` owns only DORA's four measures
+  (pure functions plus its /range attachment), and the roster is the
+  `query_roster_data` SQL in `store.py`, with its /range attachment
+  (`_attach_range_roster`) and description fragment there too — because all
+  SQL lives in `store.py`. The diagram above moves the roster to `store.py`
+  and draws `dora.py` as the four DORA measures.
+- **`rework.py` has no store relation.** The target's
+  `Rel(rwk, store, "returned rows and started counts")` is not in the build:
+  `rework.py` is pure, and `service.py` itself pulls the returned rows
+  (`query_returned_events`) and started counts (`query_started_count`) from
+  `store.py` and hands them to `calculate_rework`. The diagram drops the
+  edge; the two store calls ride `service.py`'s store relation.
+- **The response `api_version` is "9", not "5".** The target says
+  `report.py` moves 4 to 5 with the first release that changes a response.
+  The build bumped the value once per response change: the per-sprint roster
+  shipped as "5" (release 4.1.0), and the later /range additions — the DORA
+  block with its four measures, the window verdicts and standouts, the
+  working-time, cost-by-kind, model-time-split and idle answers — took it
+  to "9" (release 4.2.0). Event intake keeps `api_version` "1"
+  throughout, as the target has it.
+- **The service serves the JSON schemas too.** The target's service
+  description names /range, /trend and /health; the build also answers GET
+  /schema/event and GET /schema/trend with the published JSON Schema
+  documents, and the diagram names them.
+- **`_docs_gen.py` reaches the /range answer text through `service.py`, not
+  the answer modules.** The target's `Rel(docgen, win)`, `Rel(docgen, rwk)`,
+  `Rel(docgen, dst)` and `Rel(docgen, tim)` ("reads the measure registry",
+  "reads the rework docstrings", "reads the DORA docstrings", "reads the
+  time-split docstrings") are not in the build: `_docs_gen.py` imports
+  none of `verdict.py`, `rework.py`, `dora.py` or `time_splits.py`, and
+  reads the calculate_* docstrings only in `metrics.py`. The per-answer
+  description fragments are composed in `service.py`
+  (`_RANGE_BASE_DESCRIPTION`, `_RANGE_ANSWER_DESCRIPTIONS`), and it is that
+  composed text plus `SERVICE_ENDPOINTS` the docs tool imports. The diagram
+  keeps the four answer-module fragments out of the docs tool's edges and
+  labels its `service.py` edge accordingly.
+- **`schema.py` reads the measure registry.** The target omits the edge, but
+  `schema.py` imports `MEASURE_REGISTRY` from `verdict.py` to name the
+  window's `verdicts` entries in the sprint-range schema. The diagram draws
+  it.
 
-Everything else in the target matches the build: the entry point runs the
-service with no arguments and the CLI report tool (cards file in,
-table/markdown/JSON/Prometheus out, threshold and metric-selection options,
---scrape server) is gone (#751); the escalation measures are removed while
-the `escalated` event stays accepted and stored (#753); all SQL lives in
-`store.py`; the JSON schemas are pinned in `schemas/` at each release tag.
-The per-sprint roster and DORA's measures sit in different modules by design:
-the roster (stories completed, epics released, Goals achieved) is the
-`query_roster_data` SQL in `store.py`, attached by the service, because all
-SQL lives in `store.py`; `dora.py` owns the DORA calculations — pure
-functions — and its range attachment (the /range dora block), called by
-the service.
+Everything else in the target matches the build: the event intake accepts
+the superset ('returned' alongside the existing types, optional top-level
+`epic` and `goal`, optional `card.kind`, the finished event's cost payload
+with its `model_time_split` sub-object); `verdict.py` owns the measure
+registry (each scalar measure's better direction, unit and precision) and
+judges the first data-bearing sprint against the last, skipping gap sprints,
+with standouts (biggest improvement, worst dip), turns and the `too_short`
+marker; `rework.py` owns the rework answer (sent backs, QA returns, by
+step); `dora.py` derives all four DORA measures from epic/goal links and
+the stored story events, an epic releasing in the sprint where its last
+story's finished event is; `time_splits.py` owns the working-time, idle
+(against the registered sprint span), cost-by-kind and model-time-split
+calculations and, with the other answer modules, every /range attachment
+and description fragment — `service.py` composes the response and holds no
+per-answer attachment logic, so the two attachments the 749 record named as
+left in `service.py` (model-time-split and idle) now sit in `time_splits.py`;
+`store.py`'s DDL carries the new `goal` and `kind` columns, `'returned'` in
+the type CHECK and epic/goal/kind on every row that carries them, with the
+query functions for session windows, started counts, returned rows, card
+kinds, model splits, sprint spans, DORA and roster data; `schema.py`'s
+event-intake schema names 'returned', goal, kind and the cost split and its
+sprint-range schema carries the new measures, the roster and the top-level
+window (verdicts, biggest_improvement, worst_dip, turns, too_short);
+`sprint_range.py` attaches the top-level window object; `report.py`,
+`thresholds.py`, `telemetry.py` (tracer, logger, OTLP exporter) and the
+docs tool's other reads (`metrics.py`'s docstrings and `ALL_METRICS`,
+`report.py`'s `_METRIC_COLUMNS`, `thresholds.py`'s
+`DEFAULT_THRESHOLDS`, the schema documents) are as the target draws them.
