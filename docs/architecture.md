@@ -58,6 +58,21 @@ UpdateElementStyle(entry, $borderColor="green")
   the endpoint list above is the present one, and the retirements the
   target's labels carried — GET /sprint (410 since 2.0.0) and the custom
   Prometheus GET /metrics (retired in 3.0.0) — are named here instead.
+- **Two /range attachments still live in `service.py`.** The record has
+  each /range answer in one concern module, from its calculation to its
+  response attachment to its description fragment, with `service.py`
+  composing the response and holding no per-answer attachment logic. The
+  build breaks that for the model-time-split and idle answers:
+  `service.py` defines `_attach_range_model_time_split` and
+  `_attach_range_idle` with their full query/calculate/attach loops, and
+  carries their /range description sentences inline in
+  `SERVICE_ENDPOINTS` rather than as fragments. Their calculations
+  (`calculate_model_time_split`, `calculate_idle`) and the same-shaped
+  attachments and fragments of the working-time and cost-by-kind answers
+  already live in `time_splits.py`, which owns all four answers'
+  calculations; moving the two attachments and their description
+  fragments into `time_splits.py` was triaged from the QA finding on
+  #861, and changes no /range output.
 
 Everything else in the target matches the build: the entry point runs the
 service with no arguments and the CLI report tool (cards file in,
