@@ -14,9 +14,9 @@ from sprint_metrics.schema import (
     TREND_SCHEMA,
 )
 from sprint_metrics.service import (
-    SERVICE_ENDPOINTS,
     _RANGE_ANSWER_DESCRIPTIONS,
     _RANGE_BASE_DESCRIPTION,
+    SERVICE_ENDPOINTS,
 )
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 

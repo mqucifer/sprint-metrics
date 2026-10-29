@@ -28,8 +28,8 @@ from sprint_metrics.dora import (
     calculate_release_frequency,
 )
 from sprint_metrics.metrics import (
-    ALL_METRICS,
     _RANGE_COST_DESCRIPTION,
+    ALL_METRICS,
     _attach_range_cost,
     _cost_flat,
     metric_value,
