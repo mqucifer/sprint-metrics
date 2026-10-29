@@ -7,7 +7,7 @@
 ### Changed
 
 - docs/service.md's generated /range section is laid out per measure: each /range answer (the window and its verdicts, the cost, the rework, the roster, DORA, the working time, the cost by kind, the model time split, and the idle time) is its own row in the endpoints table, each row's description coming from that answer's concern module's description fragment, so a new /range measure adds one fragment and one row rather than rewriting the other measures' text
-- `SERVICE_ENDPOINTS`' /range description is composed from those per-measure fragments instead of a single hand-written string, and now carries the cost answer's fragment (previously omitted from the composed /range description); the model_time_split and idle description fragments and their attachment functions move from `sprint_metrics.service` to `sprint_metrics.time_splits`
+- `SERVICE_ENDPOINTS`' /range description is composed from those per-measure fragments instead of a single hand-written string, and now carries the cost answer's fragment (previously omitted from the composed /range description); the model_time_split and idle description fragments and their attachment functions move from `sprint_metrics.service` to `sprint_metrics.time_splits`, and the standouts attachment function moves from `sprint_metrics.service` to `sprint_metrics.verdict`
 
 ### Fixed
 
