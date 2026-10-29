@@ -460,3 +460,22 @@ _RANGE_COST_BY_KIND_DESCRIPTION = (
     "whole minutes; a sprint whose stored story rows carry no "
     "kind reads null (no data, not zero). "
 )
+
+_RANGE_MODEL_TIME_SPLIT_DESCRIPTION = (
+    "Each entry also carries a model_time_split answer: the "
+    "sprint's model time split into refinement and delivery, in "
+    "whole minutes (each story's split converted to whole minutes "
+    "and summed over the costed stories); a sprint whose stories "
+    "carry no model-time split (or no costed stories at all) "
+    "reads null (no data, not zero). "
+)
+
+_RANGE_IDLE_DESCRIPTION = (
+    "Each entry also carries an idle answer: the sprint's idle "
+    "time — the time that passed with no session running — "
+    "against the sprint's total registered duration, in whole "
+    "minutes (a session window clamped to the registered span; "
+    "a rework session never re-sent as started reads as idle); "
+    "a sprint with no events or no registered definition reads "
+    "null."
+)

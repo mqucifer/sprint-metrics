@@ -13,7 +13,11 @@ from sprint_metrics.schema import (
     SPRINT_RANGE_SCHEMA,
     TREND_SCHEMA,
 )
-from sprint_metrics.service import SERVICE_ENDPOINTS
+from sprint_metrics.service import (
+    SERVICE_ENDPOINTS,
+    _RANGE_ANSWER_DESCRIPTIONS,
+    _RANGE_BASE_DESCRIPTION,
+)
 from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 
 
@@ -199,7 +203,16 @@ def _generate_service_content() -> str:
         "|---|---|---|",
     ]
     for method, path, description in SERVICE_ENDPOINTS:
-        lines.append(f"| {method} | {path} | {description} |")
+        if path == "/range":
+            # Lay the /range endpoint out per measure: the base row, then one
+            # row per concern module's description fragment, so a new /range
+            # measure adds one fragment and one row rather than rewriting the
+            # other measures' text.
+            lines.append(f"| {method} | {path} | {_RANGE_BASE_DESCRIPTION.strip()} |")
+            for fragment in _RANGE_ANSWER_DESCRIPTIONS:
+                lines.append(f"| {method} | {path} | {fragment.strip()} |")
+        else:
+            lines.append(f"| {method} | {path} | {description} |")
     return "\n".join(lines) + "\n"
 
 

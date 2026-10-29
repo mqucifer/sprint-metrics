@@ -29,6 +29,7 @@ from sprint_metrics.dora import (
 )
 from sprint_metrics.metrics import (
     ALL_METRICS,
+    _RANGE_COST_DESCRIPTION,
     _attach_range_cost,
     _cost_flat,
     metric_value,
@@ -70,6 +71,8 @@ from sprint_metrics.store import (
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
     _RANGE_COST_BY_KIND_DESCRIPTION,
+    _RANGE_IDLE_DESCRIPTION,
+    _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
     _RANGE_WORKING_TIME_DESCRIPTION,
     _attach_range_cost_by_kind,
     _attach_range_working_time,
@@ -740,6 +743,36 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
     return actual_port
 
 
+# The part of the /range description that is not specific to any one answer:
+# the response's shape (the per-entry prior-sprint delta and the per-return
+# semantics of failure_breakdown and top_failure_causes).
+_RANGE_BASE_DESCRIPTION = (
+    "Return metrics for a range of sprints in chronological order. "
+    "Each entry includes the prior-sprint delta. "
+    "failure_breakdown and top_failure_causes count returns, "
+    "one per return, by (failure class, returning role). "
+)
+
+# One description fragment per /range answer, owned by its concern module, in
+# the order the answers are laid out in the generated /range rows. Adding a new
+# /range measure adds one fragment here and one row to the generated table.
+_RANGE_ANSWER_DESCRIPTIONS = (
+    _RANGE_WINDOW_DESCRIPTION,
+    _RANGE_VERDICT_DESCRIPTION,
+    _RANGE_COST_DESCRIPTION,
+    _RANGE_REWORK_DESCRIPTION,
+    _RANGE_ROSTER_DESCRIPTION,
+    _RANGE_DORA_DESCRIPTION,
+    _RANGE_WORKING_TIME_DESCRIPTION,
+    _RANGE_COST_BY_KIND_DESCRIPTION,
+    _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
+    _RANGE_IDLE_DESCRIPTION,
+)
+
+# The composed /range description: the base plus every answer's fragment.
+_RANGE_DESCRIPTION = _RANGE_BASE_DESCRIPTION + "".join(_RANGE_ANSWER_DESCRIPTIONS)
+
+
 SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "POST",
@@ -756,30 +789,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "GET",
         "/range",
-        "Return metrics for a range of sprints in chronological order. "
-        + _RANGE_WINDOW_DESCRIPTION
-        + _RANGE_VERDICT_DESCRIPTION
-        + "Each entry includes the prior-sprint delta. "
-        "failure_breakdown and top_failure_causes count returns, "
-        "one per return, by (failure class, returning role). "
-        + _RANGE_REWORK_DESCRIPTION
-        + _RANGE_ROSTER_DESCRIPTION
-        + _RANGE_DORA_DESCRIPTION
-        + _RANGE_WORKING_TIME_DESCRIPTION
-        + _RANGE_COST_BY_KIND_DESCRIPTION
-        + "Each entry also carries a model_time_split answer: the "
-        "sprint's model time split into refinement and delivery, in "
-        "whole minutes (each story's split converted to whole minutes "
-        "and summed over the costed stories); a sprint whose stories "
-        "carry no model-time split (or no costed stories at all) "
-        "reads null (no data, not zero). "
-        "Each entry also carries an idle answer: the sprint's idle "
-        "time — the time that passed with no session running — "
-        "against the sprint's total registered duration, in whole "
-        "minutes (a session window clamped to the registered span; "
-        "a rework session never re-sent as started reads as idle); "
-        "a sprint with no events or no registered definition reads "
-        "null.",
+        _RANGE_DESCRIPTION,
     ),
     (
         "GET",
