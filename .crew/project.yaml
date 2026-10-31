@@ -4,11 +4,11 @@
 version: 3
 intent:
   scope:
-    purpose: Work out how the crew's delivery went, for each sprint and across many
-      sprints, for the Sponsor. A service the crew feeds and reads back; nobody uses
-      it directly.
+    purpose: Compute significant metrics and trends from the events the crew sends,
+      for each sprint and across many sprints, for the Sponsor. A service the crew
+      feeds and reads back; nobody uses it directly.
     serves:
-    - who: The Sponsor, reading the sprint overview on the crew-presentation site
+    - who: The Sponsor, through the answers the crew reads back
       needs:
       - What stories, epics and Goals got done.
       - How long each step took, as working time.
@@ -25,6 +25,7 @@ intent:
     - The day's replay and a story's life cycle. They come from the crew's own event
       record, carried in delivery-history.
     - An MCP server, for now.
+    - How its answers are presented, where, or to whom. That's for whoever shows them.
   release:
     deploys: false
     publishes: true
