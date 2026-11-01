@@ -26,7 +26,8 @@
         "escalated",
         "attempt_failed",
         "superseded",
-        "returned"
+        "returned",
+        "filed"
       ]
     },
     "timestamp": {
@@ -135,6 +136,15 @@
       "items": {
         "type": "integer"
       }
+    },
+    "filer": {
+      "type": "string"
+    },
+    "opener": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
     }
   }
 }

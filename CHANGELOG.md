@@ -4,6 +4,8 @@
 
 ### Added
 
+- POST /events accepts a new ninth event type, `filed`, carrying the per-card filing facts (`filer`, `opener`, `project`) as optional string fields; the facts are stored as nullable columns on the card's `filed` event row with the existing fill-NULL resend semantics. A new `query_filed_events` store function returns a sprint's stored filing facts in event order
+
 ### Changed
 
 ### Fixed

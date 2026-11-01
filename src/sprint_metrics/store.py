@@ -33,9 +33,12 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.board_events (
     goal TEXT,
     kind TEXT,
     replaced_by JSONB,
+    filer TEXT,
+    opener TEXT,
+    project TEXT,
     PRIMARY KEY (card_id, type, event_time),
     CONSTRAINT board_events_type_check CHECK (
-        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
+        type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned', 'filed')
     ),
     CONSTRAINT board_events_because_check CHECK (
         because IS NULL OR because IN ('sponsor', 'story_problem')
@@ -56,9 +59,12 @@ ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS output_tokens B
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS reasoning_output_tokens BIGINT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_time_split_refinement INT;
 ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS model_time_split_delivery INT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS filer TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS opener TEXT;
+ALTER TABLE sprint_metrics.board_events ADD COLUMN IF NOT EXISTS project TEXT;
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_type_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_type_check CHECK (
-    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
+    type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned', 'filed')
 );
 ALTER TABLE sprint_metrics.board_events DROP CONSTRAINT IF EXISTS board_events_because_check;
 ALTER TABLE sprint_metrics.board_events ADD CONSTRAINT board_events_because_check CHECK (
@@ -92,6 +98,8 @@ def insert_event(conn: Connection, event: dict) -> None:
     also stored on 'returned' rows.
     Optional top-level fields: because, replaced_by (stored only on 'superseded' rows);
     epic and goal are stored on every event row that carries them; NULL when absent.
+    Optional top-level fields: filer, opener, project (stored only on 'filed' rows);
+    NULL when absent.
 
     On re-send (conflict on the primary key), NULL columns receive the new value;
     columns that already hold a value are left unchanged (epic R1).
@@ -102,6 +110,7 @@ def insert_event(conn: Connection, event: dict) -> None:
     is_attempt_failed = event_type == "attempt_failed"
     is_superseded = event_type == "superseded"
     is_returned = event_type == "returned"
+    is_filed = event_type == "filed"
 
     if is_finished:
         ev_failure_class = card.get("failure_class")
@@ -127,6 +136,9 @@ def insert_event(conn: Connection, event: dict) -> None:
     ev_replaced_by = (
         json.dumps(event["replaced_by"]) if is_superseded and "replaced_by" in event else None
     )
+    ev_filer = event.get("filer") if is_filed else None
+    ev_opener = event.get("opener") if is_filed else None
+    ev_project = event.get("project") if is_filed else None
 
     card_created_at = _parse_datetime(card.get("created_at"), "created_at")
 
@@ -151,8 +163,9 @@ def insert_event(conn: Connection, event: dict) -> None:
              attempts, failure_class, failure_role, attempt_number, points,
              because, epic, goal, kind, replaced_by, card_created_at,
              model_seconds, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens,
-             model_time_split_refinement, model_time_split_delivery)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             model_time_split_refinement, model_time_split_delivery,
+             filer, opener, project)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (card_id, type, event_time) DO UPDATE SET
             attempts = COALESCE(board_events.attempts, EXCLUDED.attempts),
             failure_class = COALESCE(board_events.failure_class, EXCLUDED.failure_class),
@@ -171,7 +184,10 @@ def insert_event(conn: Connection, event: dict) -> None:
             output_tokens = COALESCE(board_events.output_tokens, EXCLUDED.output_tokens),
             reasoning_output_tokens = COALESCE(board_events.reasoning_output_tokens, EXCLUDED.reasoning_output_tokens),
             model_time_split_refinement = COALESCE(board_events.model_time_split_refinement, EXCLUDED.model_time_split_refinement),
-            model_time_split_delivery = COALESCE(board_events.model_time_split_delivery, EXCLUDED.model_time_split_delivery)
+            model_time_split_delivery = COALESCE(board_events.model_time_split_delivery, EXCLUDED.model_time_split_delivery),
+            filer = COALESCE(board_events.filer, EXCLUDED.filer),
+            opener = COALESCE(board_events.opener, EXCLUDED.opener),
+            project = COALESCE(board_events.project, EXCLUDED.project)
         """,
         (
             event["card_id"],
@@ -197,6 +213,9 @@ def insert_event(conn: Connection, event: dict) -> None:
             ev_reasoning_output_tokens,
             ev_model_time_split_refinement,
             ev_model_time_split_delivery,
+            ev_filer,
+            ev_opener,
+            ev_project,
         ),
     )
     conn.commit()
@@ -539,6 +558,27 @@ def query_returned_events(
         (label,),
     ).fetchall()
     return [(card_id, failure_role, failure_class) for card_id, failure_role, failure_class in rows]
+
+
+def query_filed_events(
+    conn: Connection, label: str
+) -> list[tuple[str, str | None, str | None, str | None]]:
+    """Return the sprint's 'filed' rows as (card_id, filer, opener, project), in event order.
+
+    filer is who filed the card, opener what opened it, and project the project
+    the card counts for (for cards filed in another repository); each is None
+    when the crew did not send it.
+    """
+    rows = conn.execute(
+        """
+        SELECT card_id, filer, opener, project
+        FROM sprint_metrics.board_events
+        WHERE type = 'filed' AND sprint = %s
+        ORDER BY event_time
+        """,
+        (label,),
+    ).fetchall()
+    return [(card_id, filer, opener, project) for card_id, filer, opener, project in rows]
 
 
 def query_working_time_events(

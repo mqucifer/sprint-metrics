@@ -108,7 +108,7 @@ Long-lived HTTP service that accepts board events and answers range and trend qu
 | Method | Path | Description |
 |---|---|---|
 | POST | /sprints | Register or update a sprint definition (name, start date, end date, timezone). |
-| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned). The service validates the card's created date and event type. |
+| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned, filed). The service validates the card's created date and event type. |
 | GET | /range | Return metrics for a range of sprints in chronological order. Each entry includes the prior-sprint delta. failure_breakdown and top_failure_causes count returns, one per return, by (failure class, returning role). |
 | GET | /range | The response carries a top-level window object naming the window it is judging: start (the first sprint label), end (the last sprint label), sprint_count (the number of sprints in the window), and no_data (the sprint labels that had no events). |
 | GET | /range | The response also carries a verdicts object with one entry per registry measure: it judges the window's first and last data-bearing sprint (a gap sprint is skipped, not read as zero) against each measure's better direction — better, worse or flat, or up, down or flat for a measure with no better direction — each entry naming both reference sprints and their values, with the unit and the precision; an entry reads null when the measure's value is missing in either reference sprint, or the window has fewer than two data-bearing sprints. |
