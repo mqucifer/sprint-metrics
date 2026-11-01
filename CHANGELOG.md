@@ -4,6 +4,16 @@
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.3.0] - 2026-11-01
+
+### Added
+
 - POST /events accepts a new ninth event type, `filed`, carrying the per-card filing facts (`filer`, `opener`, `project`) as optional string fields; the facts are stored as nullable columns on the card's `filed` event row with the existing fill-NULL resend semantics. A new `query_filed_events` store function returns a sprint's stored filing facts in event order
 - docs/service.md's Event intake section documents the `filed` event's filing facts: the filer side values (`crew`, `sponsor`, `operator`, `other`), the opener kinds (`found`, `process`, `split`), unknown handling (the opener fact is left out when a card's opener cannot be told apart), card identity across projects (card ids are unique within a project; the `project` fact distinguishes cards with the same id in different repositories), a validating example event, and that the intake `api_version` stays "1"
 
