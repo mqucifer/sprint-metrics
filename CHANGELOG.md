@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- docs/metrics.md's Filed split section, the `/range` filed description fragment (filed.py), and docs/service.md's `filer` bullet now state that the `other` bucket also includes cards whose `filer` field is absent (no known filer), matching the accepted behaviour confirmed in #918
+
 ### Removed
 
 ## [4.4.0] - 2026-11-01
