@@ -186,8 +186,8 @@ jobs:
           PREVIOUS_BODY=$(tick 8081)
           echo "$RANGE_BODY"
           echo "OK: POST /sprints and POST /events returned 200, GET /range returned 200"
-          echo "$RANGE_BODY" | jq -e '.api_version == "9"' > /dev/null
-          echo "OK: api_version is 9"
+          echo "$RANGE_BODY" | jq -e '.api_version == "10"' > /dev/null
+          echo "OK: api_version is 10"
           # api_version is pinned above; every other field must match the earlier image.
           # The comparison is derived from the previous response's key structure:
           # every key the previous response carries must have the same value in the
