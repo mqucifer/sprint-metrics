@@ -12,7 +12,7 @@ from __future__ import annotations
 
 def calculate_filed_split(
     filed_events: list[tuple[str, str | None, str | None, str | None]],
-) -> dict:
+) -> dict | None:
     """The sprint's filed-split answer: how much of the sprint's filed work the crew gave itself.
 
     ``filed_events`` is the sprint's 'filed' rows as (card_id, filer, opener,
@@ -26,14 +26,27 @@ def calculate_filed_split(
     - ``unknown``: crew cards whose opener is unidentifiable or was not sent.
     - ``sponsor``: cards filed by the Sponsor.
     - ``operator``: cards filed by the operator.
-    - ``other``: cards filed by anyone else.
+    - ``other``: cards filed by anyone else, or by someone the facts cannot tell.
     - ``total_cards``: the sprint's total filed cards (all filer buckets sum).
     - ``self_filed_share``: the whole percent of the sprint's total cards that
       the crew filed, carried with its numerator and denominator.
 
     The buckets partition the sprint: crew_total = found + from_process + split
-    + unknown, and crew_total + sponsor + operator + other = total_cards.
+    + unknown, and crew_total + sponsor + operator + other = total_cards. The
+    denominator is the sprint's total filed cards, including a card whose
+    facts cannot tell who filed it — it was filed, it just can't be told
+    apart, and no bucket is guessed for it.
+
+    Returns ``None`` when the sprint holds no filing facts: no 'filed' rows at
+    all, or 'filed' rows whose filing-fact fields are all absent. ``None`` is
+    'no facts' (no data), not 'no self-filed work' — a sprint whose facts show
+    the crew filed nothing reads the zero crew counts, not ``None``.
     """
+    if not any(
+        filer is not None or opener is not None or project is not None
+        for _card_id, filer, opener, project in filed_events
+    ):
+        return None
     crew_total = 0
     found = 0
     from_process = 0
@@ -82,7 +95,7 @@ def calculate_filed_split(
     }
 
 
-def _attach_range_filed(result: dict, labels: list[str], filed: dict[str, dict]) -> None:
+def _attach_range_filed(result: dict, labels: list[str], filed: dict[str, dict | None]) -> None:
     """Attach the filed-split answer to each range entry.
 
     An entry for a sprint with no events or no filing facts carries filed null,

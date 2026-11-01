@@ -502,12 +502,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                         query_returned_events(conn_holder[0], label),
                                         extract_qa_returns(sprints[label]),
                                     )
-                            filed: dict[str, dict] = {}
+                            filed: dict[str, dict | None] = {}
                             for label in labels:
                                 if label in has_events:
-                                    filed_rows = query_filed_events(conn_holder[0], label)
-                                    if filed_rows:
-                                        filed[label] = calculate_filed_split(filed_rows)
+                                    filed[label] = calculate_filed_split(
+                                        query_filed_events(conn_holder[0], label)
+                                    )
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -684,11 +684,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     query_sprint_span(conn_holder[0], label),
                                 )
                             elif metric == "self_filed_share_percent":
-                                filed_rows = query_filed_events(conn_holder[0], label)
-                                if filed_rows:
-                                    value = calculate_filed_split(filed_rows)["self_filed_share"]["percent"]
-                                else:
-                                    value = None
+                                split = calculate_filed_split(query_filed_events(conn_holder[0], label))
+                                value = (
+                                    split["self_filed_share"]["percent"] if split is not None else None
+                                )
                             else:
                                 value = metric_value(metric, sprints[label])
                             values.append({"sprint": label, "value": value})
@@ -860,9 +859,12 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "sprint is not registered or carries no session timestamps). "
         "self_filed_share_percent returns the whole percent of the "
         "sprint's total filed cards that the crew filed (the crew-filed "
-        "total over the sprint's total cards); a card counts in the "
-        "sprint it was filed in, not the sprint it merged. Null where "
-        "the sprint carries no filing facts.",
+        "total over the sprint's total cards; the counts behind each "
+        "value are the sprint's /range filed section); a card counts "
+        "in the sprint it was filed in, not the sprint it merged. "
+        "Null where the sprint carries no filing facts (no data, not "
+        "zero); a sprint whose filing facts show the crew filed none "
+        "of the sprint's cards reads 0, a true zero distinct from that null.",
     ),
     (
         "GET",
