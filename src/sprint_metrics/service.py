@@ -859,9 +859,12 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "sprint is not registered or carries no session timestamps). "
         "self_filed_share_percent returns the whole percent of the "
         "sprint's total filed cards that the crew filed (the crew-filed "
-        "total over the sprint's total cards); a card counts in the "
-        "sprint it was filed in, not the sprint it merged. Null where "
-        "the sprint carries no filing facts.",
+        "total over the sprint's total cards; the counts behind each "
+        "value are the sprint's /range filed section); a card counts "
+        "in the sprint it was filed in, not the sprint it merged. "
+        "Null where the sprint carries no filing facts (no data, not "
+        "zero); a sprint whose filing facts show the crew filed none "
+        "of the sprint's cards reads 0, a true zero distinct from that null.",
     ),
     (
         "GET",
