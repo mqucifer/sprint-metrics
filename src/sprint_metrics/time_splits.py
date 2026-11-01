@@ -27,6 +27,26 @@ from sprint_metrics.store import (
 )
 
 _TERMINAL = ("finished", "attempt_failed", "returned")
+_STEP_BOUNDARY_PAIR_THRESHOLD = 0.5  # seconds
+
+
+def _is_step_boundary_pair(
+    events: list[tuple[str, datetime, str | None]], index: int
+) -> bool:
+    """True when the 'started' row at index is the same step boundary as its next terminal row.
+
+    A send-back's 'started' lands less than half a second before its
+    'attempt_failed' or 'returned' terminal row; that pair is the same step
+    boundary, not a new session window.
+    """
+    _event_type, event_time, _role = events[index]
+    for j in range(index + 1, len(events)):
+        next_type, next_time, _next_role = events[j]
+        if next_type in _TERMINAL:
+            return (next_time - event_time).total_seconds() < _STEP_BOUNDARY_PAIR_THRESHOLD
+        if next_type == "started":
+            return False
+    return False
 
 
 def _blocked_seconds(
@@ -80,8 +100,10 @@ def calculate_working_time(
         last_boundary_role: str | None = None
         blocked: list[datetime] = []
         unblocked: list[datetime] = []
-        for event_type, event_time, role in events:
+        for i, (event_type, event_time, role) in enumerate(events):
             if event_type == "started":
+                if open_window is not None and _is_step_boundary_pair(events, i):
+                    continue
                 open_window = (event_time, last_boundary_role)
                 blocked = []
                 unblocked = []
@@ -157,8 +179,10 @@ def _in_span_session_seconds(
         open_window: datetime | None = None
         blocked: list[datetime] = []
         unblocked: list[datetime] = []
-        for event_type, event_time, _role in events:
+        for i, (event_type, event_time, _role) in enumerate(events):
             if event_type == "started":
+                if open_window is not None and _is_step_boundary_pair(events, i):
+                    continue
                 open_window = event_time
                 blocked = []
                 unblocked = []
@@ -245,8 +269,10 @@ def _card_total_minutes(
     open_window: datetime | None = None
     blocked: list[datetime] = []
     unblocked: list[datetime] = []
-    for event_type, event_time, _role in events:
+    for i, (event_type, event_time, _role) in enumerate(events):
         if event_type == "started":
+            if open_window is not None and _is_step_boundary_pair(events, i):
+                continue
             open_window = event_time
             blocked = []
             unblocked = []

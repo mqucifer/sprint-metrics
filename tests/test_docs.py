@@ -1442,6 +1442,31 @@ def test_metrics_md_describes_working_time_answer():
         assert phrase in section, f"working time computation details missing {phrase!r}"
 
 
+def test_metrics_md_working_time_states_step_boundary_pair():
+    """AC5: docs/metrics.md's 'Working time per pipeline step' states that a
+    'started' row landing immediately before its terminal row is the same step
+    boundary and does not open a new zero-minute session that zeros the
+    preceding window."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    details = text.split("## Computation details")[1]
+    heading = next(
+        line for line in details.splitlines() if "Working time" in line and line.startswith("###")
+    )
+    section = details.split(heading)[1]
+    for stop in ("\n## ", "\n### "):
+        if stop in section:
+            section = section.split(stop)[0]
+    import re
+
+    section = re.sub(r"\s+", " ", section)
+    for phrase in (
+        "same step boundary",
+        "does not open a new zero-minute session",
+        "zeros the preceding window",
+    ):
+        assert phrase in section, f"step boundary description missing {phrase!r}"
+
+
 def test_metrics_md_metrics_table_has_working_time_row():
     """AC6: docs/metrics.md's metrics table carries a row for
     working_time_minutes stating what it measures, in whole minutes."""

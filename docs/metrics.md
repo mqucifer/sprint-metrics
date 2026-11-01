@@ -106,6 +106,12 @@ boundary), or, for a window closed by `finished`, the step it is reworking.
 `working_time.per_step` carries one value per session window, and
 `working_time.total` is their sum in whole minutes.
 
+A `started` row landing immediately before its terminal row (within half a
+second, as a send-back's does) is the same step boundary and does not open a
+new zero-minute session that zeros the preceding window: the session window
+that was already open is closed by that terminal row, and the work before it
+is counted in full.
+
 Working time is the minutes the crew's sessions ran, not the span from the
 story's creation to its finish: it is measured session by session, so the
 calendar gap between one session and the next — and any time a card sat

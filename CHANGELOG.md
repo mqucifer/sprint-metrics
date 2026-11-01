@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- A `started` row landing less than half a second before its terminal row (as a send-back's does) no longer zeros the session window open before it: the step-boundary pair is recognized as the same boundary, and the preceding window's working time is counted in full. The same fix applies to the idle-time in-span session calculation and the cost-by-kind per-card total
+
 ### Removed
 
 ## [4.4.1] - 2026-11-01

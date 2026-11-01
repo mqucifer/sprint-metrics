@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from sprint_metrics.time_splits import calculate_idle, idle_minutes_total
+from sprint_metrics.time_splits import calculate_idle, calculate_working_time, idle_minutes_total
 
 
 def _session(start: str, end: str) -> list[tuple[str, datetime, None]]:
@@ -125,3 +125,72 @@ def test_idle_rework_session_not_resent_as_started_reads_as_idle():
     answer = calculate_idle(events, span)
     # Only the 30-minute c1 session counts; the c2 rework row counts nothing.
     assert answer["idle_minutes"] == 20160 - 30
+
+
+def test_working_time_send_back_pair_keeps_window():
+    """AC1: a card whose ordered rows are a first 'started' at 2024-01-05T00:00:00Z,
+    a second 'started' at 2024-01-05T02:44:59.700Z (0.3s before the terminal), and an
+    'attempt_failed' terminal at 2024-01-05T02:45:00Z contributes one window of 165
+    minutes — the send-back's 'started' is the same step boundary and does not zero
+    the work before it."""
+    events = {
+        "c1": [
+            ("started", datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC), None),
+            ("started", datetime(2024, 1, 5, 2, 44, 59, 700000, tzinfo=UTC), None),
+            ("attempt_failed", datetime(2024, 1, 5, 2, 45, 0, tzinfo=UTC), "Review"),
+        ]
+    }
+    answer = calculate_working_time(events)
+    assert answer["per_step"] == [{"step": "Review", "minutes": 165}]
+    assert answer["total"] == 165
+
+
+def test_working_time_send_back_pair_reverse_order():
+    """AC2: the same card rows with the send-back pair in reverse order — the
+    'attempt_failed' terminal at 2024-01-05T02:45:00Z followed by the second
+    'started' at 2024-01-05T02:45:00.300Z — the story's working time is 165
+    minutes, equal to the value the send-back-pair order in AC1 produces."""
+    events = {
+        "c1": [
+            ("started", datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC), None),
+            ("attempt_failed", datetime(2024, 1, 5, 2, 45, 0, tzinfo=UTC), "Review"),
+            ("started", datetime(2024, 1, 5, 2, 45, 0, 300000, tzinfo=UTC), None),
+        ]
+    }
+    answer = calculate_working_time(events)
+    assert answer["total"] == 165
+
+
+def test_working_time_no_send_back_pair_unchanged():
+    """AC3: a card with no 'started' landing immediately before a terminal row —
+    a single 'started' at 2024-01-05T00:00:00Z and a 'finished' at
+    2024-01-05T02:45:00Z — answers exactly as it does today: per_step holds one
+    entry with step null and minutes 165, and total is 165."""
+    events = {
+        "c1": [
+            ("started", datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC), None),
+            ("finished", datetime(2024, 1, 5, 2, 45, 0, tzinfo=UTC), None),
+        ]
+    }
+    answer = calculate_working_time(events)
+    assert answer["per_step"] == [{"step": None, "minutes": 165}]
+    assert answer["total"] == 165
+
+
+def test_idle_send_back_pair_counts_in_span_session():
+    """AC4: a sprint registered 2024-01-01 to 2024-01-14 in UTC (span 20160 minutes)
+    with a card whose rows are a first 'started' at 2024-01-05T00:00:00Z, a second
+    'started' at 2024-01-05T02:44:59.700Z, and a terminal at 2024-01-05T02:45:00Z
+    — idle_minutes is 19995 (20160 minus the 165-minute in-span session), not the
+    whole-span 20160 produced by zeroing that session."""
+    span = (date(2024, 1, 1), date(2024, 1, 14), "UTC")
+    events = {
+        "c1": [
+            ("started", datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC), None),
+            ("started", datetime(2024, 1, 5, 2, 44, 59, 700000, tzinfo=UTC), None),
+            ("attempt_failed", datetime(2024, 1, 5, 2, 45, 0, tzinfo=UTC), "Review"),
+        ]
+    }
+    answer = calculate_idle(events, span)
+    assert answer["sprint_duration_minutes"] == 20160
+    assert answer["idle_minutes"] == 19995
