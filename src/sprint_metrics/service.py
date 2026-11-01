@@ -41,6 +41,11 @@ from sprint_metrics.rework import (
     calculate_sent_backs_count,
     extract_qa_returns,
 )
+from sprint_metrics.filed import (
+    _RANGE_FILED_DESCRIPTION,
+    _attach_range_filed,
+    calculate_filed_split,
+)
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import (
     _RANGE_WINDOW_DESCRIPTION,
@@ -56,6 +61,7 @@ from sprint_metrics.store import (
     query_card_kinds,
     query_dora_data,
     query_dora_rework_data,
+    query_filed_events,
     query_model_time_splits,
     query_range,
     query_returned_events,
@@ -496,6 +502,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                         query_returned_events(conn_holder[0], label),
                                         extract_qa_returns(sprints[label]),
                                     )
+                            filed: dict[str, dict] = {}
+                            for label in labels:
+                                if label in has_events:
+                                    filed_rows = query_filed_events(conn_holder[0], label)
+                                    if filed_rows:
+                                        filed[label] = calculate_filed_split(filed_rows)
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -505,6 +517,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_window(result, labels, has_events)
                         _attach_range_cost(result, sprints, labels, has_events)
                         _attach_range_rework(result, labels, rework)
+                        _attach_range_filed(result, labels, filed)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
                         _attach_range_dora(result, conn_holder[0], labels, has_events)
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
@@ -760,6 +773,7 @@ _RANGE_ANSWER_DESCRIPTIONS = (
     _RANGE_VERDICT_DESCRIPTION,
     _RANGE_COST_DESCRIPTION,
     _RANGE_REWORK_DESCRIPTION,
+    _RANGE_FILED_DESCRIPTION,
     _RANGE_ROSTER_DESCRIPTION,
     _RANGE_DORA_DESCRIPTION,
     _RANGE_WORKING_TIME_DESCRIPTION,
