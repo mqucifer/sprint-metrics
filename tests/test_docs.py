@@ -1469,6 +1469,24 @@ def test_metrics_md_metrics_table_has_model_time_split_rows():
     assert "null" in section.lower()
 
 
+def test_metrics_md_metrics_table_has_self_filed_share_row():
+    """AC3: docs/metrics.md's metrics table carries a row for
+    self_filed_share_percent naming its unit (whole percent), its
+    sprint-attribution rule (a card counts in the sprint it was filed in,
+    not the sprint it merged), and its null rule (None where the sprint
+    carries no filing facts) — the way every other measure's row does."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    table = _extract_marked_section(text, "metrics")
+    row = next(line for line in table.splitlines() if "`self_filed_share_percent`" in line)
+    cells = [c.strip() for c in row.split("|") if c.strip()]
+    assert cells[1] == "`self_filed_share_percent`"
+    assert "whole percent" in row, "row does not name the unit (whole percent)"
+    assert "filed in" in row and "merged" in row, (
+        "row does not name the sprint-attribution rule (filed in, not merged)"
+    )
+    assert "no filing facts" in row, "row does not name the null rule (None where no filing facts)"
+
+
 def test_service_md_cost_example_is_complete():
     """AC7: the event-intake section has a complete cost-payload example with all
     five fields and non-negative integer values, in a copy-ready JSON block."""
