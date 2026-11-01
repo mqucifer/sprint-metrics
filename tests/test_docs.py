@@ -755,6 +755,73 @@ def test_service_md_filed_event_states_api_version_stays_one():
     )
 
 
+def test_service_md_sprint_range_description_describes_filed():
+    """AC5: the /range endpoint description in docs/service.md names the filed
+    section's fields — the crew-filed total, its found/from-process/split/unknown
+    counts, the Sponsor/operator/other counts, the sprint's total cards and the
+    self-filed share with its numerator and denominator — and states that a card
+    counts in the sprint it was filed in, not the sprint it merged."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    after_begin = text.split("BEGIN:service", 1)[1]
+    anchor = after_begin.index("carries filed")
+    filed_row = after_begin[anchor : anchor + 1700]
+    for key in (
+        "crew_total",
+        "found",
+        "from_process",
+        "split",
+        "unknown",
+        "sponsor",
+        "operator",
+        "other",
+        "total_cards",
+    ):
+        assert key in filed_row, f"/range filed description does not name {key!r}"
+    assert "self_filed_share" in filed_row, (
+        "/range filed description does not name the self-filed share"
+    )
+    assert "numerator" in filed_row and "denominator" in filed_row, (
+        "/range filed description does not carry the share's numerator and denominator"
+    )
+    assert "the sprint it was filed in" in filed_row, (
+        "/range filed description does not state the sprint-attribution rule"
+    )
+    assert "where it merges" in filed_row, (
+        "/range filed description does not state the filed sprint may differ from the merge sprint"
+    )
+
+
+def test_metrics_md_computation_details_describes_filed():
+    """AC6: docs/metrics.md's Computation details describes the filed answer — the
+    buckets partition the sprint, a sprint with events but no filing facts reads
+    null while a true zero (the crew filed nothing) is a distinct answer, and the
+    unknown bucket counts in the crew total because those cards were filed but
+    can't be told apart."""
+    path = DOCS_DIR / "metrics.md"
+    text = path.read_text()
+    anchor = text.index("### Filed split")
+    section = text[anchor : anchor + 2500]
+    assert "crew_total = found +" in section, (
+        "filed computation details do not state the crew buckets sum to the crew total"
+    )
+    assert "crew_total + sponsor + operator + other =" in section, (
+        "filed computation details do not state the filers sum to the sprint total"
+    )
+    assert "no stored" in section, (
+        "filed computation details do not state a sprint with events but no filing facts reads null"
+    )
+    assert "crew filed nothing" in section, (
+        "filed computation details do not state a true zero (the crew filed nothing) is a distinct answer"
+    )
+    assert "unknown" in section, (
+        "filed computation details do not name the unknown bucket"
+    )
+    assert "counted in the crew total" in section, (
+        "filed computation details do not state the unknown bucket counts in the crew total"
+    )
+
+
 def test_service_md_sprint_range_descriptions_state_per_return_semantics():
     """AC5: the hand-written /range endpoint description in
     docs/service.md states that failure_breakdown and top_failure_causes count

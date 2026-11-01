@@ -6695,6 +6695,195 @@ def test_service_md_post_events_lists_filed():
 
 
 @requires_db
+def test_range_filed_reports_worked_example():
+    """AC1: a /range for the Goal's worked example sprint — 25 of 27 self-filed:
+    10 found, 12 from-process, 3 split, 0 unknown; one each by the Sponsor and the
+    operator; none by anyone else — reports the filed split: the crew-filed total
+    (25) with its found/from-process/split/unknown counts, the Sponsor (1),
+    operator (1) and other (0) counts, the sprint's total cards (27), and the
+    self-filed share (93 percent) with its numerator (25) and denominator (27)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-05'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        def filed(card_id, filer, opener=None):
+            ev = {
+                "api_version": "1",
+                "card_id": card_id,
+                "type": "filed",
+                "sprint": "2024-05",
+                "timestamp": "2024-05-01T08:00:00Z",
+                "card": {"created": "2024-05-01"},
+                "filer": filer,
+            }
+            if opener is not None:
+                ev["opener"] = opener
+            return ev
+
+        events = (
+            [filed(f"wx_f_{i}", "crew", "found") for i in range(10)]
+            + [filed(f"wx_p_{i}", "crew", "process") for i in range(12)]
+            + [filed(f"wx_s_{i}", "crew", "split") for i in range(3)]
+            + [filed("wx_sponsor", "sponsor")]
+            + [filed("wx_operator", "operator")]
+        )
+        for ev in events:
+            status, _ = _post_events(f"http://127.0.0.1:{port}/events", ev)
+            assert status == 200
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-05&end=2024-05")
+        assert status == 200
+        section = body["sprints"]["2024-05"]["filed"]
+        assert section["crew_total"] == 25
+        assert section["found"] == 10
+        assert section["from_process"] == 12
+        assert section["split"] == 3
+        assert section["unknown"] == 0
+        assert section["sponsor"] == 1
+        assert section["operator"] == 1
+        assert section["other"] == 0
+        assert section["total_cards"] == 27
+        assert section["self_filed_share"] == {"percent": 93, "numerator": 25, "denominator": 27}
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_filed_distinguishes_null_from_zero_crew():
+    """AC2: a sprint that carries events but no filing facts reads filed null (no
+    data, not zero); a sprint whose filing facts name only non-crew filers reads the
+    zero crew counts — the two are distinct in the answer."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-02', '2024-03')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-02: events (started + finished) but no filed events.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="wxnull_a",
+                event_type="started",
+                timestamp="2024-02-02T09:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="wxnull_a",
+                event_type="finished",
+                timestamp="2024-02-06T09:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        # 2024-03: filed events, all by non-crew filers (the crew filed nothing).
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "wxzero_sponsor",
+                "type": "filed",
+                "sprint": "2024-03",
+                "timestamp": "2024-03-01T08:00:00Z",
+                "card": {"created": "2024-03-01"},
+                "filer": "sponsor",
+            },
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            {
+                "api_version": "1",
+                "card_id": "wxzero_operator",
+                "type": "filed",
+                "sprint": "2024-03",
+                "timestamp": "2024-03-01T08:05:00Z",
+                "card": {"created": "2024-03-01"},
+                "filer": "operator",
+            },
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-02&end=2024-03")
+        assert status == 200
+        sprints = body["sprints"]
+        # Events but no filing facts: no data, not a zero split.
+        assert sprints["2024-02"]["filed"] is None
+        # Filing facts in which the crew filed nothing: the zero crew counts.
+        zero = sprints["2024-03"]["filed"]
+        assert zero is not None
+        assert zero["crew_total"] == 0
+        assert zero["found"] == 0
+        assert zero["from_process"] == 0
+        assert zero["split"] == 0
+        assert zero["unknown"] == 0
+        assert zero["sponsor"] == 1
+        assert zero["operator"] == 1
+        assert zero["other"] == 0
+        assert zero["total_cards"] == 2
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_filed_null_for_sprint_with_no_events():
+    """AC3: a /range spanning sprints where one has no events at all reads filed
+    null for that sprint, exactly like its other answers — no data."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-04', '2024-06')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        # 2024-04: one completed card; 2024-06: nothing at all.
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="wxnoev_done",
+                event_type="started",
+                timestamp="2024-04-03T10:00:00Z",
+                sprint="2024-04",
+                created="2024-04-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="wxnoev_done",
+                event_type="finished",
+                timestamp="2024-04-07T10:00:00Z",
+                sprint="2024-04",
+                created="2024-04-01",
+            ),
+        )
+
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-04&end=2024-06")
+        assert status == 200
+        sprints = body["sprints"]
+        # The no-event sprint reads filed null, exactly like its other answers.
+        assert sprints["2024-06"]["filed"] is None
+        assert sprints["2024-06"]["throughput"] is None
+        # The event-bearing sprint with no filing facts also reads filed null.
+        assert sprints["2024-04"]["filed"] is None
+        assert sprints["2024-04"]["throughput"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_post_unknown_event_type_returns_400_naming_type():
     """AC4: POST /events with a type that is not one of the eight accepted event
     types answers 400 naming the unknown type."""
