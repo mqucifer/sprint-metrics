@@ -45,6 +45,10 @@ A `returned` event marks a story that was handed back to the Business Analyst (f
 
 No prior event on the card is required for a `returned` event to be accepted, and re-sending one is as safe as re-sending any other event.
 
+Re-sending an event the service already holds (the same `card_id`, `type`, and `timestamp`) is safe. Fields that are currently NULL in the stored row receive the value supplied by the re-sent event; fields that already hold a value are not changed. You can replay your event log or upgrade your event payload without risking data corruption.
+
+The intake format carries an `api_version` field. The current version is "1". The JSON Schema for the event body is available at GET /schema/event.
+
 A `filed` event reports the per-card filing facts: who filed the card, what opened it, and — for a card filed in another repository, such as a QA Task filed in qa-suite — the project the card is for and counts for. Each is a fact the crew sends, not a count, and each is optional:
 
 - `filer` (top-level, optional string): who filed the card. The crew sends one of the filer-side values: `"crew"` (the crew that builds the service), `"sponsor"` (the Sponsor), `"operator"` (the operator), or `"other"` (anyone else). Absent when the crew does not know who filed the card.
@@ -74,10 +78,6 @@ Example `filed` event carrying the filing facts:
 ```
 
 The intake's `api_version` stays "1": the `filed` event is additive. Events without the filing facts are accepted exactly as today, so nothing already sent stops working.
-
-Re-sending an event the service already holds (the same `card_id`, `type`, and `timestamp`) is safe. Fields that are currently NULL in the stored row receive the value supplied by the re-sent event; fields that already hold a value are not changed. You can replay your event log or upgrade your event payload without risking data corruption.
-
-The intake format carries an `api_version` field. The current version is "1". The JSON Schema for the event body is available at GET /schema/event.
 
 A `finished` event may carry a cost payload on its card object. The cost payload has five fields, each a non-negative integer, and the fields are sent together or not at all — a partial payload is rejected:
 
