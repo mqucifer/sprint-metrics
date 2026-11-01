@@ -51,7 +51,7 @@ The intake format carries an `api_version` field. The current version is "1". Th
 
 A `filed` event reports the per-card filing facts: who filed the card, what opened it, and — for a card filed in another repository, such as a QA Task filed in qa-suite — the project the card is for and counts for. Each is a fact the crew sends, not a count, and each is optional:
 
-- `filer` (top-level, optional string): who filed the card. The crew sends one of the filer-side values: `"crew"` (the crew that builds the service), `"sponsor"` (the Sponsor), `"operator"` (the operator), or `"other"` (anyone else). Absent when the crew does not know who filed the card; such cards count in `other`.
+- `filer` (top-level, optional string): who filed the card. The crew sends one of the filer-side values: `"crew"` (the crew that builds the service), `"sponsor"` (the Sponsor), `"operator"` (the operator), or `"other"` (anyone else). Absent when the crew does not know who filed the card (in `other`).
 - `opener` (top-level, optional string): what opened the card. The crew sends one of the opener kinds: `"found"` (a role found a problem), `"process"` (the crew's own test, release, review, technical epic, or retro), or `"split"` (a split from something already filed). Absent when the card's opener cannot be told apart — the card is then reported as unknown.
 - `project` (top-level, optional string): for a card filed in another repository, the project the card is for and counts for (for example `"qa-suite"`). Absent when the card was filed in the same repository as the sprint, or when the crew does not know the project.
 
