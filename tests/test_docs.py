@@ -618,6 +618,143 @@ def test_service_md_documents_returned_event():
     )
 
 
+def test_service_md_documents_filed_event():
+    """AC1: the hand-written Event intake content in docs/service.md names 'filed'
+    as an accepted event type, documents filer, opener, and project as the filing
+    facts the crew sends (each a fact, not a count, and each optional)."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "filed" in before, (
+        "hand-written content does not name 'filed' as an accepted event type"
+    )
+    anchor = before.index("A `filed` event")
+    filed_text = before[anchor : anchor + 1000]
+    for field in ("filer", "opener", "project"):
+        assert field in filed_text, f"filed-event documentation does not name {field!r}"
+    assert "optional" in filed_text.lower(), (
+        "filed-event documentation does not state the fields are optional"
+    )
+    assert "not a count" in filed_text, (
+        "filed-event documentation does not state each field is a fact, not a count"
+    )
+
+
+def test_service_md_filed_event_documents_buckets():
+    """AC2: the 'filed' documentation names the filer side values (crew, sponsor,
+    operator, other) and the opener kinds (found, process, split) with their
+    meanings, so the facts the crew sends bucket correctly."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    anchor = before.index("A `filed` event")
+    filed_text = before[anchor : anchor + 1200]
+    for value in ("crew", "sponsor", "operator", "other"):
+        assert f'"{value}"' in filed_text, (
+            f"filed-event documentation does not name filer side {value!r}"
+        )
+    for value in ("found", "process", "split"):
+        assert f'"{value}"' in filed_text, (
+            f"filed-event documentation does not name opener kind {value!r}"
+        )
+    assert "found a problem" in filed_text, (
+        "filed-event documentation does not explain what 'found' means"
+    )
+    assert "test, release, review, technical epic, or retro" in filed_text, (
+        "filed-event documentation does not explain what 'process' means"
+    )
+    assert "split from something already filed" in filed_text, (
+        "filed-event documentation does not explain what 'split' means"
+    )
+
+
+def test_service_md_filed_event_documents_unknown():
+    """AC3: the 'filed' documentation states that a card whose opener cannot be
+    told apart is reported as unknown — the opener fact is left out rather than
+    guessed — and that the service never infers a bucket from an absent fact."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    anchor = before.index("A `filed` event")
+    filed_text = before[anchor : anchor + 1400]
+    assert "unknown" in filed_text.lower(), (
+        "filed-event documentation does not state the card is reported as unknown"
+    )
+    assert "left out" in filed_text.lower(), (
+        "filed-event documentation does not state the opener fact is left out"
+    )
+    assert "never infers" in filed_text, (
+        "filed-event documentation does not state the service never infers a bucket"
+    )
+    assert "absent fact" in filed_text, (
+        "filed-event documentation does not reference an absent fact"
+    )
+
+
+def test_service_md_filed_event_documents_project_identity():
+    """AC4: the 'filed' documentation states that card ids are unique within a
+    project and that the project fact distinguishes a card "123" in one repository
+    from card "123" in another — the two count as two distinct cards."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    anchor = before.index("A `filed` event")
+    filed_text = before[anchor : anchor + 1600]
+    assert "unique within a project" in filed_text, (
+        "filed-event documentation does not state card ids are unique within a project"
+    )
+    assert '"123"' in filed_text, (
+        "filed-event documentation does not use the card '123' example"
+    )
+    assert "two distinct cards" in filed_text, (
+        "filed-event documentation does not state the two count as two distinct cards"
+    )
+
+
+def test_service_md_filed_example_validates_against_schema():
+    """AC5: the 'filed' example event documented in docs/service.md validates
+    against the event-intake schema, so drift between the docs and the schema is
+    provable on a pull request."""
+    import json as json_mod
+
+    import jsonschema
+
+    from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
+
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    # Find the filed example JSON block
+    example_idx = before.index("Example `filed` event")
+    after_example = before[example_idx:]
+    json_start = after_example.index("```json")
+    json_end = after_example.index("```", json_start + 7)
+    json_block = after_example[json_start + 7 : json_end]
+    event = json_mod.loads(json_block)
+    # The example must be a well-formed 'filed' event the intake accepts.
+    jsonschema.validate(event, EVENT_INTAKE_SCHEMA)
+
+
+def test_service_md_filed_event_states_api_version_stays_one():
+    """AC6: the 'filed' documentation states the intake's api_version stays "1"
+    (the 'filed' event is additive) and that events without the filing facts are
+    accepted exactly as today."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    anchor = before.index("A `filed` event")
+    filed_text = before[anchor : anchor + 2000]
+    assert 'stays "1"' in filed_text or "stays \"1\"" in filed_text, (
+        "filed-event documentation does not state api_version stays '1'"
+    )
+    assert "additive" in filed_text, (
+        "filed-event documentation does not state the 'filed' event is additive"
+    )
+    assert "exactly as today" in filed_text, (
+        "filed-event documentation does not state events without filing facts are accepted as today"
+    )
+
+
 def test_service_md_sprint_range_descriptions_state_per_return_semantics():
     """AC5: the hand-written /range endpoint description in
     docs/service.md states that failure_breakdown and top_failure_causes count

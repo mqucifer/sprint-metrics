@@ -20,7 +20,7 @@ The service accepts sprint definitions via POST /sprints. Each sprint is registe
 
 ## Event intake
 
-The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, superseded, and returned. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
+The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned, and filed. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
 
 Every accepted event may carry three optional link fields, which the crew sends on any event type:
 
@@ -48,6 +48,36 @@ No prior event on the card is required for a `returned` event to be accepted, an
 Re-sending an event the service already holds (the same `card_id`, `type`, and `timestamp`) is safe. Fields that are currently NULL in the stored row receive the value supplied by the re-sent event; fields that already hold a value are not changed. You can replay your event log or upgrade your event payload without risking data corruption.
 
 The intake format carries an `api_version` field. The current version is "1". The JSON Schema for the event body is available at GET /schema/event.
+
+A `filed` event reports the per-card filing facts: who filed the card, what opened it, and — for a card filed in another repository, such as a QA Task filed in qa-suite — the project the card is for and counts for. Each is a fact the crew sends, not a count, and each is optional:
+
+- `filer` (top-level, optional string): who filed the card. The crew sends one of the filer-side values: `"crew"` (the crew that builds the service), `"sponsor"` (the Sponsor), `"operator"` (the operator), or `"other"` (anyone else). Absent when the crew does not know who filed the card.
+- `opener` (top-level, optional string): what opened the card. The crew sends one of the opener kinds: `"found"` (a role found a problem), `"process"` (the crew's own test, release, review, technical epic, or retro), or `"split"` (a split from something already filed). Absent when the card's opener cannot be told apart — the card is then reported as unknown.
+- `project` (top-level, optional string): for a card filed in another repository, the project the card is for and counts for (for example `"qa-suite"`). Absent when the card was filed in the same repository as the sprint, or when the crew does not know the project.
+
+When the opener fact is absent, the card is reported as unknown: the opener fact is left out rather than guessed, and the service never infers a bucket from an absent fact.
+
+Card ids are unique within a project. The `project` fact is what tells a card `"123"` filed in one repository apart from the card `"123"` filed in another: the two count as two distinct cards.
+
+Example `filed` event carrying the filing facts:
+
+```json
+{
+  "api_version": "1",
+  "card_id": "42",
+  "type": "filed",
+  "timestamp": "2024-03-05T09:00:00Z",
+  "sprint": "2024-03",
+  "card": {
+    "created": "2024-03-04"
+  },
+  "filer": "crew",
+  "opener": "process",
+  "project": "qa-suite"
+}
+```
+
+The intake's `api_version` stays "1": the `filed` event is additive. Events without the filing facts are accepted exactly as today, so nothing already sent stops working.
 
 A `finished` event may carry a cost payload on its card object. The cost payload has five fields, each a non-negative integer, and the fields are sent together or not at all — a partial payload is rejected:
 
