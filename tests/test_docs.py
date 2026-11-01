@@ -1296,6 +1296,37 @@ def test_service_md_trend_row_lists_self_filed_share():
     )
 
 
+def test_service_md_trend_row_documents_self_filed_share_measure():
+    """The /trend row documents the self-filed share measure: its unit (a percent
+    of the sprint's filed cards, crew-filed count out of the total-filed count,
+    unknown cards included in the total), its precision (whole percent), where
+    the per-sprint counts behind each value live (the per-sprint filed split in
+    the /range answer), its null semantics (no filing facts, not 'no self-filed
+    work'), and its zero semantics (the crew filed none)."""
+    text = (DOCS_DIR / "service.md").read_text()
+    section = _extract_marked_section(text, "service")
+    trend_rows = [line for line in section.splitlines() if "/trend" in line]
+    assert trend_rows, "no /trend row found in generated section"
+    row = trend_rows[0]
+    # Precision: whole percent
+    assert "whole percent" in row
+    # Unit: crew-filed count out of the total-filed count, unknown cards included
+    assert "crew-filed count out of the total-filed count" in row
+    assert "unknown cards included in the total" in row
+    # Where the counts live: the per-sprint filed split in the /range answer
+    assert "per-sprint filed split in the /range answer" in row
+    # The filed split structure
+    assert "of which found" in row
+    assert "from its own process" in row
+    assert "the Sponsor's" in row
+    assert "the operator's" in row
+    # Null semantics: no filing facts, not 'no self-filed work'
+    assert "no filing facts" in row
+    assert "no self-filed work" in row
+    # Zero semantics: the crew filed none
+    assert "filed none" in row
+
+
 def test_metrics_md_cost_names_match_service_metrics():
     """AC6: the cost measure names in the generated metrics table match the names
     in ALL_METRICS and _METRIC_COLUMNS exactly."""
