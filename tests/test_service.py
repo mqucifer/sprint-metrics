@@ -6577,7 +6577,18 @@ def test_filed_event_does_not_change_range_or_trend():
 
     status, after = _get_json(f"{base_url}/range?start=2024-06&end=2024-06")
     assert status == 200
-    assert after == before
+    # The filed event adds a 'filed' section to the range entry; all other
+    # delivery measures are unchanged.
+    before_sprint = before["sprints"]["2024-06"]
+    after_sprint = after["sprints"]["2024-06"]
+    assert before_sprint.get("filed") is None
+    assert after_sprint["filed"] is not None
+    assert after_sprint["filed"]["crew_total"] == 1
+    assert after_sprint["filed"]["unknown"] == 1
+    # The other measures are unchanged
+    before_without_filed = {k: v for k, v in before_sprint.items() if k != "filed"}
+    after_without_filed = {k: v for k, v in after_sprint.items() if k != "filed"}
+    assert after_without_filed == before_without_filed
 
     status, trend_after = _get_json(f"{base_url}/trend?metric=throughput&start=2024-06&end=2024-06")
     assert status == 200
