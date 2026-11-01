@@ -402,3 +402,93 @@ def test_sprint_range_schema_rework_rejects_malformed_send_back():
     }
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(bad, SPRINT_RANGE_SCHEMA)
+
+
+def test_sprint_range_schema_declares_filed_on_sprint_entry():
+    """AC4: the range schema declares a filed key on a sprint entry, shaped as the
+    service answers it — an object (or null) with the crew-filed total and its
+    found/from-process/split/unknown counts, the Sponsor/operator/other counts,
+    the sprint's total cards, and the self-filed share with its numerator and
+    denominator; filed is not required, so a pre-rollout entry may omit it or
+    read null."""
+    sprint_schema = SPRINT_RANGE_SCHEMA["properties"]["sprints"]["additionalProperties"]
+    assert "filed" in sprint_schema["properties"]
+    assert "filed" not in sprint_schema["required"]
+    filed = sprint_schema["properties"]["filed"]
+    assert filed["type"] == ["object", "null"]
+    assert filed["required"] == [
+        "crew_total",
+        "found",
+        "from_process",
+        "split",
+        "unknown",
+        "sponsor",
+        "operator",
+        "other",
+        "total_cards",
+        "self_filed_share",
+    ]
+    for name in (
+        "crew_total",
+        "found",
+        "from_process",
+        "split",
+        "unknown",
+        "sponsor",
+        "operator",
+        "other",
+        "total_cards",
+    ):
+        assert filed["properties"][name]["type"] == "integer"
+    share = filed["properties"]["self_filed_share"]
+    assert share["type"] == "object"
+    assert share["required"] == ["percent", "numerator", "denominator"]
+    assert share["properties"]["percent"]["type"] == "integer"
+    assert share["properties"]["numerator"]["type"] == "integer"
+    assert share["properties"]["denominator"]["type"] == "integer"
+
+
+def test_sprint_range_schema_accepts_filed_answer_or_null_or_absent():
+    """AC4: a range entry carrying a filed answer, one with filed null, and one
+    with filed absent all validate against SPRINT_RANGE_SCHEMA."""
+    filed_answer = {
+        "crew_total": 25,
+        "found": 10,
+        "from_process": 12,
+        "split": 3,
+        "unknown": 0,
+        "sponsor": 1,
+        "operator": 1,
+        "other": 0,
+        "total_cards": 27,
+        "self_filed_share": {"percent": 93, "numerator": 25, "denominator": 27},
+    }
+
+    def entry(**extra):
+        e = _range_entry(prior=None, delta=None)
+        e.update(extra)
+        return e
+
+    window = {
+        "start": "2024-03",
+        "end": "2024-03",
+        "sprint_count": 1,
+        "no_data": [],
+        "verdicts": {measure: None for measure in MEASURE_REGISTRY},
+        "biggest_improvement": None,
+        "worst_dip": None,
+        "turns": [],
+        "too_short": True,
+    }
+
+    for sprints in (
+        {"2024-03": entry(filed=filed_answer)},
+        {"2024-03": entry(filed=None)},
+        {"2024-03": entry()},
+    ):
+        response = {
+            "api_version": "4",
+            "window": window,
+            "sprints": sprints,
+        }
+        jsonschema.validate(response, SPRINT_RANGE_SCHEMA)

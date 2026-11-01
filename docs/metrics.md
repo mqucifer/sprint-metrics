@@ -252,6 +252,44 @@ with `sent_backs` null, and a sprint with no review/QA returns carries
 `qa_returns` null — each part names no story and does not assert a zero
 count, and the two parts do not borrow each other's data.
 
+### Filed split (how much of the sprint's filed work the crew gave itself)
+
+The `filed` answer on each sprint's `/range` entry reports how much of the
+sprint's filed work the crew gave itself, beside what the Sponsor, the
+operator and anyone else filed. Every value is a whole count of cards.
+
+A card counts in the sprint it was filed in — the sprint named on its `filed`
+event — not the sprint it merged in. The filed total therefore differs from
+throughput by design: a card filed in one sprint and merged in another counts
+in the filed answer for the sprint that filed it, not the sprint that shipped
+it.
+
+The buckets partition the sprint. The crew's own filed cards split into four
+buckets — `found` (a role found a problem), `from_process` (the crew's own
+test, release, review or technical debt), `split` (split from already-filed
+work) and `unknown` (the crew filed it, but it can't be told what opened it)
+— and the four sum to the crew-filed total: `crew_total = found +
+from_process + split + unknown`. The filers partition the rest of the
+sprint's filed cards: the Sponsor's (`sponsor`), the operator's (`operator`)
+and everyone else's (`other`), which together with the crew equal the
+sprint's total filed cards: `crew_total + sponsor + operator + other =
+total_cards`.
+
+The `unknown` bucket is counted in the crew total: those cards were filed by
+the crew, they simply can't be told apart. A card the crew can't place is
+reported as `unknown`, never guessed into another bucket.
+
+`self_filed_share` carries the whole percent of the sprint's total filed
+cards that the crew filed, with its numerator (`crew_total`) and denominator
+(`total_cards`), so the share reads "25 of 27" without arithmetic.
+
+No data is kept distinct from zero. A sprint with events but no stored
+`filed` events reads `filed` null — no filing facts, not a zero split. A
+sprint with `filed` events in which the crew filed nothing reads the zero
+crew counts (`crew_total` 0, and all four crew buckets 0) beside the Sponsor,
+operator and other counts — a real answer, distinct from null. A sprint with
+no events at all reads `filed` null, exactly like its other answers.
+
 ## Boundary conditions
 
 ### Zero values for an empty sprint
