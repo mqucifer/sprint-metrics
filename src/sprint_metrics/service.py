@@ -27,6 +27,11 @@ from sprint_metrics.dora import (
     calculate_dora_lead_time,
     calculate_release_frequency,
 )
+from sprint_metrics.filed import (
+    _RANGE_FILED_DESCRIPTION,
+    _attach_range_filed,
+    calculate_filed_split,
+)
 from sprint_metrics.metrics import (
     _RANGE_COST_DESCRIPTION,
     ALL_METRICS,
@@ -40,11 +45,6 @@ from sprint_metrics.rework import (
     calculate_rework,
     calculate_sent_backs_count,
     extract_qa_returns,
-)
-from sprint_metrics.filed import (
-    _RANGE_FILED_DESCRIPTION,
-    _attach_range_filed,
-    calculate_filed_split,
 )
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
 from sprint_metrics.sprint_range import (

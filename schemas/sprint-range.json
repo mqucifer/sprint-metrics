@@ -1324,6 +1324,72 @@
               "sent_backs"
             ]
           },
+          "filed": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "crew_total": {
+                "type": "integer"
+              },
+              "found": {
+                "type": "integer"
+              },
+              "from_process": {
+                "type": "integer"
+              },
+              "split": {
+                "type": "integer"
+              },
+              "unknown": {
+                "type": "integer"
+              },
+              "sponsor": {
+                "type": "integer"
+              },
+              "operator": {
+                "type": "integer"
+              },
+              "other": {
+                "type": "integer"
+              },
+              "total_cards": {
+                "type": "integer"
+              },
+              "self_filed_share": {
+                "type": "object",
+                "properties": {
+                  "percent": {
+                    "type": "integer"
+                  },
+                  "numerator": {
+                    "type": "integer"
+                  },
+                  "denominator": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "percent",
+                  "numerator",
+                  "denominator"
+                ]
+              }
+            },
+            "required": [
+              "crew_total",
+              "found",
+              "from_process",
+              "split",
+              "unknown",
+              "sponsor",
+              "operator",
+              "other",
+              "total_cards",
+              "self_filed_share"
+            ]
+          },
           "roster": {
             "type": [
               "object",
