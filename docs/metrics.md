@@ -272,7 +272,7 @@ work) and `unknown` (the crew filed it, but it can't be told what opened it)
 — and the four sum to the crew-filed total: `crew_total = found +
 from_process + split + unknown`. The filers partition the rest of the
 sprint's filed cards: the Sponsor's (`sponsor`), the operator's (`operator`)
-and everyone else's (`other`), which together with the crew equal the
+and everyone else's or with no known filer (`other`), which together with the crew equal the
 sprint's total filed cards: `crew_total + sponsor + operator + other =
 total_cards`.
 
