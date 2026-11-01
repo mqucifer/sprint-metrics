@@ -4,6 +4,8 @@
 
 ### Added
 
+- A new `/trend` measure, `self_filed_share_percent`: the whole percent of the sprint's total filed cards that the crew filed; null where the sprint carries no filing facts; registered in the measure registry with no better direction (movement only, like the cost measures)
+
 ### Changed
 
 ### Fixed

@@ -63,7 +63,8 @@
             "input_tokens_middle",
             "input_tokens_total",
             "output_tokens_middle",
-            "output_tokens_total"
+            "output_tokens_total",
+            "self_filed_share_percent"
           ],
           "properties": {
             "cycle_time_days": {
@@ -865,6 +866,44 @@
               ]
             },
             "output_tokens_total": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "self_filed_share_percent": {
               "type": [
                 "object",
                 "null"

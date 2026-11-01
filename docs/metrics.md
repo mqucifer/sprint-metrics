@@ -34,6 +34,7 @@ BEGIN:metrics
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards, in whole points. |
 | Reasoning output percent | `reasoning_output_percent` | Return the sprint's reasoning share of output tokens as a whole percent, or None when no story carries cost. |
 | DORA release frequency | `release_frequency` | Return the count of distinct epics released in the sprint (how often epics ship), as a whole count. None when no epic link is derivable. |
+| Self-filed share | `self_filed_share_percent` | Return the whole percent of the sprint's total filed cards that the crew filed (the crew-filed total over the sprint's total cards). A card counts in the sprint it was filed in, not the sprint it merged. None where the sprint carries no filing facts. |
 | Sent backs count | `sent_backs_count` | Return the count of distinct stories sent back to the Business Analyst in the sprint, or None when no returned events are stored. |
 | Superseded breakdown | `superseded_breakdown` | Return the per-reason breakdown of superseded cards, keyed by 'sponsor' and 'story_problem' with their counts. Excluded from throughput and in-flight calculations. |
 | Superseded count | `superseded_count` | Return the count of cards marked superseded in the sprint, as a whole count. Excluded from throughput and in-flight calculations. |

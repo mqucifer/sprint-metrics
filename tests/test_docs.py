@@ -1278,6 +1278,24 @@ def test_service_md_trend_row_lists_model_time_split_measures():
     assert "model_time_split_delivery_minutes" in section
 
 
+def test_service_md_trend_row_lists_self_filed_share():
+    """AC3: the /trend row in docs/service.md names the self_filed_share_percent
+    measure among the valid metrics, and states its unit (whole percent) and its
+    null rule (null where the sprint carries no filing facts)."""
+    text = (DOCS_DIR / "service.md").read_text()
+    section = _extract_marked_section(text, "service")
+    trend_rows = [line for line in section.splitlines() if "/trend" in line]
+    assert trend_rows, "no /trend row found in generated section"
+    row = trend_rows[0]
+    assert "self_filed_share_percent" in row, (
+        "trend row does not list self_filed_share_percent as a valid metric"
+    )
+    assert "whole percent" in row, "trend row does not state the self-filed share is a whole percent"
+    assert "no filing facts" in row, (
+        "trend row does not state the self-filed share is null where no filing facts"
+    )
+
+
 def test_metrics_md_cost_names_match_service_metrics():
     """AC6: the cost measure names in the generated metrics table match the names
     in ALL_METRICS and _METRIC_COLUMNS exactly."""
@@ -1449,6 +1467,24 @@ def test_metrics_md_metrics_table_has_model_time_split_rows():
     section = section.split("\n###")[0]
     assert "whole minutes" in section
     assert "null" in section.lower()
+
+
+def test_metrics_md_metrics_table_has_self_filed_share_row():
+    """AC3: docs/metrics.md's metrics table carries a row for
+    self_filed_share_percent naming its unit (whole percent), its
+    sprint-attribution rule (a card counts in the sprint it was filed in,
+    not the sprint it merged), and its null rule (None where the sprint
+    carries no filing facts) — the way every other measure's row does."""
+    text = (DOCS_DIR / "metrics.md").read_text()
+    table = _extract_marked_section(text, "metrics")
+    row = next(line for line in table.splitlines() if "`self_filed_share_percent`" in line)
+    cells = [c.strip() for c in row.split("|") if c.strip()]
+    assert cells[1] == "`self_filed_share_percent`"
+    assert "whole percent" in row, "row does not name the unit (whole percent)"
+    assert "filed in" in row and "merged" in row, (
+        "row does not name the sprint-attribution rule (filed in, not merged)"
+    )
+    assert "no filing facts" in row, "row does not name the null rule (None where no filing facts)"
 
 
 def test_service_md_cost_example_is_complete():

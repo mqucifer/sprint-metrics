@@ -6650,6 +6650,85 @@ def test_query_filed_events_returns_stored_facts():
     conn2.close()
 
 
+@requires_db
+def test_trend_self_filed_share_percent_two_sprints():
+    """AC1/AC2: GET /trend?metric=self_filed_share_percent reports the whole
+    percent (the crew-filed total over the sprint's total cards) for a sprint
+    that carries filing facts, and null for a sprint that carries none — a
+    value of 0 or 100 is never produced for a sprint without facts."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        # 2024-01: one crew-filed card and one Sponsor-filed card — crew filed 1 of 2.
+        _post_events(
+            f"{base_url}/events",
+            {
+                "api_version": "1",
+                "card_id": "sfsa",
+                "type": "filed",
+                "sprint": "2024-01",
+                "timestamp": "2024-01-02T08:00:00Z",
+                "card": {"created": "2024-01-01"},
+                "filer": "crew",
+                "opener": "found",
+            },
+        )
+        _post_events(
+            f"{base_url}/events",
+            {
+                "api_version": "1",
+                "card_id": "sfsb",
+                "type": "filed",
+                "sprint": "2024-01",
+                "timestamp": "2024-01-03T08:00:00Z",
+                "card": {"created": "2024-01-01"},
+                "filer": "sponsor",
+            },
+        )
+        # 2024-02: a card that started and finished, but no filing facts.
+        _post_events(
+            f"{base_url}/events",
+            _make_event(
+                card_id="sfsc",
+                event_type="started",
+                timestamp="2024-02-02T08:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+        _post_events(
+            f"{base_url}/events",
+            _make_event(
+                card_id="sfsc",
+                event_type="finished",
+                timestamp="2024-02-05T08:00:00Z",
+                sprint="2024-02",
+                created="2024-02-01",
+            ),
+        )
+
+        status, body = _get_json(
+            f"{base_url}/trend?metric=self_filed_share_percent&start=2024-01&end=2024-02"
+        )
+        assert status == 200
+        assert body["metric"] == "self_filed_share_percent"
+        assert len(body["values"]) == 2
+        # 2024-01 carries filing facts: crew filed 1 of 2 cards -> round(1/2*100) = 50.
+        assert body["values"][0] == {"sprint": "2024-01", "value": 50}
+        assert isinstance(body["values"][0]["value"], int)
+        # 2024-02 carries no filing facts: null, never 0 or 100.
+        assert body["values"][1] == {"sprint": "2024-02", "value": None}
+    finally:
+        conn.close()
+
+
 def test_schema_event_filed_fields_declared():
     """AC8: the event-intake schema declares 'filed' as the ninth accepted type
     and filer, opener, project as optional string fields, both at GET /schema/event
