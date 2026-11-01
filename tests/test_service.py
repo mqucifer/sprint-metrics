@@ -6527,7 +6527,7 @@ def test_filed_event_does_not_change_range_or_trend():
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-f6'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-06'")
     conn.commit()
 
     port = _start_service(conn, 0)
@@ -6538,36 +6538,36 @@ def test_filed_event_does_not_change_range_or_trend():
             "api_version": "1",
             "card_id": "f6a",
             "type": "started",
-            "sprint": "2024-f6",
-            "timestamp": "2024-01-02T09:00:00Z",
-            "card": {"created": "2024-01-01"},
+            "sprint": "2024-06",
+            "timestamp": "2024-06-02T09:00:00Z",
+            "card": {"created": "2024-06-01"},
         },
         {
             "api_version": "1",
             "card_id": "f6a",
             "type": "finished",
-            "sprint": "2024-f6",
-            "timestamp": "2024-01-10T15:00:00Z",
-            "card": {"created": "2024-01-01"},
+            "sprint": "2024-06",
+            "timestamp": "2024-06-10T15:00:00Z",
+            "card": {"created": "2024-06-01"},
         },
     ]
     for ev in events:
         status, _ = _post_events(f"{base_url}/events", ev)
         assert status == 200
 
-    status, before = _get_json(f"{base_url}/range?start=2024-f6&end=2024-f6")
+    status, before = _get_json(f"{base_url}/range?start=2024-06&end=2024-06")
     assert status == 200
 
-    status, trend_before = _get_json(f"{base_url}/trend?metric=throughput&start=2024-f6&end=2024-f6")
+    status, trend_before = _get_json(f"{base_url}/trend?metric=throughput&start=2024-06&end=2024-06")
     assert status == 200
 
     filed_event = {
         "api_version": "1",
         "card_id": "f6a",
         "type": "filed",
-        "sprint": "2024-f6",
-        "timestamp": "2024-01-01T08:00:00Z",
-        "card": {"created": "2024-01-01"},
+        "sprint": "2024-06",
+        "timestamp": "2024-06-01T08:00:00Z",
+        "card": {"created": "2024-06-01"},
         "filer": "crew",
         "opener": "qa-suite test failed",
         "project": "qa-suite",
@@ -6575,11 +6575,11 @@ def test_filed_event_does_not_change_range_or_trend():
     status, _ = _post_events(f"{base_url}/events", filed_event)
     assert status == 200
 
-    status, after = _get_json(f"{base_url}/range?start=2024-f6&end=2024-f6")
+    status, after = _get_json(f"{base_url}/range?start=2024-06&end=2024-06")
     assert status == 200
     assert after == before
 
-    status, trend_after = _get_json(f"{base_url}/trend?metric=throughput&start=2024-f6&end=2024-f6")
+    status, trend_after = _get_json(f"{base_url}/trend?metric=throughput&start=2024-06&end=2024-06")
     assert status == 200
     assert trend_after == trend_before
 
@@ -6597,7 +6597,7 @@ def test_query_filed_events_returns_stored_facts():
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-f7'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-07'")
     conn.commit()
 
     events = [
@@ -6605,9 +6605,9 @@ def test_query_filed_events_returns_stored_facts():
             "api_version": "1",
             "card_id": "f7a",
             "type": "filed",
-            "sprint": "2024-f7",
-            "timestamp": "2024-01-01T08:00:00Z",
-            "card": {"created": "2024-01-01"},
+            "sprint": "2024-07",
+            "timestamp": "2024-07-01T08:00:00Z",
+            "card": {"created": "2024-07-01"},
             "filer": "crew",
             "opener": "qa-suite test failed",
             "project": "qa-suite",
@@ -6616,9 +6616,9 @@ def test_query_filed_events_returns_stored_facts():
             "api_version": "1",
             "card_id": "f7b",
             "type": "filed",
-            "sprint": "2024-f7",
-            "timestamp": "2024-01-02T09:00:00Z",
-            "card": {"created": "2024-01-02"},
+            "sprint": "2024-07",
+            "timestamp": "2024-07-02T09:00:00Z",
+            "card": {"created": "2024-07-02"},
             "filer": "sponsor",
         },
     ]
@@ -6628,14 +6628,15 @@ def test_query_filed_events_returns_stored_facts():
             status, _ = _post_events(f"http://127.0.0.1:{port}/events", ev)
             assert status == 200
     finally:
-        port and conn.close()
+        conn.close()
 
-    result = query_filed_events(conn, "2024-f7")
+    conn2 = psycopg.connect(SPRINT_METRICS_DB)
+    result = query_filed_events(conn2, "2024-07")
     assert result == [
         ("f7a", "crew", "qa-suite test failed", "qa-suite"),
         ("f7b", "sponsor", None, None),
     ]
-    conn.close()
+    conn2.close()
 
 
 def test_schema_event_filed_fields_declared():
