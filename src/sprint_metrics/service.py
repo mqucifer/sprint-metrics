@@ -683,6 +683,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     query_working_time_events(conn_holder[0], label),
                                     query_sprint_span(conn_holder[0], label),
                                 )
+                            elif metric == "self_filed_share_percent":
+                                filed_rows = query_filed_events(conn_holder[0], label)
+                                if filed_rows:
+                                    value = calculate_filed_split(filed_rows)["self_filed_share"]["percent"]
+                                else:
+                                    value = None
                             else:
                                 value = metric_value(metric, sprints[label])
                             values.append({"sprint": label, "value": value})

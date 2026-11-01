@@ -35,6 +35,7 @@ MEASURE_REGISTRY: Mapping[str, tuple[str | None, str, str]] = {
     "input_tokens_total": (None, "count", "whole"),
     "output_tokens_middle": (None, "count", "whole"),
     "output_tokens_total": (None, "count", "whole"),
+    "self_filed_share_percent": (None, "percent", "whole"),
 }
 
 # Measures that are derived from another measure in the registry (the same
@@ -252,6 +253,9 @@ def _attach_range_verdict(result: dict, labels: list[str], has_events: set[str])
         entry = result["sprints"][label]
         values = dict(entry)
         values.update(_cost_flat(entry.get("cost")))
+        filed_entry = entry.get("filed")
+        if filed_entry is not None:
+            values["self_filed_share_percent"] = filed_entry["self_filed_share"]["percent"]
         flat[label] = values
     result["window"]["verdicts"] = window_verdicts(flat, data_bearing, MEASURE_REGISTRY)
 
@@ -270,6 +274,9 @@ def _attach_range_standouts(result: dict, labels: list[str], has_events: set[str
         entry = result["sprints"][label]
         values = dict(entry)
         values.update(_cost_flat(entry.get("cost")))
+        filed_entry = entry.get("filed")
+        if filed_entry is not None:
+            values["self_filed_share_percent"] = filed_entry["self_filed_share"]["percent"]
         flat[label] = values
     standouts = window_standouts(flat, data_bearing, MEASURE_REGISTRY)
     result["window"]["biggest_improvement"] = standouts["biggest_improvement"]

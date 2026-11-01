@@ -153,6 +153,13 @@ def _generate_metrics_content() -> str:
             "re-sent as 'started' reads as idle). None where the sprint is "
             "not registered or no session ran inside the span."
         ),
+        "self_filed_share_percent": (
+            "Return the whole percent of the sprint's total filed cards "
+            "that the crew filed (the crew-filed total over the sprint's "
+            "total cards). A card counts in the sprint it was filed in, "
+            "not the sprint it merged. None where the sprint carries no "
+            "filing facts."
+        ),
     }
 
     display_overrides: dict[str, str] = {

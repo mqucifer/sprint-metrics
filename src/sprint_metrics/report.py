@@ -41,4 +41,5 @@ _METRIC_COLUMNS: dict[str, str] = {
     "model_time_split_refinement_minutes": "Model time split (refinement)",
     "model_time_split_delivery_minutes": "Model time split (delivery)",
     "idle_minutes": "Idle time",
+    "self_filed_share_percent": "Self-filed share",
 }

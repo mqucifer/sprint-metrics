@@ -66,6 +66,7 @@ def test_shipped_registry_covers_every_scalar_range_measure():
         "input_tokens_total": None,
         "output_tokens_middle": None,
         "output_tokens_total": None,
+        "self_filed_share_percent": None,
     }
     assert set(MEASURE_REGISTRY) == set(directions)
     for measure, direction in directions.items():
