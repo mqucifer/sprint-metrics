@@ -1278,6 +1278,24 @@ def test_service_md_trend_row_lists_model_time_split_measures():
     assert "model_time_split_delivery_minutes" in section
 
 
+def test_service_md_trend_row_lists_self_filed_share():
+    """AC3: the /trend row in docs/service.md names the self_filed_share_percent
+    measure among the valid metrics, and states its unit (whole percent) and its
+    null rule (null where the sprint carries no filing facts)."""
+    text = (DOCS_DIR / "service.md").read_text()
+    section = _extract_marked_section(text, "service")
+    trend_rows = [line for line in section.splitlines() if "/trend" in line]
+    assert trend_rows, "no /trend row found in generated section"
+    row = trend_rows[0]
+    assert "self_filed_share_percent" in row, (
+        "trend row does not list self_filed_share_percent as a valid metric"
+    )
+    assert "whole percent" in row, "trend row does not state the self-filed share is a whole percent"
+    assert "no filing facts" in row, (
+        "trend row does not state the self-filed share is null where no filing facts"
+    )
+
+
 def test_metrics_md_cost_names_match_service_metrics():
     """AC6: the cost measure names in the generated metrics table match the names
     in ALL_METRICS and _METRIC_COLUMNS exactly."""

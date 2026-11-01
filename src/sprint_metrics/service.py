@@ -833,7 +833,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "change_working_time_minutes, "
         "model_time_split_refinement_minutes, "
         "model_time_split_delivery_minutes, "
-        "idle_minutes. "
+        "idle_minutes, self_filed_share_percent. "
         "Minute-based metrics (cycle_time_minutes, lead_time_minutes) return "
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null. working_time_minutes returns the sprint's "
@@ -857,7 +857,12 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "JSON null. idle_minutes returns the sprint's idle time — the "
         "time that passed with no session running against the sprint's "
         "total registered duration — in whole minutes (null where the "
-        "sprint is not registered or carries no session timestamps).",
+        "sprint is not registered or carries no session timestamps). "
+        "self_filed_share_percent returns the whole percent of the "
+        "sprint's total filed cards that the crew filed (the crew-filed "
+        "total over the sprint's total cards); a card counts in the "
+        "sprint it was filed in, not the sprint it merged. Null where "
+        "the sprint carries no filing facts.",
     ),
     (
         "GET",
