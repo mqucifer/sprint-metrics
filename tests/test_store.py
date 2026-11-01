@@ -19,6 +19,7 @@ from sprint_metrics.metrics import calculate_superseded_points
 from sprint_metrics.store import (
     init_db,
     insert_event,
+    query_filed_events,
     query_returned_events,
     query_sprint,
     query_started_count,
@@ -837,3 +838,113 @@ def test_superseded_row_stores_epic_goal_and_kind(conn):
     assert rows[0][2] == "chore"
     assert rows[0][3] == "sponsor"
     assert rows[0][4] == [42, 43]
+
+
+def test_query_filed_events_returns_stored_facts_in_event_order(conn):
+    """AC1: each card filed in the sprint is returned once, carrying its card
+    identifier, the project it counts for, the filer side, and the opener,
+    in event order."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-08'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "fd_1",
+            "type": "filed",
+            "timestamp": "2031-08-01T08:00:00Z",
+            "sprint": "2031-08",
+            "card": {"created": "2031-08-01"},
+            "filer": "crew",
+            "opener": "qa-suite test failed",
+            "project": "qa-suite",
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "fd_2",
+            "type": "filed",
+            "timestamp": "2031-08-02T09:00:00Z",
+            "sprint": "2031-08",
+            "card": {"created": "2031-08-02"},
+            "filer": "sponsor",
+        },
+    )
+    got = query_filed_events(conn, "2031-08")
+    assert got == [
+        ("fd_1", "crew", "qa-suite test failed", "qa-suite"),
+        ("fd_2", "sponsor", None, None),
+    ]
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-08'")
+    conn.commit()
+
+
+def test_query_filed_events_returns_empty_when_no_filed_rows(conn):
+    """AC2: a sprint that holds events of other kinds but no 'filed' rows
+    returns an empty list, so the answer can report no data rather than a zero."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-09'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "nofd_1",
+            "type": "started",
+            "timestamp": "2031-09-01T10:00:00Z",
+            "sprint": "2031-09",
+            "card": {"created": "2031-09-01"},
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "nofd_1",
+            "type": "finished",
+            "timestamp": "2031-09-05T10:00:00Z",
+            "sprint": "2031-09",
+            "card": {"created": "2031-09-01"},
+        },
+    )
+    assert query_filed_events(conn, "2031-09") == []
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-09'")
+    conn.commit()
+
+
+def test_query_filed_events_same_card_id_different_projects(conn):
+    """AC3: two 'filed' rows carrying the same card identifier but filed in
+    two different projects are both returned, the project field keeping them
+    distinct so the answer counts them as two cards."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-10'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "same_id",
+            "type": "filed",
+            "timestamp": "2031-10-01T08:00:00Z",
+            "sprint": "2031-10",
+            "card": {"created": "2031-10-01"},
+            "filer": "crew",
+            "opener": "bug found",
+            "project": "repo-a",
+        },
+    )
+    insert_event(
+        conn,
+        {
+            "card_id": "same_id",
+            "type": "filed",
+            "timestamp": "2031-10-02T09:00:00Z",
+            "sprint": "2031-10",
+            "card": {"created": "2031-10-01"},
+            "filer": "sponsor",
+            "project": "repo-b",
+        },
+    )
+    got = query_filed_events(conn, "2031-10")
+    assert len(got) == 2
+    assert got == [
+        ("same_id", "crew", "bug found", "repo-a"),
+        ("same_id", "sponsor", None, "repo-b"),
+    ]
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-10'")
+    conn.commit()
