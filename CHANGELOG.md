@@ -8,6 +8,8 @@
 
 ### Changed
 
+- The /range and /trend responses carry `api_version` "10"; version "9" is retired because /range's shape changed (the per-sprint `filed` answer) and /trend gained the `self_filed_share_percent` measure. Event intake keeps `api_version` "1"
+
 ### Fixed
 
 ### Removed
