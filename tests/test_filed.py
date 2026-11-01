@@ -156,6 +156,39 @@ def test_no_filing_facts_is_not_zero():
     assert answer["total_cards"] == 2
 
 
+def test_no_filing_facts_reads_none():
+    """AC4: a sprint holding no filing facts reads None (no data), never a
+    zero split: no 'filed' rows at all, or 'filed' rows whose filing-fact
+    fields are all absent (filer, opener and project never sent)."""
+    assert calculate_filed_split([]) is None
+    factless = [
+        ("u1", None, None, None),
+        ("u2", None, None, None),
+    ]
+    assert calculate_filed_split(factless) is None
+
+
+def test_denominator_includes_cards_the_facts_cannot_tell_who_filed():
+    """AC6: when the sprint holds filing facts, a card whose facts cannot tell
+    who filed it still counts in the denominator (the total cards filed) — the
+    share does not divide by the tellable cards and does not guess a bucket."""
+    events = [
+        ("c1", "crew", "found", None),
+        ("c2", "crew", "process", None),
+        ("u1", None, None, None),
+        ("u2", None, None, None),
+        ("sp", "sponsor", None, None),
+        ("op", "operator", None, None),
+    ]
+    answer = calculate_filed_split(events)
+    assert answer is not None
+    # 6 cards filed in total; the factless ones are not guessed into a bucket
+    # the facts name, and they are in the denominator.
+    assert answer["total_cards"] == 6
+    assert answer["crew_total"] == 2
+    assert answer["self_filed_share"] == {"percent": 33, "numerator": 2, "denominator": 6}
+
+
 def test_self_filed_share_worked_example():
     """AC5: the self-filed share is 25 of 27, carried with numerator and
     denominator."""
