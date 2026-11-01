@@ -8,6 +8,8 @@
 
 ### Changed
 
+- The /range and /trend responses carry `api_version` "10"; version "9" is retired because /range's shape changed (the per-sprint `filed` answer) and /trend gained the `self_filed_share_percent` measure. Event intake keeps `api_version` "1"
+
 - GET /trend's `self_filed_share_percent` and the per-sprint `/range` filed section read null, not a zero-count section, for a sprint that carries 'filed' events whose filing-fact fields are all absent (the filer, opener and project facts are never sent) — null means "no facts", distinct from a true zero, which is the answer for a sprint whose filing facts show the crew filed none of the sprint's cards. The `/trend` docs row states both answers and points to the `/range` filed section for the counts behind each value
 
 ### Fixed
