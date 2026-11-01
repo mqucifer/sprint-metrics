@@ -105,9 +105,80 @@ def test_init_db_adds_the_cost_columns_to_a_table_from_before_them(conn):
         "output_tokens",
         "reasoning_output_tokens",
     } <= column_names
-    assert len(column_names) == 23
+    assert len(column_names) == 26
     count = conn.execute("SELECT COUNT(*) FROM sprint_metrics.board_events").fetchone()[0]
     assert count == 1
+
+
+def test_init_db_adds_filing_fact_columns_and_filed_type(conn):
+    """AC5: a board_events table created by an earlier version (no filing-fact columns,
+    no 'filed' in the type CHECK) gains the filing-fact columns as nullable and 'filed'
+    is admitted into the type CHECK, with previously stored events unchanged."""
+    conn.execute("DROP TABLE IF EXISTS sprint_metrics.board_events")
+    conn.execute(
+        """
+        CREATE TABLE sprint_metrics.board_events (
+            card_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            event_time TIMESTAMPTZ NOT NULL,
+            sprint TEXT NOT NULL,
+            card_created DATE NOT NULL,
+            attempts INT,
+            failure_class TEXT,
+            failure_role TEXT,
+            attempt_number INT,
+            points INT,
+            because TEXT,
+            epic TEXT,
+            goal TEXT,
+            kind TEXT,
+            replaced_by JSONB,
+            card_created_at TIMESTAMPTZ,
+            model_seconds INT,
+            input_tokens BIGINT,
+            cached_input_tokens BIGINT,
+            output_tokens BIGINT,
+            reasoning_output_tokens BIGINT,
+            model_time_split_refinement INT,
+            model_time_split_delivery INT,
+            PRIMARY KEY (card_id, type, event_time),
+            CONSTRAINT board_events_type_check CHECK (
+                type IN ('started', 'blocked', 'unblocked', 'finished', 'escalated', 'attempt_failed', 'superseded', 'returned')
+            )
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO sprint_metrics.board_events (card_id, type, event_time, sprint, card_created) "
+        "VALUES ('c_old', 'started', '2024-01-03T10:00:00Z', '2024-01', '2024-01-01')"
+    )
+    conn.commit()
+
+    init_db(conn)
+
+    rows = conn.execute(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'board_events' AND table_schema = 'sprint_metrics'
+        """
+    ).fetchall()
+    column_names = {r[0] for r in rows}
+    assert {"filer", "opener", "project"} <= column_names
+
+    # The old event is unchanged.
+    count = conn.execute("SELECT COUNT(*) FROM sprint_metrics.board_events").fetchone()[0]
+    assert count == 1
+
+    # The new type is now accepted.
+    conn.execute(
+        "INSERT INTO sprint_metrics.board_events (card_id, type, event_time, sprint, card_created, filer) "
+        "VALUES ('c_filed', 'filed', '2024-01-01T08:00:00Z', '2024-01', '2024-01-01', 'crew')"
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT filer FROM sprint_metrics.board_events WHERE card_id = 'c_filed'"
+    ).fetchone()
+    assert row[0] == "crew"
 
 
 def test_upsert_sprint_inserts_row(conn):

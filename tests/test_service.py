@@ -1685,7 +1685,7 @@ def test_schema_event_get_returns_200_json_schema():
 @requires_db
 def test_schema_event_card_and_type_constraints():
     """AC2: schema's properties include a card object whose required includes 'created',
-    and the schema constrains type to the eight accepted values."""
+    and the schema constrains type to the nine accepted values."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1707,6 +1707,7 @@ def test_schema_event_card_and_type_constraints():
             "attempt_failed",
             "superseded",
             "returned",
+            "filed",
         }
     finally:
         conn.close()
@@ -1762,9 +1763,9 @@ def test_schema_event_top_level_structure():
 
 @requires_db
 def test_schema_event_type_enum_exact():
-    """AC3+UX4: properties.type.enum is an array of exactly eight strings in order:
+    """AC3+UX4: properties.type.enum is an array of exactly nine strings in order:
     started, blocked, unblocked, finished, escalated, attempt_failed, superseded,
-    returned."""
+    returned, filed."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -1783,6 +1784,7 @@ def test_schema_event_type_enum_exact():
             "attempt_failed",
             "superseded",
             "returned",
+            "filed",
         ]
     finally:
         conn.close()
@@ -6366,6 +6368,318 @@ def test_post_returned_resend_fills_null_keeps_existing():
         assert rows[0][2] == "epic-7"
     finally:
         conn.close()
+
+
+@requires_db
+def test_post_filed_stores_filer_opener_and_project():
+    """AC1: POST /events with type='filed' carrying filer, opener, and project
+    answers 200 and the stored filed row carries all three values."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'f1'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "f1",
+            "type": "filed",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "filer": "crew",
+            "opener": "qa-suite test failed",
+            "project": "qa-suite",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT filer, opener, project FROM sprint_metrics.board_events "
+            "WHERE card_id = 'f1' AND type = 'filed'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "crew"
+        assert rows[0][1] == "qa-suite test failed"
+        assert rows[0][2] == "qa-suite"
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_filed_without_optional_fields_stores_null():
+    """AC2: POST /events with type='filed' and no filer, opener, or project
+    answers 200 and stores those columns as NULL."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'f2'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "f2",
+            "type": "filed",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT filer, opener, project FROM sprint_metrics.board_events "
+            "WHERE card_id = 'f2' AND type = 'filed'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] is None
+        assert rows[0][1] is None
+        assert rows[0][2] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_filed_resend_fills_null_keeps_existing():
+    """AC3: re-sending a stored 'filed' event with an opener the first send
+    left NULL answers 200; the NULL field takes the supplied value and fields
+    that already hold a value are not changed."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'f3'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        first = {
+            "api_version": "1",
+            "card_id": "f3",
+            "type": "filed",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "filer": "crew",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", first)
+        assert status == 200
+        assert "error" not in body
+
+        resend = {
+            "api_version": "1",
+            "card_id": "f3",
+            "type": "filed",
+            "sprint": "2024-01",
+            "timestamp": "2024-01-15T10:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "opener": "split from card 42",
+        }
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", resend)
+        assert status == 200
+        assert "error" not in body
+
+        rows = conn.execute(
+            "SELECT filer, opener, project FROM sprint_metrics.board_events "
+            "WHERE card_id = 'f3' AND type = 'filed'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "crew"
+        assert rows[0][1] == "split from card 42"
+        assert rows[0][2] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_unknown_event_type_still_returns_400():
+    """AC4: POST /events with a type that is not one of the nine accepted event
+    types answers 400 naming the unknown type."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+
+    port = _start_service(conn, 0)
+    try:
+        event = _make_event(card_id="f4", event_type="reopened")
+        status, body = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status == 400
+        assert "error" in body
+        assert "reopened" in body["error"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_filed_event_does_not_change_range_or_trend():
+    """AC6: POSTing a 'filed' event for a sprint that already carries started and
+    finished events does not change the /range or /trend responses."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-f6'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base_url = f"http://127.0.0.1:{port}"
+
+    events = [
+        {
+            "api_version": "1",
+            "card_id": "f6a",
+            "type": "started",
+            "sprint": "2024-f6",
+            "timestamp": "2024-01-02T09:00:00Z",
+            "card": {"created": "2024-01-01"},
+        },
+        {
+            "api_version": "1",
+            "card_id": "f6a",
+            "type": "finished",
+            "sprint": "2024-f6",
+            "timestamp": "2024-01-10T15:00:00Z",
+            "card": {"created": "2024-01-01"},
+        },
+    ]
+    for ev in events:
+        status, _ = _post_events(f"{base_url}/events", ev)
+        assert status == 200
+
+    status, before = _get_json(f"{base_url}/range?start=2024-f6&end=2024-f6")
+    assert status == 200
+
+    status, trend_before = _get_json(f"{base_url}/trend?metric=throughput&start=2024-f6&end=2024-f6")
+    assert status == 200
+
+    filed_event = {
+        "api_version": "1",
+        "card_id": "f6a",
+        "type": "filed",
+        "sprint": "2024-f6",
+        "timestamp": "2024-01-01T08:00:00Z",
+        "card": {"created": "2024-01-01"},
+        "filer": "crew",
+        "opener": "qa-suite test failed",
+        "project": "qa-suite",
+    }
+    status, _ = _post_events(f"{base_url}/events", filed_event)
+    assert status == 200
+
+    status, after = _get_json(f"{base_url}/range?start=2024-f6&end=2024-f6")
+    assert status == 200
+    assert after == before
+
+    status, trend_after = _get_json(f"{base_url}/trend?metric=throughput&start=2024-f6&end=2024-f6")
+    assert status == 200
+    assert trend_after == trend_before
+
+    conn.close()
+
+
+@requires_db
+def test_query_filed_events_returns_stored_facts():
+    """AC7: query_filed_events returns each 'filed' row's card_id together with its
+    filer, opener, and project, in event order, with NULL for a fact the crew
+    did not send."""
+    import psycopg
+
+    from sprint_metrics.store import query_filed_events
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-f7'")
+    conn.commit()
+
+    events = [
+        {
+            "api_version": "1",
+            "card_id": "f7a",
+            "type": "filed",
+            "sprint": "2024-f7",
+            "timestamp": "2024-01-01T08:00:00Z",
+            "card": {"created": "2024-01-01"},
+            "filer": "crew",
+            "opener": "qa-suite test failed",
+            "project": "qa-suite",
+        },
+        {
+            "api_version": "1",
+            "card_id": "f7b",
+            "type": "filed",
+            "sprint": "2024-f7",
+            "timestamp": "2024-01-02T09:00:00Z",
+            "card": {"created": "2024-01-02"},
+            "filer": "sponsor",
+        },
+    ]
+    port = _start_service(conn, 0)
+    try:
+        for ev in events:
+            status, _ = _post_events(f"http://127.0.0.1:{port}/events", ev)
+            assert status == 200
+    finally:
+        port and conn.close()
+
+    result = query_filed_events(conn, "2024-f7")
+    assert result == [
+        ("f7a", "crew", "qa-suite test failed", "qa-suite"),
+        ("f7b", "sponsor", None, None),
+    ]
+    conn.close()
+
+
+def test_schema_event_filed_fields_declared():
+    """AC8: the event-intake schema declares 'filed' as the ninth accepted type
+    and filer, opener, project as optional string fields, both at GET /schema/event
+    and in the committed schemas/event-intake.json."""
+    import json
+    from pathlib import Path
+
+    from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
+
+    # Check the in-code schema.
+    type_enum = EVENT_INTAKE_SCHEMA["properties"]["type"]["enum"]
+    assert "filed" in type_enum
+    assert len(type_enum) == 9
+    for field in ("filer", "opener", "project"):
+        assert EVENT_INTAKE_SCHEMA["properties"][field] == {"type": "string"}
+        assert field not in EVENT_INTAKE_SCHEMA["required"]
+
+    # Check the committed JSON file matches.
+    committed = json.loads((Path(__file__).parent.parent / "schemas" / "event-intake.json").read_text())
+    assert committed == EVENT_INTAKE_SCHEMA
+
+
+def test_service_md_post_events_lists_filed():
+    """AC9: docs/service.md's generated endpoints table names 'filed' alongside
+    the eight existing types in the POST /events row."""
+    from pathlib import Path
+
+    text = (Path(__file__).parent.parent / "docs" / "service.md").read_text()
+    section = text.split("BEGIN:service")[1].split("END:service")[0]
+    post_events_row = [line for line in section.splitlines() if "/events" in line][0]
+    assert "filed" in post_events_row
+    for existing_type in (
+        "started",
+        "blocked",
+        "unblocked",
+        "finished",
+        "escalated",
+        "attempt_failed",
+        "superseded",
+        "returned",
+    ):
+        assert existing_type in post_events_row
 
 
 @requires_db

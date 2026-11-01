@@ -400,6 +400,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "attempt_failed",
                 "superseded",
                 "returned",
+                "filed",
             ],
         },
         "timestamp": {"type": "string", "format": "date-time"},
@@ -437,6 +438,9 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "epic": {"type": "string"},
         "goal": {"type": "string"},
         "replaced_by": {"type": ["array", "null"], "items": {"type": "integer"}},
+        "filer": {"type": "string"},
+        "opener": {"type": "string"},
+        "project": {"type": "string"},
     },
 }
 

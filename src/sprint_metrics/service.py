@@ -98,6 +98,7 @@ VALID_EVENT_TYPES = frozenset(
         "attempt_failed",
         "superseded",
         "returned",
+        "filed",
     }
 )
 # Measures /trend once offered and now refuses with a 400 that says so.
@@ -781,7 +782,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "POST",
         "/events",
         "Accept a board event (started, blocked, unblocked, finished, escalated, "
-        "attempt_failed, superseded, returned). The service validates the card's "
+        "attempt_failed, superseded, returned, filed). The service validates the card's "
         "created date and event type.",
     ),
     (
