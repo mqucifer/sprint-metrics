@@ -6,6 +6,16 @@
 
 ### Changed
 
+### Fixed
+
+### Removed
+
+## [4.4.1] - 2026-11-01
+
+### Added
+
+### Changed
+
 - The /trend docs row now states the self-filed share measure's unit (a percent of the sprint's filed cards, the crew-filed count out of the total-filed count, the unknown cards included in the total), its precision (whole percent), its null and zero semantics, and where the per-sprint counts behind each value live (the per-sprint filed split in the /range answer)
 
 ### Fixed
