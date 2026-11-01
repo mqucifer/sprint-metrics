@@ -291,6 +291,15 @@ crew counts (`crew_total` 0, and all four crew buckets 0) beside the Sponsor,
 operator and other counts — a real answer, distinct from null. A sprint with
 no events at all reads `filed` null, exactly like its other answers.
 
+Filing a card is not delivery. A sprint whose only stored rows are `filed`
+events still reads null for every delivery measure (rework, cost, DORA,
+working time, cost by kind, model time split, idle, roster) and appears in
+the window's `no_data`, as it did before the `filed` rows arrived. It still
+answers its `filed` split, because the filed answer is computed directly from
+the filed rows, independent of the delivery-event gate. In `/trend`, delivery
+measures read null for such a sprint, while `self_filed_share_percent` keeps
+its value.
+
 ## Boundary conditions
 
 ### Zero values for an empty sprint

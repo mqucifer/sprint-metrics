@@ -98,10 +98,12 @@ def calculate_filed_split(
 def _attach_range_filed(result: dict, labels: list[str], filed: dict[str, dict | None]) -> None:
     """Attach the filed-split answer to each range entry.
 
-    An entry for a sprint with no events or no filing facts carries filed null,
-    so pre-rollout history reads as no data, not zero. An entry for a sprint
-    with filing facts carries its split, including zero crew counts when the
-    crew filed nothing.
+    The filed answer is computed from the sprint's 'filed' rows, independent
+    of the delivery-event gate: a sprint whose only stored rows are 'filed'
+    still answers its filed split, while its delivery measures read null.
+    An entry for a sprint with no filing facts carries filed null. An entry
+    for a sprint with filing facts carries its split, including zero crew
+    counts when the crew filed nothing.
     """
     for label in labels:
         result["sprints"][label]["filed"] = filed.get(label)
@@ -122,7 +124,10 @@ _RANGE_FILED_DESCRIPTION = (
     "denominator (total_cards). "
     "A card counts in the sprint named on its 'filed' event (the sprint "
     "it was filed in), which may differ from the sprint where it merges. "
-    "A sprint with events but no filing facts reads filed null "
+    "The filed answer is computed from the sprint's filed rows, independent "
+    "of its delivery events: a sprint whose only stored rows are filed "
+    "reads null for every delivery measure but still answers its filed "
+    "split. A sprint with events but no filing facts reads filed null "
     "(no data, not zero); a sprint with filing facts in which the crew "
     "filed nothing reads the zero crew counts. "
 )

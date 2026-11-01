@@ -11694,3 +11694,168 @@ def test_sprint_range_schema_declares_model_time_split_on_sprint_entry():
         flat = sprint_entry["properties"][which]["properties"]
         assert flat["model_time_split_refinement_minutes"] == {"type": ["integer", "null"]}
         assert flat["model_time_split_delivery_minutes"] == {"type": ["integer", "null"]}
+
+
+@requires_db
+def test_range_filed_only_sprint_reads_null_for_delivery_measures():
+    """AC1: A sprint whose only stored rows are 'filed' reads null for every
+    delivery measure and appears in the window's no_data."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _filed_event(card_id="fonly1", sprint="2026-01", filer="crew", opener="found"),
+        )
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-01&end=2026-01")
+        assert status == 200
+        entry = body["sprints"]["2026-01"]
+        assert entry["rework"] is None
+        assert entry["cost"] is None
+        assert entry["dora"] is None
+        assert entry["working_time"] is None
+        assert entry["cost_by_kind"] is None
+        assert entry["model_time_split"] is None
+        assert entry["idle"] is None
+        assert entry["roster"] is None
+        assert "2026-01" in body["window"]["no_data"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_filed_only_sprint_still_answers_filed_split():
+    """AC2: The same sprint (only filed rows) still answers its filed split."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _filed_event(card_id="fonly1", sprint="2026-01", filer="crew", opener="found"),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _filed_event(card_id="fonly2", sprint="2026-01", filer="sponsor"),
+        )
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-01&end=2026-01")
+        assert status == 200
+        filed = body["sprints"]["2026-01"]["filed"]
+        assert filed is not None
+        assert filed["crew_total"] == 1
+        assert filed["found"] == 1
+        assert filed["from_process"] == 0
+        assert filed["split"] == 0
+        assert filed["unknown"] == 0
+        assert filed["sponsor"] == 1
+        assert filed["operator"] == 0
+        assert filed["other"] == 0
+        assert filed["total_cards"] == 2
+        assert filed["self_filed_share"]["percent"] == 50
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_filed_plus_delivery_sprint_unchanged():
+    """AC3: A sprint with filed rows and delivery events answers exactly as it
+    does without the filed rows: non-null delivery measures, not in no_data,
+    filed field non-null."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _filed_event(card_id="fd1", sprint="2026-03", filer="crew", opener="found"),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="fd1",
+                event_type="started",
+                timestamp="2026-03-03T10:00:00Z",
+                sprint="2026-03",
+                created="2026-03-01",
+            ),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _make_event(
+                card_id="fd1",
+                event_type="finished",
+                timestamp="2026-03-07T10:00:00Z",
+                sprint="2026-03",
+                created="2026-03-01",
+            ),
+        )
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-03&end=2026-03")
+        assert status == 200
+        entry = body["sprints"]["2026-03"]
+        assert entry["rework"] is not None
+        assert entry["dora"] is not None
+        assert "2026-03" not in body["window"]["no_data"]
+        assert entry["filed"] is not None
+        assert entry["filed"]["crew_total"] == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_delivery_measures_null_for_filed_only_sprint():
+    """AC4: /trend delivery measures read null for a filed-only sprint."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _filed_event(card_id="ft1", sprint="2026-05", filer="crew", opener="found"),
+        )
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2026-05&end=2026-05"
+        )
+        assert status == 200
+        values = {v["sprint"]: v["value"] for v in body["values"]}
+        assert values["2026-05"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_trend_self_filed_share_percent_filed_only_sprint():
+    """AC5: /trend self_filed_share_percent keeps its value for a filed-only
+    sprint."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    port = _start_service(conn, 0)
+    try:
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _filed_event(card_id="fs1", sprint="2026-07", filer="crew", opener="found"),
+        )
+        _post_events(
+            f"http://127.0.0.1:{port}/events",
+            _filed_event(card_id="fs2", sprint="2026-07", filer="sponsor"),
+        )
+        status, body = _get_json(
+            f"http://127.0.0.1:{port}/trend"
+            "?metric=self_filed_share_percent&start=2026-07&end=2026-08"
+        )
+        assert status == 200
+        values = {v["sprint"]: v["value"] for v in body["values"]}
+        assert values["2026-07"] == 50
+        assert values["2026-08"] is None
+    finally:
+        conn.close()
