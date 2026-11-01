@@ -519,9 +519,14 @@ def resolve_sprint_range(conn: Connection, start: str, end: str) -> list[str] | 
 
 
 def sprint_has_events(conn: Connection, label: str) -> bool:
-    """Return True if any row in board_events has sprint = label."""
+    """Return True if any delivery row in board_events has sprint = label.
+
+    A 'filed' row is not a delivery event: a card can be filed in a sprint
+    and worked in a later one, so a sprint whose only stored rows are 'filed'
+    still reads as no-data for its delivery measures.
+    """
     row = conn.execute(
-        "SELECT 1 FROM sprint_metrics.board_events WHERE sprint = %s LIMIT 1",
+        "SELECT 1 FROM sprint_metrics.board_events WHERE sprint = %s AND type != 'filed' LIMIT 1",
         (label,),
     ).fetchone()
     return row is not None

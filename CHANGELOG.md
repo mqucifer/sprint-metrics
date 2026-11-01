@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- A sprint whose only stored rows are `filed` events now reads null for every delivery measure (rework, cost, DORA, working time, cost by kind, model time split, idle, roster) and appears in the window's `no_data`, as it did before `filed` rows existed. The `filed` answer is computed directly from the filed rows, independent of the delivery-event gate, so such a sprint still answers its filed split. In `/trend`, delivery measures read null for such a sprint while `self_filed_share_percent` keeps its value
+
 ### Removed
 
 ## [4.4.0] - 2026-11-01

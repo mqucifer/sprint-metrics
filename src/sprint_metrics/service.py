@@ -504,10 +504,9 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                     )
                             filed: dict[str, dict | None] = {}
                             for label in labels:
-                                if label in has_events:
-                                    filed[label] = calculate_filed_split(
-                                        query_filed_events(conn_holder[0], label)
-                                    )
+                                filed[label] = calculate_filed_split(
+                                    query_filed_events(conn_holder[0], label)
+                                )
                         except Exception as exc:
                             self._send_json(500, {"error": f"database error: {exc}"})
                             status = 500
@@ -625,7 +624,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 conn_holder[0], list(sprints.keys())
                             )
                         for label in sprints:
-                            if label not in has_events:
+                            if metric == "self_filed_share_percent":
+                                split = calculate_filed_split(query_filed_events(conn_holder[0], label))
+                                value = (
+                                    split["self_filed_share"]["percent"] if split is not None else None
+                                )
+                            elif label not in has_events:
                                 value = None
                             elif metric == "sent_backs_count":
                                 returned = query_returned_events(conn_holder[0], label)
@@ -682,11 +686,6 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 value = idle_minutes_total(
                                     query_working_time_events(conn_holder[0], label),
                                     query_sprint_span(conn_holder[0], label),
-                                )
-                            elif metric == "self_filed_share_percent":
-                                split = calculate_filed_split(query_filed_events(conn_holder[0], label))
-                                value = (
-                                    split["self_filed_share"]["percent"] if split is not None else None
                                 )
                             else:
                                 value = metric_value(metric, sprints[label])
