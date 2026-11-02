@@ -1016,8 +1016,10 @@ def test_init_db_grows_without_disturbing_existing_history(conn):
         "SELECT name, start_date, end_date, timezone FROM sprint_metrics.sprints WHERE name = '2031-12'"
     ).fetchall()
     assert sprints == [("2031-12", date(2031, 12, 1), date(2031, 12, 31), "UTC")]
-    # The sessions table exists and is empty.
-    count = conn.execute("SELECT COUNT(*) FROM sprint_metrics.sessions").fetchone()[0]
+    # The sessions table exists and holds no sessions for this sprint.
+    count = conn.execute(
+        "SELECT COUNT(*) FROM sprint_metrics.sessions WHERE sprint = '2031-12'"
+    ).fetchone()[0]
     assert count == 0
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-12'")
     conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2031-12'")

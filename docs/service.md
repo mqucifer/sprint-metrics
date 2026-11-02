@@ -20,7 +20,7 @@ The service accepts sprint definitions via POST /sprints. Each sprint is registe
 
 ## Event intake
 
-The service accepts board events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned, and filed. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
+The service accepts board and session events via POST /events. The accepted event types are: started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned, filed, and session. A card's work counts in the sprint where it finishes, wherever it started. The `sprint` field accepts any non-empty string (e.g. 'Sprint 18', 'Q4-2026'); it is not restricted to calendar-month labels.
 
 Every accepted event may carry three optional link fields, which the crew sends on any event type:
 
@@ -78,6 +78,36 @@ Example `filed` event carrying the filing facts:
 ```
 
 The intake's `api_version` stays "1": the `filed` event is additive. Events without the filing facts are accepted exactly as today, so nothing already sent stops working.
+
+A `session` event records a crew session as what happened: its role, start and end, model time (in seconds), and tokens. For a session, `card_id` and `card` are optional at the envelope level — a session with no card omits both. Its own fields are:
+
+- `role` (top-level, required string): the role the session ran as.
+- `start` (top-level, required string, ISO-8601 datetime): the session's start.
+- `end` (top-level, required string, ISO-8601 datetime): the session's finish.
+- `model_seconds` (top-level, optional integer, minimum 0): model time in seconds.
+- `tokens` (top-level, optional integer, minimum 0): total tokens.
+
+A session sent twice (same card, role, start, finish) is held once: re-sending it is safe and no later answer counts it twice. This holds for a card-less session too.
+
+Example `session` event:
+
+```json
+{
+  "api_version": "1",
+  "card_id": "42",
+  "type": "session",
+  "timestamp": "2024-03-05T10:00:00Z",
+  "sprint": "2024-03",
+  "card": {
+    "created": "2024-03-04"
+  },
+  "role": "developer",
+  "start": "2024-03-05T09:00:00Z",
+  "end": "2024-03-05T10:00:00Z",
+  "model_seconds": 3600,
+  "tokens": 100000
+}
+```
 
 A `finished` event may carry a cost payload on its card object. The cost payload has five fields, each a non-negative integer, and the fields are sent together or not at all — a partial payload is rejected:
 
@@ -138,7 +168,7 @@ Long-lived HTTP service that accepts board events and answers range and trend qu
 | Method | Path | Description |
 |---|---|---|
 | POST | /sprints | Register or update a sprint definition (name, start date, end date, timezone). |
-| POST | /events | Accept a board event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned, filed). The service validates the card's created date and event type. |
+| POST | /events | Accept a board or session event (started, blocked, unblocked, finished, escalated, attempt_failed, superseded, returned, filed, session). The service validates the card's created date and event type. |
 | GET | /range | Return metrics for a range of sprints in chronological order. Each entry includes the prior-sprint delta. failure_breakdown and top_failure_causes count returns, one per return, by (failure class, returning role). |
 | GET | /range | The response carries a top-level window object naming the window it is judging: start (the first sprint label), end (the last sprint label), sprint_count (the number of sprints in the window), and no_data (the sprint labels that had no events). |
 | GET | /range | The response also carries a verdicts object with one entry per registry measure: it judges the window's first and last data-bearing sprint (a gap sprint is skipped, not read as zero) against each measure's better direction — better, worse or flat, or up, down or flat for a measure with no better direction — each entry naming both reference sprints and their values, with the unit and the precision; an entry reads null when the measure's value is missing in either reference sprint, or the window has fewer than two data-bearing sprints. |
