@@ -76,6 +76,17 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.sprints (
     end_date DATE NOT NULL,
     timezone TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sprint_metrics.sessions (
+    card_id TEXT,
+    role TEXT NOT NULL,
+    session_start TIMESTAMPTZ NOT NULL,
+    session_end TIMESTAMPTZ NOT NULL,
+    sprint TEXT NOT NULL,
+    model_seconds INT,
+    tokens BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sessions_natural_identity
+    ON sprint_metrics.sessions (COALESCE(card_id, ''), role, session_start, session_end);
 """
 
 
@@ -908,3 +919,54 @@ def query_dora_data(conn: Connection, labels: list[str]) -> dict:
         "story_spans_days": story_spans_days,
         "sprints_with_epic": sprints_with_epic,
     }
+
+
+def upsert_session(conn: Connection, session: dict) -> None:
+    """Record a crew session, idempotent on the session's natural identity.
+
+    The session dict has keys:
+    - card: optional str, the card identifier (None or absent for card-less sessions)
+    - role: str, the role
+    - start: str, ISO-8601 datetime of the session start
+    - end: str, ISO-8601 datetime of the session end
+    - sprint: str, the sprint label
+    - model_seconds: optional int, model time in seconds
+    - tokens: optional int, total tokens
+
+    The natural identity is (card, role, start, end); a re-send with the same
+    identity adds nothing and changes nothing.
+    """
+    conn.execute(
+        """
+        INSERT INTO sprint_metrics.sessions (card_id, role, session_start, session_end, sprint, model_seconds, tokens)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (COALESCE(card_id, ''), role, session_start, session_end) DO NOTHING
+        """,
+        (
+            session.get("card"),
+            session["role"],
+            session["start"],
+            session["end"],
+            session["sprint"],
+            session.get("model_seconds"),
+            session.get("tokens"),
+        ),
+    )
+    conn.commit()
+
+
+def query_sessions(conn: Connection, sprint: str) -> list[tuple]:
+    """Return the sprint's stored sessions as (card, role, start, end, model_seconds, tokens).
+
+    Sessions are returned in start order (the order they were sent).
+    """
+    rows = conn.execute(
+        """
+        SELECT card_id, role, session_start, session_end, model_seconds, tokens
+        FROM sprint_metrics.sessions
+        WHERE sprint = %s
+        ORDER BY session_start, COALESCE(card_id, '')
+        """,
+        (sprint,),
+    ).fetchall()
+    return list(rows)
