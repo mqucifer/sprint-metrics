@@ -24,7 +24,7 @@ def test_generate_schemas_produces_three_files_with_schema_key(tmp_path):
 
 
 def test_event_intake_schema_type_enum_and_required(tmp_path):
-    """AC3: event-intake.json type enum has 9 values in order (including 'filed'),
+    """AC3: event-intake.json type enum has 10 values in order (including 'filed' and 'session'),
     and the schema declares because (string enum), epic (string), and replaced_by
     (array of integers, nullable)."""
     _generate_schema_files(tmp_path)
@@ -40,6 +40,7 @@ def test_event_intake_schema_type_enum_and_required(tmp_path):
         "superseded",
         "returned",
         "filed",
+        "session",
     ]
     for key in ("api_version", "card_id", "type", "timestamp", "sprint", "card"):
         assert key in data["required"]
@@ -52,6 +53,15 @@ def test_event_intake_schema_type_enum_and_required(tmp_path):
     }
     for key in ("failure_class", "failure_role", "epic", "filer", "opener", "project"):
         assert data["properties"][key] == {"type": "string"}
+        assert key not in data["required"]
+    for key in ("role",):
+        assert data["properties"][key] == {"type": "string"}
+        assert key not in data["required"]
+    for key in ("start", "end"):
+        assert data["properties"][key] == {"type": "string", "format": "date-time"}
+        assert key not in data["required"]
+    for key in ("model_seconds", "tokens"):
+        assert data["properties"][key] == {"type": "integer", "minimum": 0}
         assert key not in data["required"]
 
 

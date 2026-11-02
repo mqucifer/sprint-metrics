@@ -71,6 +71,7 @@ from sprint_metrics.store import (
     query_working_time_events,
     resolve_sprint_range,
     sprint_has_events,
+    upsert_session,
     upsert_sprint,
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
@@ -105,6 +106,7 @@ VALID_EVENT_TYPES = frozenset(
         "superseded",
         "returned",
         "filed",
+        "session",
     }
 )
 # Measures /trend once offered and now refuses with a 400 that says so.
@@ -297,25 +299,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     status, response_body = 400, {"error": "invalid JSON body"}
                     return
 
-                for field in REQUIRED_FIELDS:
-                    if field not in event:
-                        status, response_body = (
-                            400,
-                            {"error": f"missing required field: {field!r}"},
-                        )
-                        return
-
-                sprint_name = event.get("sprint")
-                if not isinstance(sprint_name, str) or not sprint_name:
-                    status, response_body = 400, {"error": "sprint must be a non-empty string"}
-                    return
-
-                event_type = event["type"]
+                event_type = event.get("type")
                 if event_type not in VALID_EVENT_TYPES:
                     _emit_log(
                         SeverityNumber.ERROR,
                         f"event rejected: unknown type {event_type}",
-                        {"card_id": event["card_id"], "event_type": event_type},
+                        {"card_id": event.get("card_id"), "event_type": event_type},
                     )
                     status, response_body = (
                         400,
@@ -323,45 +312,75 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     )
                     return
 
-                card = event["card"]
-                if not isinstance(card, dict) or "created" not in card:
-                    status, response_body = 400, {"error": "card.created is required"}
+                is_session = event_type == "session"
+
+                if is_session:
+                    for field in ("api_version", "type", "timestamp", "sprint"):
+                        if field not in event:
+                            status, response_body = (
+                                400,
+                                {"error": f"missing required field: {field!r}"},
+                            )
+                            return
+                else:
+                    for field in REQUIRED_FIELDS:
+                        if field not in event:
+                            status, response_body = (
+                                400,
+                                {"error": f"missing required field: {field!r}"},
+                            )
+                            return
+
+                sprint_name = event.get("sprint")
+                if not isinstance(sprint_name, str) or not sprint_name:
+                    status, response_body = 400, {"error": "sprint must be a non-empty string"}
                     return
 
-                card_created_at = card.get("created_at")
-                if card_created_at is not None and card_created_at != "":
-                    if not isinstance(card_created_at, str):
-                        status, response_body = (
-                            400,
-                            {"error": "card.created_at must be an ISO-8601 datetime string"},
-                        )
+                if is_session:
+                    error = _validate_session_event(event)
+                    if error:
+                        status, response_body = 400, {"error": error}
                         return
-                    try:
-                        datetime.fromisoformat(card_created_at)
-                    except ValueError:
-                        status, response_body = (
-                            400,
-                            {
-                                "error": f"card.created_at is not a valid ISO-8601 datetime: {card_created_at!r}"
-                            },
-                        )
+                else:
+                    card = event["card"]
+                    if not isinstance(card, dict) or "created" not in card:
+                        status, response_body = 400, {"error": "card.created is required"}
                         return
 
-                if event_type == "finished":
-                    error = _validate_cost_fields(card)
-                    if error:
-                        status, response_body = 400, {"error": error}
-                        return
-                    error = _validate_model_time_split(card)
-                    if error:
-                        status, response_body = 400, {"error": error}
-                        return
+                    card_created_at = card.get("created_at")
+                    if card_created_at is not None and card_created_at != "":
+                        if not isinstance(card_created_at, str):
+                            status, response_body = (
+                                400,
+                                {"error": "card.created_at must be an ISO-8601 datetime string"},
+                            )
+                            return
+                        try:
+                            datetime.fromisoformat(card_created_at)
+                        except ValueError:
+                            status, response_body = (
+                                400,
+                                {
+                                    "error": f"card.created_at is not a valid ISO-8601 datetime: {card_created_at!r}"
+                                },
+                            )
+                            return
 
-                if event_type == "superseded":
-                    error = _validate_superseded_event(event)
-                    if error:
-                        status, response_body = 400, {"error": error}
-                        return
+                    if event_type == "finished":
+                        error = _validate_cost_fields(card)
+                        if error:
+                            status, response_body = 400, {"error": error}
+                            return
+                        error = _validate_model_time_split(card)
+                        if error:
+                            status, response_body = 400, {"error": error}
+                            return
+
+                    if event_type == "superseded":
+                        error = _validate_superseded_event(event)
+                        if error:
+                            status, response_body = 400, {"error": error}
+                            return
 
                 if not self._ensure_db():
                     status, response_body = (
@@ -375,15 +394,29 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     return
 
                 try:
-                    insert_event(conn_holder[0], event)
+                    if is_session:
+                        upsert_session(
+                            conn_holder[0],
+                            {
+                                "card": event.get("card_id"),
+                                "role": event["role"],
+                                "start": event["start"],
+                                "end": event["end"],
+                                "sprint": event["sprint"],
+                                "model_seconds": event.get("model_seconds"),
+                                "tokens": event.get("tokens"),
+                            },
+                        )
+                    else:
+                        insert_event(conn_holder[0], event)
                 except Exception as exc:
                     status, response_body = 500, {"error": f"database error: {exc}"}
                     return
 
                 _emit_log(
                     SeverityNumber.INFO,
-                    f"event accepted: card_id={event['card_id']} type={event_type}",
-                    {"card_id": event["card_id"], "event_type": event_type},
+                    f"event accepted: card_id={event.get('card_id')} type={event_type}",
+                    {"card_id": event.get("card_id"), "event_type": event_type},
                 )
                 status, response_body = 200, {}
             finally:
@@ -966,4 +999,44 @@ def _validate_superseded_event(event: dict) -> str | None:
         return f"invalid because: {event['because']!r} (must be 'sponsor' or 'story_problem')"
     if "replaced_by" in event and not isinstance(event["replaced_by"], list):
         return "replaced_by must be an array of integers"
+    return None
+
+
+def _validate_session_event(event: dict) -> str | None:
+    """Validate session-event-specific fields. Returns an error string or None."""
+    role = event.get("role")
+    if role is None:
+        return "missing required field: 'role'"
+    if not isinstance(role, str):
+        return "role must be a string"
+    start = event.get("start")
+    if start is None:
+        return "missing required field: 'start'"
+    if not isinstance(start, str):
+        return "start must be a string"
+    try:
+        datetime.fromisoformat(start)
+    except ValueError:
+        return f"start is not a valid ISO-8601 datetime: {start!r}"
+    end = event.get("end")
+    if end is None:
+        return "missing required field: 'end'"
+    if not isinstance(end, str):
+        return "end must be a string"
+    try:
+        datetime.fromisoformat(end)
+    except ValueError:
+        return f"end is not a valid ISO-8601 datetime: {end!r}"
+    model_seconds = event.get("model_seconds")
+    if model_seconds is not None:
+        if not isinstance(model_seconds, int) or isinstance(model_seconds, bool):
+            return "model_seconds must be an integer"
+        if model_seconds < 0:
+            return "model_seconds must be >= 0"
+    tokens = event.get("tokens")
+    if tokens is not None:
+        if not isinstance(tokens, int) or isinstance(tokens, bool):
+            return "tokens must be an integer"
+        if tokens < 0:
+            return "tokens must be >= 0"
     return None

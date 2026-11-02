@@ -5,6 +5,7 @@
 ### Added
 
 - The `sprint_metrics.sessions` table, created by the startup DDL, holds each crew session as what happened: card (nullable), role, start, end, model time, and tokens. An idempotent upsert keyed on the session's natural identity (card, role, start, end) lands each re-send once, including card-less sessions
+- The intake now accepts a `session` event, the 10th accepted event type on POST /events, recording the crew's sessions as what happened; card_id and card are optional at the envelope level for a session, and the event-intake schema (GET /schema/event, schemas/event-intake.json) names the session's own fields with their units (model time in seconds, tokens)
 
 ### Changed
 

@@ -436,6 +436,7 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
                 "superseded",
                 "returned",
                 "filed",
+                "session",
             ],
         },
         "timestamp": {"type": "string", "format": "date-time"},
@@ -476,6 +477,11 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "filer": {"type": "string"},
         "opener": {"type": "string"},
         "project": {"type": "string"},
+        "role": {"type": "string"},
+        "start": {"type": "string", "format": "date-time"},
+        "end": {"type": "string", "format": "date-time"},
+        "model_seconds": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
     },
 }
 
