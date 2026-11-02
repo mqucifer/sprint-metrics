@@ -360,3 +360,30 @@ def test_range_verdict_description_fragment_lives_in_verdict_module():
     # composed into the /range endpoint description.
     range_desc = next(desc for method, path, desc in SERVICE_ENDPOINTS if path == "/range")
     assert _RANGE_VERDICT_DESCRIPTION in range_desc
+
+
+def test_standout_skips_sprint_with_null_first_attempt_rate():
+    """AC3: a window of three sprints where sprint A has only 'started' rows
+    (first_attempt_rate_percent is None), sprint B has one completed card with
+    attempts=1 (rate 100), and sprint C has one completed card with attempts=3
+    (rate 0): biggest_improvement is None (no step is computed from sprint A
+    because its first_attempt_rate_percent is None), and worst_dip names
+    sprint B as from_sprint and sprint C as to_sprint with size 100."""
+    sprints = {
+        "2024-01": {"first_attempt_rate_percent": None, "throughput": 1},
+        "2024-02": {"first_attempt_rate_percent": 100, "throughput": 1},
+        "2024-03": {"first_attempt_rate_percent": 0, "throughput": 1},
+    }
+    data_bearing = ["2024-01", "2024-02", "2024-03"]
+    result = window_standouts(sprints, data_bearing)
+    # The step from sprint A to sprint B is skipped (A's rate is None),
+    # so the only first_attempt_rate_percent step is B→C: 0 - 100 = -100.
+    assert result["biggest_improvement"] is None
+    assert result["worst_dip"] == {
+        "measure": "first_attempt_rate_percent",
+        "from_sprint": "2024-02",
+        "to_sprint": "2024-03",
+        "size": 100,
+        "unit": "percent",
+        "precision": "whole",
+    }

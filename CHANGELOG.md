@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- A sprint holding only `started` rows (no `finished` or `superseded`) now reads null for `first_attempt_rate_percent`, `first_attempt_numerator`, and `first_attempt_denominator`, matching the pattern established for `filed` rows (#917): null is no data, not zero. Such a sprint is excluded from the window's `biggest_improvement` and `worst_dip` for the first-attempt measure. A sprint with a genuine 0% first-attempt rate (completed cards, all with attempts > 1) still reads 0.
+
 ### Removed
 
 ## [4.4.2] - 2026-11-02
