@@ -63,3 +63,57 @@ def test_range_window_description_fragment_lives_in_sprint_range_module():
     # composed into the /range endpoint description.
     range_desc = next(desc for method, path, desc in SERVICE_ENDPOINTS if path == "/range")
     assert _RANGE_WINDOW_DESCRIPTION in range_desc
+
+
+def test_range_sprint_with_only_started_rows_reads_null_first_attempt():
+    """AC1: a sprint label whose only stored board_events rows are type='started'
+    (no 'finished', no 'superseded') reads null for first_attempt_rate_percent,
+    first_attempt_numerator, and first_attempt_denominator in the range entry."""
+    import json
+
+    from sprint_metrics.sprint_range import format_sprint_range_json
+
+    # A sprint with no finished or superseded rows: query_sprint returns [].
+    sprints = {"2024-01": []}
+    labels = ["2024-01"]
+    body = json.loads(format_sprint_range_json(sprints, labels))
+    entry = body["sprints"]["2024-01"]
+    assert entry["first_attempt_rate_percent"] is None
+    assert entry["first_attempt_numerator"] is None
+    assert entry["first_attempt_denominator"] is None
+
+
+def test_range_sprint_with_real_attempt_reads_zero_rate():
+    """AC2: a sprint where at least one card has a 'finished' row and every
+    completed card has attempts > 1 reads first_attempt_rate_percent=0,
+    first_attempt_numerator=0, and first_attempt_denominator set to the count
+    of completed cards — a genuine 0%, not null."""
+    import json
+
+    from sprint_metrics.sprint_range import format_sprint_range_json
+
+    cards = [
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-10",
+            "attempts": 2,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+        {
+            "created": "2024-01-01",
+            "started": "2024-01-02",
+            "completed": "2024-01-12",
+            "attempts": 3,
+            "failure_class": "parse",
+            "failure_role": "Developer",
+        },
+    ]
+    sprints = {"2024-01": cards}
+    labels = ["2024-01"]
+    body = json.loads(format_sprint_range_json(sprints, labels))
+    entry = body["sprints"]["2024-01"]
+    assert entry["first_attempt_rate_percent"] == 0
+    assert entry["first_attempt_numerator"] == 0
+    assert entry["first_attempt_denominator"] == 2

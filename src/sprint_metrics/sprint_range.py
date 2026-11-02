@@ -136,12 +136,23 @@ def format_sprint_range_json(
                 "first_attempt_rate_percent": (
                     sprint_metrics["first_attempt_rate_percent"]
                     - prior["first_attempt_rate_percent"]
+                    if sprint_metrics["first_attempt_rate_percent"] is not None
+                    and prior["first_attempt_rate_percent"] is not None
+                    else None
                 ),
                 "first_attempt_numerator": (
-                    sprint_metrics["first_attempt_numerator"] - prior["first_attempt_numerator"]
+                    sprint_metrics["first_attempt_numerator"]
+                    - prior["first_attempt_numerator"]
+                    if sprint_metrics["first_attempt_numerator"] is not None
+                    and prior["first_attempt_numerator"] is not None
+                    else None
                 ),
                 "first_attempt_denominator": (
-                    sprint_metrics["first_attempt_denominator"] - prior["first_attempt_denominator"]
+                    sprint_metrics["first_attempt_denominator"]
+                    - prior["first_attempt_denominator"]
+                    if sprint_metrics["first_attempt_denominator"] is not None
+                    and prior["first_attempt_denominator"] is not None
+                    else None
                 ),
                 "superseded_count": sup_count - prior_superseded_count,
                 "superseded_points": sup_points - prior_superseded_points,
