@@ -5438,8 +5438,8 @@ def test_sprint_no_events_new_fields_are_null():
 @requires_db
 def test_sprint_escalations_counted_without_completions():
     """AC3: one started event (no finished) and two escalated events for sprint 2024-01,
-    GET /range returns points_delivered=0, first_attempt_numerator=0,
-    first_attempt_denominator=0, escalation_count=2."""
+    GET /range returns points_delivered=0, first_attempt_numerator=None,
+    first_attempt_denominator=None, escalation_count=2."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -5479,8 +5479,8 @@ def test_sprint_escalations_counted_without_completions():
         assert status == 200
         sprint_data = body["sprints"]["2024-01"]
         assert sprint_data["points_delivered"] == 0
-        assert sprint_data["first_attempt_numerator"] == 0
-        assert sprint_data["first_attempt_denominator"] == 0
+        assert sprint_data["first_attempt_numerator"] is None
+        assert sprint_data["first_attempt_denominator"] is None
         assert "escalation_count" not in sprint_data
     finally:
         conn.close()
