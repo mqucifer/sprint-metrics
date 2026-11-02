@@ -168,15 +168,16 @@ ALL_METRICS: frozenset[str] = frozenset(
 )
 
 
-def calculate_first_attempt_rate(cards: Iterable[Card | Mapping[str, object]]) -> int:
+def calculate_first_attempt_rate(cards: Iterable[Card | Mapping[str, object]]) -> int | None:
     """Return the percentage of completed cards that succeeded on the first attempt, as a whole percent.
 
     A card succeeded on its first attempt when its ``attempts`` field is 1.
-    Cards still in flight are ignored. When no cards are completed the rate is 0.
+    Cards still in flight are ignored. ``None`` when no cards are completed —
+    a sprint with no finished or superseded rows carries no first-attempt data.
     """
     completed = [card for card in _as_cards(cards) if card.is_completed]
     if not completed:
-        return 0
+        return None
     first_attempt = sum(1 for card in completed if card.attempts == 1)
     return round(100 * first_attempt / len(completed))
 
@@ -308,14 +309,17 @@ def calculate_points_delivered(cards: Iterable[Card | Mapping[str, object]]) -> 
 
 def calculate_first_attempt_counts(
     cards: Iterable[Card | Mapping[str, object]],
-) -> tuple[int, int]:
+) -> tuple[int | None, int | None]:
     """Return the numerator and denominator of the first-attempt rate.
 
     The numerator is the count of completed cards whose ``attempts`` equals 1.
-    The denominator is the total count of completed cards. An empty list
-    returns ``(0, 0)``.
+    The denominator is the total count of completed cards. ``(None, None)``
+    when no cards are completed — a sprint with no finished or superseded rows
+    carries no first-attempt data.
     """
     completed = [card for card in _as_cards(cards) if card.is_completed]
+    if not completed:
+        return (None, None)
     numerator = sum(1 for card in completed if card.attempts == 1)
     return (numerator, len(completed))
 

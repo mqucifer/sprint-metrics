@@ -68,5 +68,8 @@ def calculate_flags(
         "throughput": throughput < effective["throughput"],
         "wip_violations": wip_violations > effective["wip_violations"],
         "blocked_aging_days": blocked_aging > effective["blocked_aging_days"],
-        "first_attempt_rate_percent": first_attempt_rate < effective["first_attempt_rate_percent"],
+        "first_attempt_rate_percent": (
+            first_attempt_rate is not None
+            and first_attempt_rate < effective["first_attempt_rate_percent"]
+        ),
     }
