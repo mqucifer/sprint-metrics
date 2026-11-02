@@ -1698,6 +1698,85 @@ def test_metrics_md_idle_time_section_states_span_minus_session_time():
     assert "whole minutes" in row
 
 
+def test_service_md_documents_session_event_type():
+    """AC1: the hand-written Event intake content in docs/service.md names 'session'
+    as an accepted event type, alongside the nine existing types."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    assert "session" in before, (
+        "hand-written content does not name 'session' as an accepted event type"
+    )
+    # The event types sentence lists all ten types
+    anchor = before.index("The accepted event types are:")
+    types_sentence = before[anchor : anchor + 300]
+    for event_type in (
+        "started",
+        "blocked",
+        "unblocked",
+        "finished",
+        "escalated",
+        "attempt_failed",
+        "superseded",
+        "returned",
+        "filed",
+        "session",
+    ):
+        assert event_type in types_sentence, (
+            f"event types list does not name {event_type!r}"
+        )
+
+
+def test_service_md_documents_session_event_fields():
+    """AC2: the hand-written Event intake content in docs/service.md documents
+    the session event's fields with their units — model time in seconds, tokens
+    as counts — using the same field names the crew's contract publishes, and
+    states that card_id and card are optional when the session has no card."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    anchor = before.index("A `session` event")
+    session_text = before[anchor : anchor + 1500]
+    for field in ("role", "start", "end", "model_seconds", "tokens"):
+        assert field in session_text, (
+            f"session-event documentation does not name {field!r}"
+        )
+    # Units: model time in seconds
+    assert "seconds" in session_text, (
+        "session-event documentation does not state model time is in seconds"
+    )
+    # Units: tokens as counts
+    assert "tokens" in session_text, (
+        "session-event documentation does not name tokens"
+    )
+    # card_id and card are optional
+    assert "card_id" in session_text, (
+        "session-event documentation does not mention card_id"
+    )
+    assert "optional" in session_text.lower(), (
+        "session-event documentation does not state card_id and card are optional"
+    )
+
+
+def test_service_md_session_event_is_additive():
+    """AC3: the hand-written Event intake content in docs/service.md states that
+    the session event is additive: events without a session are accepted exactly
+    as today, so nothing already sent stops working."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    before = text.split("BEGIN:service")[0]
+    anchor = before.index("A `session` event")
+    # The additive note comes after the session example
+    session_text = before[anchor : anchor + 2000]
+    assert "additive" in session_text.lower(), (
+        "session-event documentation does not state the event is additive"
+    )
+    assert "accepted exactly as today" in session_text, (
+        "session-event documentation does not state events without a session "
+        "are accepted exactly as today"
+    )
+
+
 def test_adr_0013_session_event_file_name_and_heading():
     """AC8: the new ADR file name starts with '0013-' and its H1 heading reads
     '# 13. '. It learns the event vocabulary is amended to admit 'session' as

@@ -109,6 +109,8 @@ Example `session` event:
 }
 ```
 
+The intake's `api_version` stays "1": the `session` event is additive. Events without a session are accepted exactly as today, so nothing already sent stops working.
+
 A `finished` event may carry a cost payload on its card object. The cost payload has five fields, each a non-negative integer, and the fields are sent together or not at all — a partial payload is rejected:
 
 - `model_seconds` — total model time across every role's calls for this story
