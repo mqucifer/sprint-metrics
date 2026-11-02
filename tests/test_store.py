@@ -21,8 +21,10 @@ from sprint_metrics.store import (
     insert_event,
     query_filed_events,
     query_returned_events,
+    query_sessions,
     query_sprint,
     query_started_count,
+    upsert_session,
     upsert_sprint,
 )
 
@@ -947,4 +949,172 @@ def test_query_filed_events_same_card_id_different_projects(conn):
         ("same_id", "sponsor", None, "repo-b"),
     ]
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-10'")
+    conn.commit()
+
+
+# --- Sessions ---
+
+# A copy of the shape the crew's contract publishes in contracts/session/
+# (decision 4: CI cannot fetch the crew's contracts, so the test embeds it).
+CONTRACT_SESSION = {
+    "card": "c42",
+    "role": "developer",
+    "start": "2031-11-15T09:00:00Z",
+    "end": "2031-11-15T17:00:00Z",
+    "sprint": "2031-11",
+    "model_seconds": 3600,
+    "tokens": 50000,
+}
+
+
+def test_sessions_table_exists_after_init(conn):
+    """AC1: init_db creates the sessions table with the expected columns."""
+    rows = conn.execute(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'sessions' AND table_schema = 'sprint_metrics'
+        ORDER BY column_name
+        """
+    ).fetchall()
+    column_names = [r[0] for r in rows]
+    assert "card_id" in column_names
+    assert "role" in column_names
+    assert "session_start" in column_names
+    assert "session_end" in column_names
+    assert "sprint" in column_names
+    assert "model_seconds" in column_names
+    assert "tokens" in column_names
+
+
+def test_init_db_grows_without_disturbing_existing_history(conn):
+    """AC1: a database holding stored board events and sprint registrations
+    reads them back unchanged after init_db adds the sessions table."""
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-12'")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2031-12'")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-12'")
+    conn.commit()
+    insert_event(
+        conn,
+        {
+            "card_id": "hist_1",
+            "type": "started",
+            "timestamp": "2031-12-01T10:00:00Z",
+            "sprint": "2031-12",
+            "card": {"created": "2031-12-01"},
+        },
+    )
+    upsert_sprint(conn, "2031-12", date(2031, 12, 1), date(2031, 12, 31), "UTC")
+    # Re-run init_db as if the service restarted with the new DDL.
+    init_db(conn)
+    # The stored board event reads back unchanged.
+    rows = conn.execute(
+        "SELECT card_id, type, sprint FROM sprint_metrics.board_events WHERE card_id = 'hist_1'"
+    ).fetchall()
+    assert rows == [("hist_1", "started", "2031-12")]
+    # The sprint registration reads back unchanged.
+    sprints = conn.execute(
+        "SELECT name, start_date, end_date, timezone FROM sprint_metrics.sprints WHERE name = '2031-12'"
+    ).fetchall()
+    assert sprints == [("2031-12", date(2031, 12, 1), date(2031, 12, 31), "UTC")]
+    # The sessions table exists and is empty.
+    count = conn.execute("SELECT COUNT(*) FROM sprint_metrics.sessions").fetchone()[0]
+    assert count == 0
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2031-12'")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2031-12'")
+    conn.commit()
+
+
+def test_upsert_session_stores_contract_shape(conn):
+    """AC2: a session recorded in the shape the crew's contract publishes is held
+    once, carrying exactly those values under the contract's own names."""
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
+    conn.commit()
+    upsert_session(conn, dict(CONTRACT_SESSION))
+    sessions = query_sessions(conn, "2031-11")
+    assert len(sessions) == 1
+    (card, role, start, end, model_seconds, tokens) = sessions[0]
+    assert card == "c42"
+    assert role == "developer"
+    assert start.isoformat().startswith("2031-11-15T09:00:00")
+    assert end.isoformat().startswith("2031-11-15T17:00:00")
+    assert model_seconds == 3600
+    assert tokens == 50000
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
+    conn.commit()
+
+
+def test_upsert_session_resend_is_idempotent(conn):
+    """AC3: a session already in the record, recorded again with the same
+    card, role, start and finish, adds nothing and changes nothing."""
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
+    conn.commit()
+    upsert_session(conn, dict(CONTRACT_SESSION))
+    # Re-send the same session (same natural identity).
+    upsert_session(conn, dict(CONTRACT_SESSION))
+    sessions = query_sessions(conn, "2031-11")
+    assert len(sessions) == 1
+    (card, role, start, end, model_seconds, tokens) = sessions[0]
+    assert card == "c42"
+    assert role == "developer"
+    assert model_seconds == 3600
+    assert tokens == 50000
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
+    conn.commit()
+
+
+def test_upsert_session_cardless_recorded_and_idempotent(conn):
+    """AC4: a session with no card is recorded (card is left null), and a re-send
+    of that card-less session adds nothing."""
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
+    conn.commit()
+    cardless = {
+        "role": "reviewer",
+        "start": "2031-11-16T08:00:00Z",
+        "end": "2031-11-16T10:00:00Z",
+        "sprint": "2031-11",
+        "model_seconds": 7200,
+        "tokens": 20000,
+    }
+    upsert_session(conn, cardless)
+    upsert_session(conn, cardless)
+    sessions = query_sessions(conn, "2031-11")
+    assert len(sessions) == 1
+    (card, role, start, end, model_seconds, tokens) = sessions[0]
+    assert card is None
+    assert role == "reviewer"
+    assert model_seconds == 7200
+    assert tokens == 20000
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
+    conn.commit()
+
+
+def test_upsert_session_natural_identity_includes_card(conn):
+    """AC5: two sessions sharing role, start and finish but naming different cards
+    (one with no card) are held as two sessions."""
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
+    conn.commit()
+    session_with_card = {
+        "card": "c99",
+        "role": "developer",
+        "start": "2031-11-17T09:00:00Z",
+        "end": "2031-11-17T12:00:00Z",
+        "sprint": "2031-11",
+        "model_seconds": 10800,
+        "tokens": 30000,
+    }
+    session_without_card = {
+        "role": "developer",
+        "start": "2031-11-17T09:00:00Z",
+        "end": "2031-11-17T12:00:00Z",
+        "sprint": "2031-11",
+        "model_seconds": 10800,
+        "tokens": 30000,
+    }
+    upsert_session(conn, session_with_card)
+    upsert_session(conn, session_without_card)
+    sessions = query_sessions(conn, "2031-11")
+    assert len(sessions) == 2
+    cards = {s[0] for s in sessions}
+    assert cards == {"c99", None}
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2031-11'")
     conn.commit()
