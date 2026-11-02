@@ -300,3 +300,17 @@ def test_rule_released_headings_dated():
     assert violations, "expected a violation for non-ISO date"
     assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
 
+
+def test_unreleased_added_names_session_event():
+    """AC9: CHANGELOG.md's [Unreleased] Added section learns the intake now
+    accepts a 'session' event, recording the crew's sessions as what happened."""
+    content = CHANGELOG.read_text()
+    # Extract the [Unreleased] section.
+    start = content.index("## [Unreleased]")
+    end = content.index("## [", start + 1)
+    unreleased = content[start:end]
+    added_section = unreleased[unreleased.index("### Added") :]
+    # The Added list mentions the session event.
+    assert "session" in added_section
+    assert "intake" in added_section or "accept" in added_section.lower()
+

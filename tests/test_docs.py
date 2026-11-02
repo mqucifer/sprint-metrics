@@ -1696,3 +1696,18 @@ def test_metrics_md_idle_time_section_states_span_minus_session_time():
     # The idle_minutes table row names the unit (whole minutes).
     row = next(line for line in text.splitlines() if "`idle_minutes`" in line)
     assert "whole minutes" in row
+
+
+def test_adr_0013_session_event_file_name_and_heading():
+    """AC8: the new ADR file name starts with '0013-' and its H1 heading reads
+    '# 13. '. It learns the event vocabulary is amended to admit 'session' as
+    the 10th accepted event type."""
+    adr_dir = DOCS_DIR / "decisions"
+    adr_files = sorted(adr_dir.glob("0013-*.md"))
+    assert len(adr_files) == 1, f"Expected one 0013 ADR file, found: {adr_files}"
+    text = adr_files[0].read_text()
+    first_line = text.splitlines()[0]
+    assert first_line.startswith("# 13. ")
+    assert "'session'" in text or "session" in text
+    assert "10th" in text
+    assert "event" in text.lower()
