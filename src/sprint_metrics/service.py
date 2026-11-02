@@ -832,8 +832,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "POST",
         "/events",
-        "Accept a board event (started, blocked, unblocked, finished, escalated, "
-        "attempt_failed, superseded, returned, filed). The service validates the card's "
+        "Accept a board or session event (started, blocked, unblocked, finished, escalated, "
+        "attempt_failed, superseded, returned, filed, session). The service validates the card's "
         "created date and event type.",
     ),
     (
