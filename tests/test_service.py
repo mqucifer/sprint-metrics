@@ -12100,8 +12100,12 @@ def test_session_event_does_not_change_range_or_trend():
             _make_event(card_id="sess_ac5", event_type="finished", sprint="2024-01"),
         )
 
-        # Capture /range before the session.
+        # Capture /range and /trend before the session.
         status, before = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
+        assert status == 200
+        status, trend_before = _get_json(
+            f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-01"
+        )
         assert status == 200
 
         # Post a session event.
@@ -12121,16 +12125,15 @@ def test_session_event_does_not_change_range_or_trend():
         status, body = _post_events(f"http://127.0.0.1:{port}/events", session_event)
         assert status == 200
 
-        # Capture /range after the session.
+        # Capture /range and /trend after the session.
         status, after = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
         assert before == after
-
-        # /trend should also be unchanged.
-        status, trend_before = _get_json(
+        status, trend_after = _get_json(
             f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-01"
         )
         assert status == 200
+        assert trend_before == trend_after
     finally:
         conn.close()
 
