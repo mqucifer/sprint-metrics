@@ -74,8 +74,10 @@ def _blocked_seconds(
 
 
 def calculate_working_time(
-    story_data: dict[str, dict],
-    cardless_sessions: list[tuple[datetime, datetime]],
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
+    *,
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
 ) -> dict | None:
     """The sprint's working-time answer: session minutes per story, planning, card-less, and the sprint total.
 
@@ -100,8 +102,17 @@ def calculate_working_time(
     Returns ``None`` when the sprint holds no session records at all (neither
     carded nor card-less) — no data, not zero. A session belongs to the sprint
     label it was sent with, with no clamping to the registered span.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the working-time answer (the span-window calculation was replaced by
+    the session-record computation).
     """
     from sprint_metrics.session_stories import calculate_session_planning, calculate_session_stories
+
+    if story_data is None:
+        story_data = {}
+    if cardless_sessions is None:
+        cardless_sessions = []
 
     has_carded = any(data["sessions"] for data in story_data.values())
     has_cardless = len(cardless_sessions) > 0
@@ -135,13 +146,19 @@ def calculate_working_time(
 
 
 def working_time_total(
-    story_data: dict[str, dict],
-    cardless_sessions: list[tuple[datetime, datetime]],
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
+    *,
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
 ) -> int | None:
     """The sprint's working-time total in whole minutes, or None when no session records are held.
 
     The same total the /range working-time answer carries, answered on its own
     for /trend and the prior/delta figures.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the working-time total (the span-window calculation was replaced by
+    the session-record computation).
     """
     answer = calculate_working_time(story_data, cardless_sessions)
     return answer["total"] if answer is not None else None
