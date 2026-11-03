@@ -71,7 +71,6 @@ from sprint_metrics.store import (
     query_dora_data,
     query_dora_rework_data,
     query_filed_events,
-    query_model_time_splits,
     query_range,
     query_returned_events,
     query_session_story_data,
@@ -88,10 +87,12 @@ from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
     _RANGE_COST_BY_KIND_DESCRIPTION,
     _RANGE_IDLE_DESCRIPTION,
+    _RANGE_MODEL_TIME_DESCRIPTION,
     _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
     _RANGE_WORKING_TIME_DESCRIPTION,
     _attach_range_cost_by_kind,
     _attach_range_idle,
+    _attach_range_model_time,
     _attach_range_model_time_split,
     _attach_range_working_time,
     cost_by_kind_total,
@@ -559,7 +560,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         body = format_sprint_range_json(sprints, labels)
                         result = json.loads(body)
                         _attach_range_window(result, labels, has_events)
-                        _attach_range_cost(result, sprints, labels, has_events)
+                        _attach_range_cost(result, conn_holder[0], labels, has_events)
                         _attach_range_rework(result, labels, rework)
                         _attach_range_filed(result, labels, filed)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
@@ -567,6 +568,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
+                        _attach_range_model_time(result, conn_holder[0], labels, has_events)
                         _attach_range_idle(result, conn_holder[0], labels, has_events)
                         _attach_range_session_stories(result, conn_holder[0], labels, has_events)
                         _attach_range_session_epics(result, conn_holder[0], labels, has_events)
@@ -724,13 +726,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 "model_time_split_delivery_minutes",
                             ):
                                 part = (
-                                    "refinement"
+                                    "planning"
                                     if metric == "model_time_split_refinement_minutes"
                                     else "delivery"
                                 )
-                                value = model_time_split_total(
-                                    query_model_time_splits(conn_holder[0], label), part
-                                )
+                                story_data = query_session_story_data(conn_holder[0], label)
+                                value = model_time_split_total(story_data, part)
                             elif metric == "idle_minutes":
                                 value = idle_minutes_total(
                                     query_working_time_events(conn_holder[0], label),
@@ -832,6 +833,7 @@ _RANGE_ANSWER_DESCRIPTIONS = (
     _RANGE_WORKING_TIME_DESCRIPTION,
     _RANGE_COST_BY_KIND_DESCRIPTION,
     _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
+    _RANGE_MODEL_TIME_DESCRIPTION,
     _RANGE_IDLE_DESCRIPTION,
     _RANGE_SESSION_STORIES_DESCRIPTION,
     _RANGE_SESSION_EPICS_DESCRIPTION,

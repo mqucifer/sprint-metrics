@@ -1178,8 +1178,6 @@ def test_metrics_md_names_all_cost_measures():
         "input_tokens_total",
         "output_tokens_middle",
         "output_tokens_total",
-        "cached_input_percent",
-        "reasoning_output_percent",
     ):
         assert name in section, f"missing cost measure {name!r} in metrics table"
     assert "Model minutes (middle)" in section
@@ -1192,15 +1190,16 @@ def test_metrics_md_names_all_cost_measures():
     assert (
         "display unit" in model_cost_section.lower()
         or "whole minutes" in model_cost_section.lower()
+        or "whole model minutes" in model_cost_section.lower()
     )
     assert "model_seconds" in model_cost_section
     assert "model_minutes" in model_cost_section
 
 
 def test_metrics_md_explains_cost_aggregation_semantics():
-    """AC2: computation-details explains story cost as summed total across roles,
-    middle as median of per-story values, total as sum, and percents from
-    the sprint's combined token totals rather than per story."""
+    """AC2: computation-details explains story cost as computed from session
+    records, middle as median of per-story values, total as sum, and null
+    where no session data."""
     text = (DOCS_DIR / "metrics.md").read_text()
     detail_start = text.index("## Computation details")
     detail = text[detail_start:]
@@ -1208,17 +1207,14 @@ def test_metrics_md_explains_cost_aggregation_semantics():
     # Find the next section heading (## or ###) after the Model cost heading line
     next_heading = detail.index("\n##", model_cost_start + 1)
     model_cost_section = detail[model_cost_start:next_heading]
-    # Story cost is summed total across every role's model calls
-    assert (
-        "summed total across every role" in model_cost_section
-        or "summed total" in model_cost_section
-    )
+    # Story cost is from session records
+    assert "session records" in model_cost_section
     # Middle is the median of per-story values
     assert "median" in model_cost_section.lower()
     # Total is the sum
     assert "sum" in model_cost_section.lower()
-    # Percents from sprint's combined token totals
-    assert "combined" in model_cost_section.lower() or "sprint's" in model_cost_section
+    # No data, not zero
+    assert "no data, not zero" in model_cost_section.lower() or "null" in model_cost_section.lower()
 
 
 def test_service_md_documents_cost_payload_fields():

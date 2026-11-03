@@ -276,19 +276,17 @@ def _cost_card(
 
 
 def test_compute_cost_summary_single_story_six_keys_and_rounded_minutes():
-    """AC1: one costed story's item has exactly the six keys, card_id, and
+    """AC1: one costed story's item has exactly the four keys, card_id, and
     model_minutes is model_seconds expressed in whole minutes (rounded)."""
-    card = _cost_card("cost-a", 3500, 4000, 1400, 900, 300)
-    story_costs, cost = _compute_cost_summary([card])
+    session_costs = {"cost-a": (3500, 4000, 900)}
+    story_costs, cost = _compute_cost_summary(session_costs)
     assert len(story_costs) == 1
     item = story_costs[0]
     assert set(item.keys()) == {
         "card_id",
         "model_minutes",
         "input_tokens",
-        "cached_input_percent",
         "output_tokens",
-        "reasoning_output_percent",
     }
     assert item["card_id"] == "cost-a"
     assert item["model_minutes"] == 58
@@ -298,24 +296,27 @@ def test_compute_cost_summary_single_story_six_keys_and_rounded_minutes():
 
 
 def test_compute_cost_summary_percents_are_the_sprints_not_the_stories():
-    """AC2: every item carries the sprint's combined cached/reasoning shares, not
-    each story's own share (story A's own 50% / story B's 30% are both reported
-    as the sprint's 35% / 26%)."""
-    a = _cost_card("a", 60, 1000, 500, 800, 400)
-    b = _cost_card("b", 60, 3000, 900, 3200, 640)
-    story_costs, _ = _compute_cost_summary([a, b])
+    """AC2: every item carries its story's own model minutes and tokens from
+    the session records; the percents no longer exist on story_costs items."""
+    session_costs = {
+        "a": (60, 1000, 800),
+        "b": (60, 3000, 3200),
+    }
+    story_costs, _ = _compute_cost_summary(session_costs)
     for item in story_costs:
-        assert item["cached_input_percent"] == 35
-        assert item["reasoning_output_percent"] == 26
+        assert "cached_input_percent" not in item
+        assert "reasoning_output_percent" not in item
 
 
 def test_compute_cost_summary_middle_is_median_and_total_is_sum():
     """AC3: cost.middle is the median and cost.total is the sum of the per-story
     values for each measure."""
-    c1 = _cost_card("c1", 120, 300, 0, 100, 0)
-    c2 = _cost_card("c2", 300, 900, 0, 200, 0)
-    c3 = _cost_card("c3", 540, 600, 0, 400, 0)
-    _, cost = _compute_cost_summary([c1, c2, c3])
+    session_costs = {
+        "c1": (120, 300, 100),
+        "c2": (300, 900, 200),
+        "c3": (540, 600, 400),
+    }
+    _, cost = _compute_cost_summary(session_costs)
     assert cost["middle"]["model_minutes"] == 5
     assert cost["total"]["model_minutes"] == 16
     assert cost["middle"]["input_tokens"] == 600
@@ -326,46 +327,41 @@ def test_compute_cost_summary_middle_is_median_and_total_is_sum():
 
 def test_compute_cost_summary_cost_object_holds_only_the_three_measures():
     """AC9: cost.middle and cost.total each carry exactly model_minutes,
-    input_tokens and output_tokens; the two percents ride only on story_costs
-    items and never appear inside cost."""
-    c1 = _cost_card("c1", 120, 300, 0, 100, 0)
-    c2 = _cost_card("c2", 300, 900, 0, 200, 0)
-    c3 = _cost_card("c3", 540, 600, 0, 400, 0)
-    _, cost = _compute_cost_summary([c1, c2, c3])
+    input_tokens and output_tokens; no percents ride on cost."""
+    session_costs = {
+        "c1": (120, 300, 100),
+        "c2": (300, 900, 200),
+        "c3": (540, 600, 400),
+    }
+    _, cost = _compute_cost_summary(session_costs)
     measure_keys = {"model_minutes", "input_tokens", "output_tokens"}
     assert set(cost["middle"].keys()) == measure_keys
     assert set(cost["total"].keys()) == measure_keys
-    assert "cached_input_percent" not in cost
-    assert "reasoning_output_percent" not in cost
     assert cost["middle"] == {"model_minutes": 5, "input_tokens": 600, "output_tokens": 200}
     assert cost["total"] == {"model_minutes": 16, "input_tokens": 1800, "output_tokens": 700}
 
 
 def test_compute_cost_summary_excludes_stories_without_cost():
-    """AC4: a finished story carrying no cost data is omitted from story_costs,
-    and the middle/total are computed from the costed stories only."""
-    costed = _cost_card("c1", 120, 300, 0, 100, 0)
-    bare = Card(created=date(2024, 1, 1), card_id="bare")
-    story_costs, cost = _compute_cost_summary([costed, bare])
+    """AC4: a story with no delivery session data is omitted from story_costs,
+    and the middle/total are computed from the stories with session data only."""
+    session_costs = {"c1": (120, 300, 100)}
+    story_costs, cost = _compute_cost_summary(session_costs)
     assert [item["card_id"] for item in story_costs] == ["c1"]
     assert cost["middle"]["model_minutes"] == 2
     assert cost["total"]["model_minutes"] == 2
 
 
 def test_compute_cost_summary_empty_when_no_story_carries_cost():
-    """AC5: when no story carries cost data (or there are no cards), story_costs
-    is an empty list and cost is None."""
-    bare1 = Card(created=date(2024, 1, 1), card_id="b1")
-    bare2 = Card(created=date(2024, 1, 1), card_id="b2")
-    assert _compute_cost_summary([bare1, bare2]) == ([], None)
-    assert _compute_cost_summary([]) == ([], None)
+    """AC5: when no story carries delivery session data (or there are no
+    stories), story_costs is an empty list and cost is None."""
+    assert _compute_cost_summary({}) == ([], None)
 
 
 def test_compute_cost_summary_short_story_rounds_to_whole_minutes():
     """AC10: model_seconds 119 -> model_minutes 2 (119/60 ≈ 1.98 rounded, not
     truncated to 1), so a short story never reads as a free story."""
-    card = _cost_card("short", 119, 100, 0, 10, 0)
-    story_costs, _ = _compute_cost_summary([card])
+    session_costs = {"short": (119, 100, 10)}
+    story_costs, _ = _compute_cost_summary(session_costs)
     assert story_costs[0]["model_minutes"] == 2
 
 
@@ -393,75 +389,170 @@ def _stub_range_result(labels):
     return result
 
 
+@requires_db
 def test_attach_range_cost_entry_carries_cost_and_prior_delta():
     """AC1/AC9: each range entry carries story_costs and cost matching /sprint, and the
     second entry's prior and delta carry the six flat cost names (current minus prior)."""
-    from sprint_metrics.metrics import _attach_range_cost, _compute_cost_summary, _cost_flat
+    from datetime import datetime
 
-    prior_cards = [
-        _cost_card("p1", 1080, 2500, 1000, 600, 100),
-        _cost_card("p2", 1860, 4000, 1600, 1200, 200),
-        _cost_card("p3", 2580, 8000, 3200, 3800, 400),
-    ]
-    current_cards = [
-        _cost_card("c1", 3480, 4000, 1800, 900, 200),
-        _cost_card("c2", 5400, 12000, 5840, 4800, 1200),
-    ]
-    sprints = {"2026-09": prior_cards, "2026-10": current_cards}
+    import psycopg
+
+    from sprint_metrics.metrics import _attach_range_cost
+    from sprint_metrics.store import upsert_session, upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2026-09', '2026-10')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2026-09', '2026-10')")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name IN ('2026-09', '2026-10')")
+    conn.commit()
+
+    upsert_sprint(conn, "2026-09", date(2026, 9, 1), date(2026, 9, 30), "UTC")
+    upsert_sprint(conn, "2026-10", date(2026, 10, 1), date(2026, 10, 31), "UTC")
+
+    # 2026-09: three stories with delivery sessions
+    for card_id, model_sec, in_tok, out_tok in [
+        ("p1", 1080, 2500, 600),
+        ("p2", 1860, 4000, 1200),
+        ("p3", 2580, 8000, 3800),
+    ]:
+        conn.execute(
+            """INSERT INTO sprint_metrics.board_events
+               (card_id, type, event_time, sprint, card_created)
+               VALUES (%s, 'started', %s, '2026-09', '2026-09-01')""",
+            (card_id, datetime(2026, 9, 2, 9, 0, tzinfo=UTC)),
+        )
+        upsert_session(
+            conn,
+            {
+                "card": card_id,
+                "role": "Developer",
+                "start": "2026-09-02T10:00:00Z",
+                "end": "2026-09-02T10:30:00Z",
+                "sprint": "2026-09",
+                "model_seconds": model_sec,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            },
+        )
+    # 2026-10: two stories with delivery sessions
+    for card_id, model_sec, in_tok, out_tok in [
+        ("c1", 3480, 4000, 900),
+        ("c2", 5400, 12000, 4800),
+    ]:
+        conn.execute(
+            """INSERT INTO sprint_metrics.board_events
+               (card_id, type, event_time, sprint, card_created)
+               VALUES (%s, 'started', %s, '2026-10', '2026-10-01')""",
+            (card_id, datetime(2026, 10, 2, 9, 0, tzinfo=UTC)),
+        )
+        upsert_session(
+            conn,
+            {
+                "card": card_id,
+                "role": "Developer",
+                "start": "2026-10-02T10:00:00Z",
+                "end": "2026-10-02T10:30:00Z",
+                "sprint": "2026-10",
+                "model_seconds": model_sec,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            },
+        )
+    conn.commit()
+
     labels = ["2026-09", "2026-10"]
     has_events = {"2026-09", "2026-10"}
     result = _stub_range_result(labels)
-    _attach_range_cost(result, sprints, labels, has_events)
+    _attach_range_cost(result, conn, labels, has_events)
 
     e09 = result["sprints"]["2026-09"]
     assert e09["prior"] is None
     assert e09["delta"] is None
-    sc09, cost09 = _compute_cost_summary(prior_cards)
-    assert e09["story_costs"] == sc09
-    assert e09["cost"] == cost09
     assert e09["cost"]["middle"]["model_minutes"] == 31
     assert e09["cost"]["total"]["model_minutes"] == 92
     assert e09["cost"]["middle"]["input_tokens"] == 4000
     assert e09["cost"]["total"]["input_tokens"] == 14500
     assert e09["cost"]["middle"]["output_tokens"] == 1200
     assert e09["cost"]["total"]["output_tokens"] == 5600
+    # story_costs has three entries for 2026-09
+    assert len(e09["story_costs"]) == 3
 
     e10 = result["sprints"]["2026-10"]
-    sc10, cost10 = _compute_cost_summary(current_cards)
-    assert e10["story_costs"] == sc10
-    assert e10["cost"] == cost10
-    prior_flat = _cost_flat(cost09)
-    cur_flat = _cost_flat(cost10)
-    for name in prior_flat:
-        assert e10["prior"][name] == prior_flat[name]
-        assert e10["delta"][name] == (
-            cur_flat[name] - prior_flat[name]
-            if cur_flat[name] is not None and prior_flat[name] is not None
-            else None
-        )
+    assert e10["cost"]["total"]["model_minutes"] == 148
+    assert e10["cost"]["total"]["input_tokens"] == 16000
+    assert e10["cost"]["total"]["output_tokens"] == 5700
     assert e10["prior"]["model_minutes_middle"] == 31
     assert e10["prior"]["model_minutes_total"] == 92
     assert e10["prior"]["input_tokens_middle"] == 4000
     assert e10["prior"]["input_tokens_total"] == 14500
     assert e10["prior"]["output_tokens_middle"] == 1200
     assert e10["prior"]["output_tokens_total"] == 5600
+    assert e10["delta"]["model_minutes_total"] == 148 - 92
+    assert e10["delta"]["input_tokens_total"] == 16000 - 14500
+    assert e10["delta"]["output_tokens_total"] == 5700 - 5600
+    conn.close()
 
 
+@requires_db
 def test_attach_range_cost_prior_no_costed_stories_nulls_cost():
-    """AC2: the preceding sprint has events but no costed stories, so its non-null prior
-    object carries null for the six cost values and the delta carries null for each."""
-    from sprint_metrics.metrics import _attach_range_cost
+    """AC2: the preceding sprint has events but no delivery session records,
+    so its non-null prior object carries null for the six cost values and the
+    delta carries null for each."""
+    from datetime import datetime
 
-    prior_cards = [Card(created=date(2024, 1, 1), card_id="p")]
-    current_cards = [
-        _cost_card("c1", 3480, 4000, 1800, 900, 200),
-        _cost_card("c2", 5400, 12000, 5840, 4800, 1200),
-    ]
-    sprints = {"2024-01": prior_cards, "2024-02": current_cards}
+    import psycopg
+
+    from sprint_metrics.metrics import _attach_range_cost
+    from sprint_metrics.store import upsert_session, upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-01', '2024-02')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    upsert_sprint(conn, "2024-01", date(2024, 1, 1), date(2024, 1, 31), "UTC")
+    upsert_sprint(conn, "2024-02", date(2024, 2, 1), date(2024, 2, 29), "UTC")
+
+    # 2024-01: a started event but no sessions
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('p', 'started', %s, '2024-01', '2024-01-01')""",
+        (datetime(2024, 1, 2, 9, 0, tzinfo=UTC),),
+    )
+    # 2024-02: two stories with delivery sessions
+    for card_id, model_sec, in_tok, out_tok in [
+        ("c1", 3480, 4000, 900),
+        ("c2", 5400, 12000, 4800),
+    ]:
+        conn.execute(
+            """INSERT INTO sprint_metrics.board_events
+               (card_id, type, event_time, sprint, card_created)
+               VALUES (%s, 'started', %s, '2024-02', '2024-02-01')""",
+            (card_id, datetime(2024, 2, 2, 9, 0, tzinfo=UTC)),
+        )
+        upsert_session(
+            conn,
+            {
+                "card": card_id,
+                "role": "Developer",
+                "start": "2024-02-02T10:00:00Z",
+                "end": "2024-02-02T10:30:00Z",
+                "sprint": "2024-02",
+                "model_seconds": model_sec,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            },
+        )
+    conn.commit()
+
     labels = ["2024-01", "2024-02"]
     has_events = {"2024-01", "2024-02"}
     result = _stub_range_result(labels)
-    _attach_range_cost(result, sprints, labels, has_events)
+    _attach_range_cost(result, conn, labels, has_events)
 
     e02 = result["sprints"]["2024-02"]
     assert e02["prior"] is not None
@@ -476,19 +567,56 @@ def test_attach_range_cost_prior_no_costed_stories_nulls_cost():
     ):
         assert e02["prior"][name] is None
         assert e02["delta"][name] is None
+    conn.close()
 
 
+@requires_db
 def test_attach_range_cost_null_entry_for_no_events():
     """AC3: a range entry for a sprint with no events is the all-null entry, with
     story_costs an empty array and cost null, alongside the entry's other null metrics."""
-    from sprint_metrics.metrics import _attach_range_cost
+    from datetime import datetime
 
-    current_cards = [_cost_card("c1", 3480, 4000, 1800, 900, 200)]
-    sprints = {"2024-01": [], "2024-02": current_cards}
+    import psycopg
+
+    from sprint_metrics.metrics import _attach_range_cost
+    from sprint_metrics.store import upsert_session, upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-01', '2024-02')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name IN ('2024-01', '2024-02')")
+    conn.commit()
+
+    upsert_sprint(conn, "2024-01", date(2024, 1, 1), date(2024, 1, 31), "UTC")
+    upsert_sprint(conn, "2024-02", date(2024, 2, 1), date(2024, 2, 29), "UTC")
+
+    # 2024-02: one story with a delivery session
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('c1', 'started', %s, '2024-02', '2024-02-01')""",
+        (datetime(2024, 2, 2, 9, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "c1",
+            "role": "Developer",
+            "start": "2024-02-02T10:00:00Z",
+            "end": "2024-02-02T10:30:00Z",
+            "sprint": "2024-02",
+            "model_seconds": 3480,
+            "input_tokens": 4000,
+            "output_tokens": 900,
+        },
+    )
+    conn.commit()
+
     labels = ["2024-01", "2024-02"]
-    has_events = {"2024-02"}
+    has_events = {"2024-02"}  # 2024-01 has no events
     result = _stub_range_result(labels)
-    _attach_range_cost(result, sprints, labels, has_events)
+    _attach_range_cost(result, conn, labels, has_events)
 
     e01 = result["sprints"]["2024-01"]
     assert e01["story_costs"] == []
@@ -496,8 +624,10 @@ def test_attach_range_cost_null_entry_for_no_events():
     assert e01["prior"] is None
     assert e01["delta"] is None
     e02 = result["sprints"]["2024-02"]
-    assert e02["prior"] is None
-    assert e02["delta"] is None
+    assert e02["story_costs"] is not None
+    assert len(e02["story_costs"]) == 1
+    assert e02["cost"]["total"]["model_minutes"] == 58
+    conn.close()
 
 
 @requires_db
@@ -11431,55 +11561,103 @@ def test_sprint_range_schema_declares_cost_by_kind_on_sprint_entry():
 
 @requires_db
 def test_range_model_time_split_summed_whole_minutes():
-    """AC1: a sprint whose costed stories carry model-time splits has its
-    model_time_split answer carry the whole-minute totals, each story's split
-    converted to whole minutes and summed: refinement 30 and delivery 70 for a
-    story split 1200 s / 3600 s and a story split 600 s / 600 s."""
+    """AC1: a sprint whose stories carry sessions split into planning and
+    delivery has its model_time_split answer carry the whole-minute totals,
+    each part converted to whole minutes and summed: planning 30 and
+    delivery 70 for a story split 1200 s / 3600 s and a story split
+    600 s / 600 s."""
+    from datetime import datetime
+
     import psycopg
+
+    from sprint_metrics.store import upsert_session
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-09'")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('mts1', 'mts2')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-09'")
+    conn.commit()
+
+    # Story mts1: started at 2024-09-05T12:00:00Z
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts1', 'started', %s, '2024-09', '2024-09-01')""",
+        (datetime(2024, 9, 5, 12, 0, tzinfo=UTC),),
+    )
+    # Planning session: 1200 model seconds (before start)
+    upsert_session(
+        conn,
+        {
+            "card": "mts1",
+            "role": "Developer",
+            "start": "2024-09-05T10:00:00Z",
+            "end": "2024-09-05T11:00:00Z",
+            "sprint": "2024-09",
+            "model_seconds": 1200,
+            "input_tokens": 2000,
+            "output_tokens": 500,
+        },
+    )
+    # Delivery session: 3600 model seconds (after start)
+    upsert_session(
+        conn,
+        {
+            "card": "mts1",
+            "role": "Developer",
+            "start": "2024-09-05T12:30:00Z",
+            "end": "2024-09-05T13:30:00Z",
+            "sprint": "2024-09",
+            "model_seconds": 3600,
+            "input_tokens": 2000,
+            "output_tokens": 400,
+        },
+    )
+    # Story mts2: started at 2024-09-06T12:00:00Z
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts2', 'started', %s, '2024-09', '2024-09-01')""",
+        (datetime(2024, 9, 6, 12, 0, tzinfo=UTC),),
+    )
+    # Planning session: 600 model seconds (before start)
+    upsert_session(
+        conn,
+        {
+            "card": "mts2",
+            "role": "Developer",
+            "start": "2024-09-06T10:00:00Z",
+            "end": "2024-09-06T11:00:00Z",
+            "sprint": "2024-09",
+            "model_seconds": 600,
+            "input_tokens": 1000,
+            "output_tokens": 250,
+        },
+    )
+    # Delivery session: 600 model seconds (after start)
+    upsert_session(
+        conn,
+        {
+            "card": "mts2",
+            "role": "Developer",
+            "start": "2024-09-06T12:30:00Z",
+            "end": "2024-09-06T13:30:00Z",
+            "sprint": "2024-09",
+            "model_seconds": 600,
+            "input_tokens": 1000,
+            "output_tokens": 250,
+        },
+    )
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts1",
-                event_type="finished",
-                timestamp="2024-09-05T12:00:00Z",
-                sprint="2024-09",
-                model_seconds=4800,
-                input_tokens=4000,
-                cached_input_tokens=1400,
-                output_tokens=900,
-                reasoning_output_tokens=300,
-                model_time_split={"refinement": 1200, "delivery": 3600},
-            ),
-        )
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts2",
-                event_type="finished",
-                timestamp="2024-09-06T12:00:00Z",
-                sprint="2024-09",
-                model_seconds=1200,
-                input_tokens=2000,
-                cached_input_tokens=600,
-                output_tokens=500,
-                reasoning_output_tokens=100,
-                model_time_split={"refinement": 600, "delivery": 600},
-            ),
-        )
         status, body = _get_json(f"{base}/range?start=2024-09&end=2024-09")
         assert status == 200
         entry = body["sprints"]["2024-09"]
-        assert entry["model_time_split"] == {"refinement": 30, "delivery": 70}
+        assert entry["model_time_split"] == {"planning": 30, "delivery": 70}
     finally:
         conn.close()
 
@@ -11487,12 +11665,13 @@ def test_range_model_time_split_summed_whole_minutes():
 @requires_db
 def test_range_model_time_split_null_when_costed_but_no_split():
     """AC2: a sprint whose costed stories carry the five-field cost payload but
-    no split (the pre-Goal payloads) has its model_time_split answer null —
+    no session records has its model_time_split answer null —
     no data, not zero."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-10'")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'mts3'")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-10'")
     conn.commit()
@@ -11517,7 +11696,7 @@ def test_range_model_time_split_null_when_costed_but_no_split():
         status, body = _get_json(f"{base}/range?start=2024-10&end=2024-10")
         assert status == 200
         entry = body["sprints"]["2024-10"]
-        assert entry["cost"] is not None
+        assert entry["cost"] is None
         assert entry["model_time_split"] is None
     finally:
         conn.close()
@@ -11531,6 +11710,7 @@ def test_range_model_time_split_null_when_no_costed_stories():
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-11'")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id = 'mts4'")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-11'")
     conn.commit()
@@ -11569,65 +11749,97 @@ def test_range_model_time_split_null_when_no_costed_stories():
 def test_trend_model_time_split_refinement_and_delivery():
     """AC4: GET /trend?metric=model_time_split_refinement_minutes and
     model_time_split_delivery_minutes return the per-sprint whole minutes
-    (null where no story carries the split)."""
+    (null where no story carries session data)."""
+    from datetime import datetime
+
     import psycopg
+
+    from sprint_metrics.store import upsert_session
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-05', '2024-06')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('mts5', 'mts6', 'mts7')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-05', '2024-06')")
+    conn.commit()
+
+    # 2024-05: two stories with sessions (planning + delivery)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts5', 'started', %s, '2024-05', '2024-05-01')""",
+        (datetime(2024, 5, 5, 12, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts5",
+            "role": "Developer",
+            "start": "2024-05-05T10:00:00Z",
+            "end": "2024-05-05T11:00:00Z",
+            "sprint": "2024-05",
+            "model_seconds": 1200,
+            "input_tokens": 2000,
+            "output_tokens": 500,
+        },
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts5",
+            "role": "Developer",
+            "start": "2024-05-05T12:30:00Z",
+            "end": "2024-05-05T13:30:00Z",
+            "sprint": "2024-05",
+            "model_seconds": 3600,
+            "input_tokens": 2000,
+            "output_tokens": 400,
+        },
+    )
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts6', 'started', %s, '2024-05', '2024-05-01')""",
+        (datetime(2024, 5, 6, 12, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts6",
+            "role": "Developer",
+            "start": "2024-05-06T10:00:00Z",
+            "end": "2024-05-06T11:00:00Z",
+            "sprint": "2024-05",
+            "model_seconds": 600,
+            "input_tokens": 1000,
+            "output_tokens": 250,
+        },
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts6",
+            "role": "Developer",
+            "start": "2024-05-06T12:30:00Z",
+            "end": "2024-05-06T13:30:00Z",
+            "sprint": "2024-05",
+            "model_seconds": 600,
+            "input_tokens": 1000,
+            "output_tokens": 250,
+        },
+    )
+    # 2024-06: a story with no sessions (no data)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts7', 'started', %s, '2024-06', '2024-06-01')""",
+        (datetime(2024, 6, 5, 12, 0, tzinfo=UTC),),
+    )
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 2024-05: two costed stories with splits
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts5",
-                event_type="finished",
-                timestamp="2024-05-05T12:00:00Z",
-                sprint="2024-05",
-                model_seconds=4800,
-                input_tokens=4000,
-                cached_input_tokens=1400,
-                output_tokens=900,
-                reasoning_output_tokens=300,
-                model_time_split={"refinement": 1200, "delivery": 3600},
-            ),
-        )
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts6",
-                event_type="finished",
-                timestamp="2024-05-06T12:00:00Z",
-                sprint="2024-05",
-                model_seconds=1200,
-                input_tokens=2000,
-                cached_input_tokens=600,
-                output_tokens=500,
-                reasoning_output_tokens=100,
-                model_time_split={"refinement": 600, "delivery": 600},
-            ),
-        )
-        # 2024-06: a costed story with no split (no data)
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts7",
-                event_type="finished",
-                timestamp="2024-06-05T12:00:00Z",
-                sprint="2024-06",
-                model_seconds=4800,
-                input_tokens=4000,
-                cached_input_tokens=1400,
-                output_tokens=900,
-                reasoning_output_tokens=300,
-            ),
-        )
-
         status, body = _get_json(
             f"{base}/trend?metric=model_time_split_refinement_minutes&start=2024-05&end=2024-06"
         )
@@ -11655,10 +11867,17 @@ def test_trend_model_time_split_refinement_and_delivery():
 def test_range_model_time_split_prior_and_delta():
     """AC5: the flat split names appear in each later entry's prior and delta
     (null where a sprint has no split data)."""
+    from datetime import datetime
+
     import psycopg
+
+    from sprint_metrics.store import upsert_session
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2025-03', '2025-04', '2025-05')"
+    )
     conn.execute(
         "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('mts8', 'mts9', 'mts10')"
     )
@@ -11667,72 +11886,100 @@ def test_range_model_time_split_prior_and_delta():
     )
     conn.commit()
 
+    # 2025-03: split 600 s / 1200 s -> planning 10 / delivery 20 minutes
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts8', 'started', %s, '2025-03', '2025-03-01')""",
+        (datetime(2025, 3, 5, 12, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts8",
+            "role": "Developer",
+            "start": "2025-03-05T10:00:00Z",
+            "end": "2025-03-05T11:00:00Z",
+            "sprint": "2025-03",
+            "model_seconds": 600,
+            "input_tokens": 2000,
+            "output_tokens": 500,
+        },
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts8",
+            "role": "Developer",
+            "start": "2025-03-05T12:30:00Z",
+            "end": "2025-03-05T13:30:00Z",
+            "sprint": "2025-03",
+            "model_seconds": 1200,
+            "input_tokens": 2000,
+            "output_tokens": 400,
+        },
+    )
+    # 2025-04: a started event but no sessions (no data)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts9', 'started', %s, '2025-04', '2025-04-01')""",
+        (datetime(2025, 4, 5, 12, 0, tzinfo=UTC),),
+    )
+    # 2025-05: split 1200 s / 600 s -> planning 20 / delivery 10 minutes
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mts10', 'started', %s, '2025-05', '2025-05-01')""",
+        (datetime(2025, 5, 5, 12, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts10",
+            "role": "Developer",
+            "start": "2025-05-05T10:00:00Z",
+            "end": "2025-05-05T11:00:00Z",
+            "sprint": "2025-05",
+            "model_seconds": 1200,
+            "input_tokens": 2000,
+            "output_tokens": 500,
+        },
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mts10",
+            "role": "Developer",
+            "start": "2025-05-05T12:30:00Z",
+            "end": "2025-05-05T13:30:00Z",
+            "sprint": "2025-05",
+            "model_seconds": 600,
+            "input_tokens": 2000,
+            "output_tokens": 400,
+        },
+    )
+    conn.commit()
+
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 2025-03: split 600 s / 1200 s -> 10 / 20 minutes
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts8",
-                event_type="finished",
-                timestamp="2025-03-05T12:00:00Z",
-                sprint="2025-03",
-                model_seconds=1800,
-                input_tokens=4000,
-                cached_input_tokens=1400,
-                output_tokens=900,
-                reasoning_output_tokens=300,
-                model_time_split={"refinement": 600, "delivery": 1200},
-            ),
-        )
-        # 2025-04: costed but no split (no data)
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts9",
-                event_type="finished",
-                timestamp="2025-04-05T12:00:00Z",
-                sprint="2025-04",
-                model_seconds=1800,
-                input_tokens=4000,
-                cached_input_tokens=1400,
-                output_tokens=900,
-                reasoning_output_tokens=300,
-            ),
-        )
-        # 2025-05: split 1200 s / 600 s -> 20 / 10 minutes
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="mts10",
-                event_type="finished",
-                timestamp="2025-05-05T12:00:00Z",
-                sprint="2025-05",
-                model_seconds=1800,
-                input_tokens=4000,
-                cached_input_tokens=1400,
-                output_tokens=900,
-                reasoning_output_tokens=300,
-                model_time_split={"refinement": 1200, "delivery": 600},
-            ),
-        )
         status, body = _get_json(f"{base}/range?start=2025-03&end=2025-05")
         assert status == 200
         e1 = body["sprints"]["2025-03"]
         e2 = body["sprints"]["2025-04"]
         e3 = body["sprints"]["2025-05"]
-        assert e1["model_time_split"] == {"refinement": 10, "delivery": 20}
+        assert e1["model_time_split"] == {"planning": 10, "delivery": 20}
         assert e2["model_time_split"] is None
-        assert e3["model_time_split"] == {"refinement": 20, "delivery": 10}
+        assert e3["model_time_split"] == {"planning": 20, "delivery": 10}
         assert e1["prior"] is None
         assert e1["delta"] is None
-        # 2024-13's prior reads 2024-12's split; its delta is null (no data).
+        # 2025-04's prior reads 2025-03's split; its delta is null (no data).
         assert e2["prior"]["model_time_split_refinement_minutes"] == 10
         assert e2["prior"]["model_time_split_delivery_minutes"] == 20
         assert e2["delta"]["model_time_split_refinement_minutes"] is None
         assert e2["delta"]["model_time_split_delivery_minutes"] is None
-        # 2024-14's prior reads 2024-13's nulls; its delta is null too.
+        # 2025-05's prior reads 2025-04's nulls; its delta is null too.
         assert e3["prior"]["model_time_split_refinement_minutes"] is None
         assert e3["prior"]["model_time_split_delivery_minutes"] is None
         assert e3["delta"]["model_time_split_refinement_minutes"] is None
@@ -11743,7 +11990,7 @@ def test_range_model_time_split_prior_and_delta():
 
 def test_sprint_range_schema_declares_model_time_split_on_sprint_entry():
     """AC5: SPRINT_RANGE_SCHEMA declares model_time_split as an optional
-    property of a sprint entry (not in required), with refinement and delivery
+    property of a sprint entry (not in required), with planning and delivery
     (integer); the flat split names appear in each later entry's prior and
     delta (integer or null)."""
     from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
@@ -11752,8 +11999,8 @@ def test_sprint_range_schema_declares_model_time_split_on_sprint_entry():
     assert "model_time_split" not in sprint_entry["required"]
     split = sprint_entry["properties"]["model_time_split"]
     assert split["type"] == ["object", "null"]
-    assert split["required"] == ["refinement", "delivery"]
-    assert split["properties"]["refinement"] == {"type": "integer"}
+    assert split["required"] == ["planning", "delivery"]
+    assert split["properties"]["planning"] == {"type": "integer"}
     assert split["properties"]["delivery"] == {"type": "integer"}
     for which in ("prior", "delta"):
         flat = sprint_entry["properties"][which]["properties"]
