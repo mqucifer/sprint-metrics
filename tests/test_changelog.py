@@ -327,9 +327,10 @@ def test_unreleased_added_names_session_epics():
     in-sprint session time, in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
     added = _subheading_bodies(content, "### Added")
-    assert any("session_epics" in body for body in added)
-    assert any("epic" in body for body in added)
-    assert any("in-sprint session minutes" in body for body in added)
+    added_section = "\n".join(added)
+    assert "session_epics" in added_section
+    assert "epic" in added_section
+    assert "in-sprint session minutes" in added_section
 
 
 def test_unreleased_changed_names_api_version_move():

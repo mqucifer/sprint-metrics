@@ -814,5 +814,6 @@ def test_changelog_records_to_date():
 
     content = CHANGELOG.read_text()
     added = _subheading_bodies(content, "### Added")
-    assert any("session_epics_to_date" in body for body in added)
-    assert any("to date" in body or "to-date" in body for body in added)
+    added_section = "\n".join(added)
+    assert "session_epics_to_date" in added_section
+    assert "to date" in added_section or "to-date" in added_section
