@@ -1,0 +1,162 @@
+{
+  "api_version": "16",
+  "sprints": {
+    "2025-05": {
+      "cycle_time_days": null,
+      "lead_time_days": null,
+      "throughput": null,
+      "points_delivered": null,
+      "wip_violations": null,
+      "blocked_aging_days": null,
+      "first_attempt_rate_percent": null,
+      "first_attempt_numerator": null,
+      "first_attempt_denominator": null,
+      "superseded_count": null,
+      "superseded_points": null,
+      "superseded_breakdown": null,
+      "cycle_time_minutes": null,
+      "lead_time_minutes": null,
+      "failure_breakdown": null,
+      "top_failure_causes": null,
+      "flags": null,
+      "prior": null,
+      "delta": null,
+      "story_costs": [],
+      "cost": null,
+      "rework": null,
+      "filed": null,
+      "roster": null,
+      "dora": null,
+      "working_time": {
+        "stories": {
+          "dga": 0
+        },
+        "planning": 30,
+        "cardless": 0,
+        "total": 30
+      },
+      "cost_by_kind": null,
+      "model_time_split": null,
+      "model_time": null,
+      "idle": {
+        "sprint_duration_minutes": 20160,
+        "idle_minutes": 20130
+      },
+      "session_stories": {
+        "dga": {
+          "session_minutes": 0,
+          "minutes_by_role": {},
+          "model_minutes": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
+      },
+      "session_planning": {
+        "session_minutes": 30,
+        "model_minutes": 0
+      },
+      "session_epics": {},
+      "session_epics_to_date": {}
+    },
+    "2025-06": {
+      "cycle_time_days": 0,
+      "lead_time_days": 0,
+      "throughput": 0,
+      "points_delivered": 0,
+      "wip_violations": 0,
+      "blocked_aging_days": 0,
+      "first_attempt_rate_percent": null,
+      "first_attempt_numerator": null,
+      "first_attempt_denominator": null,
+      "superseded_count": 0,
+      "superseded_points": 0,
+      "superseded_breakdown": {
+        "sponsor": 0,
+        "story_problem": 0
+      },
+      "cycle_time_minutes": null,
+      "lead_time_minutes": null,
+      "failure_breakdown": [],
+      "top_failure_causes": [],
+      "flags": {
+        "cycle_time_days": false,
+        "lead_time_days": false,
+        "cycle_time_minutes": false,
+        "lead_time_minutes": false,
+        "throughput": true,
+        "wip_violations": false,
+        "blocked_aging_days": false,
+        "first_attempt_rate_percent": false
+      },
+      "prior": null,
+      "delta": null,
+      "story_costs": [],
+      "cost": null,
+      "rework": {
+        "started": 1,
+        "sent_backs": null
+      },
+      "filed": null,
+      "roster": {
+        "completed_stories": [],
+        "released_epics": null,
+        "achieved_goals": null
+      },
+      "dora": {
+        "release_frequency": null,
+        "lead_time_days": null,
+        "change_failure_count": null,
+        "change_failure_rate_percent": null,
+        "mean_time_to_recovery_minutes": null
+      },
+      "working_time": null,
+      "cost_by_kind": null,
+      "model_time_split": null,
+      "model_time": null,
+      "idle": null,
+      "session_stories": {
+        "dgb": null
+      },
+      "session_planning": null,
+      "session_epics": {},
+      "session_epics_to_date": {}
+    }
+  },
+  "window": {
+    "start": "2025-05",
+    "end": "2025-06",
+    "sprint_count": 2,
+    "no_data": [
+      "2025-05"
+    ],
+    "verdicts": {
+      "cycle_time_days": null,
+      "lead_time_days": null,
+      "cycle_time_minutes": null,
+      "lead_time_minutes": null,
+      "throughput": null,
+      "points_delivered": null,
+      "wip_violations": null,
+      "blocked_aging_days": null,
+      "first_attempt_rate_percent": null,
+      "first_attempt_numerator": null,
+      "first_attempt_denominator": null,
+      "superseded_count": null,
+      "superseded_points": null,
+      "change_failure_count": null,
+      "change_failure_rate_percent": null,
+      "mean_time_to_recovery_minutes": null,
+      "model_minutes_middle": null,
+      "model_minutes_total": null,
+      "input_tokens_middle": null,
+      "input_tokens_total": null,
+      "output_tokens_middle": null,
+      "output_tokens_total": null,
+      "self_filed_share_percent": null
+    },
+    "biggest_improvement": null,
+    "worst_dip": null,
+    "turns": [],
+    "too_short": true
+  }
+}
