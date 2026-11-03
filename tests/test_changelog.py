@@ -314,3 +314,20 @@ def test_unreleased_added_names_session_event():
     assert "session" in added_section
     assert "intake" in added_section or "accept" in added_section.lower()
 
+
+def test_unreleased_changed_names_api_version_move():
+    """AC: CHANGELOG.md's [Unreleased] Changed section learns the response
+    api_version moves from "10" to "11"."""
+    content = CHANGELOG.read_text()
+    start = content.index("## [Unreleased]")
+    end = content.index("## [", start + 1)
+    unreleased = content[start:end]
+    changed_start = unreleased.index("### Changed") + len("### Changed")
+    next_heading = unreleased.find("### ", changed_start)
+    if next_heading == -1:
+        next_heading = len(unreleased)
+    changed = unreleased[changed_start:next_heading]
+    assert '"10"' in changed
+    assert '"11"' in changed
+    assert "api_version" in changed
+
