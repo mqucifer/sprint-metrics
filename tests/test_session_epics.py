@@ -15,7 +15,6 @@ from sprint_metrics.service import _start_service
 from sprint_metrics.session_epics import (
     calculate_session_epics,
     calculate_session_epics_complete,
-    calculate_session_epics_to_date,
 )
 from sprint_metrics.store import init_db, upsert_session, upsert_sprint
 
@@ -561,6 +560,87 @@ def test_range_session_epics_epic_without_sessions_reads_unknown():
 
 
 @requires_db
+def test_range_session_epics_in_sprint_unknown_to_date_stays():
+    """AC1: an epic whose story ran a 60-minute session in 2026-10 and no
+    session in 2026-13 reads null for its in-sprint total, while its to-date
+    total stays 60."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    for sprint in ("2026-10", "2026-13"):
+        conn.execute(f"DELETE FROM sprint_metrics.sessions WHERE sprint = '{sprint}'")
+        conn.execute(f"DELETE FROM sprint_metrics.board_events WHERE sprint = '{sprint}'")
+        conn.execute(f"DELETE FROM sprint_metrics.sprints WHERE name = '{sprint}'")
+    conn.commit()
+
+    upsert_sprint(conn, "2026-10", date(2026, 10, 1), date(2026, 10, 14), "UTC")
+    upsert_sprint(conn, "2026-13", date(2026, 12, 15), date(2026, 12, 28), "UTC")
+
+    # Story S1: started in 2026-10 with epic E, ran a 60-minute session there
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, epic)
+           VALUES ('s1', 'started', %s, '2026-10', '2026-10-01', 'E')""",
+        (datetime(2026, 10, 1, 9, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
+    upsert_session(
+        conn,
+        {
+            "card": "s1",
+            "role": "Developer",
+            "start": "2026-10-01T10:00:00Z",
+            "end": "2026-10-01T11:00:00Z",
+            "sprint": "2026-10",
+            "model_seconds": 3600,
+            "tokens": 6000,
+            "input_tokens": 5000,
+            "output_tokens": 1000,
+        },
+    )
+    # S1 also started in 2026-13 (board event), but no session in 2026-13
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, epic)
+           VALUES ('s1', 'started', %s, '2026-13', '2026-12-15', 'E')""",
+        (datetime(2026, 12, 16, 9, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-13&end=2026-13")
+        assert status == 200
+        entry = body["sprints"]["2026-13"]
+
+        # In-sprint: E's total is unknown (null), never 0
+        se = entry["session_epics"]
+        assert "E" in se
+        e = se["E"]
+        assert e["session_minutes"] is None
+        assert e["minutes_by_role"] is None
+        assert e["model_minutes"] is None
+        assert e["input_tokens"] is None
+        assert e["output_tokens"] is None
+        assert e["unknown_story_count"] == 1
+        assert e["unknown_stories"] == ["s1"]
+
+        # To-date: E's total stays 60 (from the 2026-10 session)
+        se_td = entry["session_epics_to_date"]
+        assert "E" in se_td
+        e_td = se_td["E"]
+        assert e_td["session_minutes"] == 60
+        assert e_td["minutes_by_role"] == {"Developer": 60}
+        assert e_td["model_minutes"] == 60
+        assert e_td["input_tokens"] == 5000
+        assert e_td["output_tokens"] == 1000
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_range_session_epics_story_without_epic_excluded():
     """AC3: a story whose board rows carry no epic link does not contribute to
     any epic's total; its sessions still appear in the per-story answer."""
@@ -649,7 +729,7 @@ def test_to_date_epic_total_equals_sum_of_stories():
         },
     }
     card_epics = {"s1": "E", "s2": "E"}
-    result = calculate_session_epics_to_date(story_results, card_epics)
+    result = calculate_session_epics(story_results, card_epics)
     assert result == {
         "E": {
             "session_minutes": 60,
@@ -661,16 +741,27 @@ def test_to_date_epic_total_equals_sum_of_stories():
     }
 
 
-def test_to_date_epic_not_present_when_no_story_has_sessions():
-    """AC3: an epic whose stories had no sessions in any sprint up to date
-    appears nowhere in the to-date answer."""
+def test_to_date_epic_all_stories_unknown_reads_null():
+    """An epic whose stories have no session record in any sprint up to date
+    reads unknown (null) for its to-date total, never zero; the unknown
+    stories are listed beside the total."""
     story_results = {
         "s1": None,
         "s2": None,
     }
     card_epics = {"s1": "E2", "s2": "E2"}
-    result = calculate_session_epics_to_date(story_results, card_epics)
-    assert result == {}
+    result = calculate_session_epics_complete(story_results, card_epics)
+    assert result == {
+        "E2": {
+            "session_minutes": None,
+            "minutes_by_role": None,
+            "model_minutes": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "unknown_story_count": 2,
+            "unknown_stories": ["s1", "s2"],
+        }
+    }
 
 
 @requires_db
