@@ -407,6 +407,29 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             ],
                         },
                     },
+                    "session_epics_to_date": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                                "session_minutes": {"type": "integer"},
+                                "minutes_by_role": {
+                                    "type": "object",
+                                    "additionalProperties": {"type": "integer"},
+                                },
+                                "model_minutes": {"type": "integer"},
+                                "input_tokens": {"type": "integer"},
+                                "output_tokens": {"type": "integer"},
+                            },
+                            "required": [
+                                "session_minutes",
+                                "minutes_by_role",
+                                "model_minutes",
+                                "input_tokens",
+                                "output_tokens",
+                            ],
+                        },
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {
