@@ -144,6 +144,31 @@ def calculate_session_epics_complete(
     return result
 
 
+def calculate_session_epics_to_date(
+    story_results: dict[str, dict | None],
+    card_epics: dict[str, str | None],
+) -> dict[str, dict]:
+    """Compute the per-epic to-date session-time answer for a sprint.
+
+    ``story_results`` maps each card_id to its to-date per-story session
+    result (the output of ``calculate_session_stories`` applied to
+    sessions across all sprints up to and including the current sprint):
+    a dict with session_minutes, minutes_by_role, model_minutes,
+    input_tokens, output_tokens — or None when the card has no session
+    records in any sprint up to the current one.
+
+    ``card_epics`` maps each card_id to its epic (or None when the card's
+    stored board rows carry no epic link).
+
+    Returns a dict mapping epic name to its to-date session totals: the
+    same measures as the in-sprint answer, accumulated across every sprint
+    to date. An epic whose stories have no session record in any sprint up
+    to and including the current one reads unknown (None) for its to-date
+    total, never zero; the entry lists the unknown stories beside the total.
+    """
+    return calculate_session_epics_complete(story_results, card_epics)
+
+
 def _attach_range_session_epics(
     result: dict, conn, labels: list[str], has_events: set[str]
 ) -> None:
