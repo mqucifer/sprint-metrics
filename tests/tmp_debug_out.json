@@ -1,3 +1,2 @@
-direct prior_type=dict
-service prior_type=NoneType
-sprints 2025-05 len=0 2025-06 len=0
+resolved=['2025-05', '2025-06']
+query_range keys=['2025-05', '2025-06']
