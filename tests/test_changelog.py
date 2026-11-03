@@ -339,7 +339,7 @@ def test_unreleased_changed_names_api_version_move():
     in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
     changed = _subheading_bodies(content, "### Changed")
+    assert any('"11"' in body for body in changed)
     assert any('"12"' in body for body in changed)
-    assert any('"13"' in body for body in changed)
     assert any("api_version" in body for body in changed)
 

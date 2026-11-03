@@ -16,6 +16,7 @@
 
 - The response `api_version` moves from "13" to "14": working_time is redefined as the minutes of the sprint's session records — the stories' session minutes (from each story's start on), plus the planning sessions' minutes, plus the card-less sessions' minutes, in whole minutes, with the displayed parts summing to the sprint's total. The span-window calculation no longer feeds the working-time answer; a sprint with no session records reads null (no data, not zero). The SPRINT_RANGE_SCHEMA's working_time declaration is updated to the new shape (stories, planning, cardless, total); schemas/sprint-range.json is regenerated
 - The response `api_version` moves from "12" to "13" with the sprint's planning part (session_planning) and the redefined session_stories: a story with session records but no delivery sessions (no 'started' board event, or sessions all before the story's start) now reads a true zero (sessions ran, all of them are planning), distinct from the null of a story with no session record
+- The response `api_version` moves from "11" to "12" with the per-story session_stories answer on each sprint's /range entry: for each story whose sessions ran in the sprint, its session minutes in total, its minutes by role, its model minutes, and its tokens; a story with no session record reads null (unknown), never zero
 
 ### Fixed
 
