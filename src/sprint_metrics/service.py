@@ -561,7 +561,8 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         from pathlib import Path as _P
 
                         _P(__file__).with_name("_svc_dbg.json").write_text(
-                            f"labels={labels}\nsprints_keys={list(sprints.keys())}\n"
+                            f"labels={labels}\n"
+                            f"sprints_vals={[(k, len(v)) for k, v in sprints.items()]}\n"
                         )
                         result = json.loads(body)
                         _attach_range_window(result, labels, has_events)
