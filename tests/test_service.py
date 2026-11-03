@@ -697,7 +697,7 @@ def test_range_response_metrics_and_keys():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert body["window"]["start"] == "2024-01"
         assert body["window"]["end"] == "2024-02"
         assert body["window"]["sprint_count"] == 2
@@ -2151,7 +2151,7 @@ def test_trend_cycle_time_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-02", "value": 3}
         assert body["values"][1] == {"sprint": "2024-03", "value": None}
@@ -2177,7 +2177,7 @@ def test_trend_empty_db_all_zeros():
             f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-03"
         )
         assert status == 200
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": None}
         assert body["values"][1] == {"sprint": "2024-02", "value": None}
@@ -2294,7 +2294,7 @@ def test_trend_first_attempt_rate_two_sprints():
             f"&start=2024-01&end=2024-02"
         )
         assert status == 200
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert len(body["values"]) == 2
         assert body["values"][0]["sprint"] == "2024-01"
         assert body["values"][0]["value"] == 100
@@ -4971,10 +4971,12 @@ def test_range_rework_changes_no_other_metric():
         status, after = _get_json(f"http://127.0.0.1:{port}/range?start=2024-10&end=2024-10")
         assert status == 200
         before_entry = {
-            k: v for k, v in before["sprints"]["2024-10"].items() if k not in ("rework", "working_time")
+            k: v for k, v in before["sprints"]["2024-10"].items()
+            if k not in ("rework", "working_time", "session_stories")
         }
         after_entry = {
-            k: v for k, v in after["sprints"]["2024-10"].items() if k not in ("rework", "working_time")
+            k: v for k, v in after["sprints"]["2024-10"].items()
+            if k not in ("rework", "working_time", "session_stories")
         }
         assert before_entry == after_entry
         # The send-back completes no story and adds no review/QA return.
@@ -4984,6 +4986,11 @@ def test_range_rework_changes_no_other_metric():
         assert after["sprints"]["2024-10"]["rework"]["sent_backs"] == [
             {"card_id": "rw_e2e7_back", "send_backs": [{"step": "Refinement", "reason": "story_problem"}]}
         ]
+        # session_stories gains a null entry for the new card while retaining
+        # existing values for other stories.
+        after_ss = after["sprints"]["2024-10"]["session_stories"]
+        assert after_ss["rw_e2e7_back"] is None
+        assert after_ss["rw_e2e7_done"] is None
     finally:
         conn.close()
 
@@ -5821,7 +5828,7 @@ def test_trend_answers_api_version_4_and_still_refuses_escalation_count():
             assert _post_events(f"{base}/events", _make_event(*event))[0] == 200
         status, body = _get_json(f"{base}/trend?metric=throughput&start=2024-01&end=2024-02")
         assert status == 200
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert body["values"] == [
             {"sprint": "2024-01", "value": 1},
             {"sprint": "2024-02", "value": None},
@@ -5987,7 +5994,7 @@ def test_trend_points_delivered_two_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert len(body["values"]) == 2
         assert body["values"][0] == {"sprint": "2024-01", "value": 5}
         assert body["values"][1] == {"sprint": "2024-02", "value": 7}
@@ -7986,7 +7993,7 @@ def test_trend_superseded_count_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": 1}
         assert body["values"][1] == {"sprint": "2024-02", "value": 1}
@@ -9443,7 +9450,7 @@ def test_trend_sent_backs_count_two_sprints():
             f"http://127.0.0.1:{port}/trend?metric=sent_backs_count&start=2024-01&end=2024-02"
         )
         assert status == 200
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert body["metric"] == "sent_backs_count"
         assert body["start"] == "2024-01"
         assert body["end"] == "2024-02"
@@ -11068,7 +11075,7 @@ def test_trend_working_time_minutes():
         )
         status, body = _get_json(f"{base}/trend?metric=working_time_minutes&start=2024-11&end=2024-12")
         assert status == 200
-        assert body["api_version"] == "11"
+        assert body["api_version"] == "12"
         assert body["metric"] == "working_time_minutes"
         assert body["values"] == [
             {"sprint": "2024-11", "value": 150},
@@ -12076,8 +12083,9 @@ def test_nine_event_types_still_accepted_and_unknown_still_400():
 
 @requires_db
 def test_session_event_does_not_change_range_or_trend():
-    """AC5: a session event for a card in a sprint does not change the /range
-    or /trend responses."""
+    """AC5: a session event for a card in a sprint does not change the other
+    /range fields or the /trend response; session_stories carries the
+    session's per-story numbers."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -12121,6 +12129,8 @@ def test_session_event_does_not_change_range_or_trend():
             "end": "2024-01-15T10:00:00Z",
             "model_seconds": 3600,
             "tokens": 100000,
+            "input_tokens": 60000,
+            "output_tokens": 40000,
         }
         status, body = _post_events(f"http://127.0.0.1:{port}/events", session_event)
         assert status == 200
@@ -12128,7 +12138,22 @@ def test_session_event_does_not_change_range_or_trend():
         # Capture /range and /trend after the session.
         status, after = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        assert before == after
+        # Every /range field except session_stories is unchanged.
+        before_fields = {
+            k: v for k, v in before["sprints"]["2024-01"].items() if k != "session_stories"
+        }
+        after_fields = {
+            k: v for k, v in after["sprints"]["2024-01"].items() if k != "session_stories"
+        }
+        assert before_fields == after_fields
+        # session_stories correctly carries the session's per-story numbers.
+        ss = after["sprints"]["2024-01"]["session_stories"]["sess_ac5"]
+        assert ss["session_minutes"] == 60
+        assert ss["minutes_by_role"] == {"developer": 60}
+        assert ss["model_minutes"] == 60
+        assert ss["input_tokens"] == 60000
+        assert ss["output_tokens"] == 40000
+        # /trend is unchanged.
         status, trend_after = _get_json(
             f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-01"
         )

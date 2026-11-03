@@ -1608,9 +1608,9 @@ def test_service_md_range_row_describes_roster_answer():
         assert phrase in row, f"GET /range roster row missing {phrase!r}: {row}"
 
 
-def test_service_md_api_version_paragraph_describes_version_11():
+def test_service_md_api_version_paragraph_describes_version_12():
     """AC: docs/service.md's api_version paragraph states the response
-    api_version is '11', version '10' is retired, and intake keeps '1'."""
+    api_version is '12', version '11' is retired, and intake keeps '1'."""
     text = (DOCS_DIR / "service.md").read_text()
     # The /range and /trend api_version paragraph is outside the generated section
     paragraph = text.split("The /range and /trend responses carry their own")[1]
@@ -1619,10 +1619,10 @@ def test_service_md_api_version_paragraph_describes_version_11():
     if end == -1:
         end = len(paragraph)
     paragraph = paragraph[:end]
+    assert '"12"' in paragraph
     assert '"11"' in paragraph
-    assert '"10"' in paragraph
     assert "retired" in paragraph
-    assert "11.0.0" in paragraph
+    assert "12.0.0" in paragraph
     assert "Event intake" in paragraph
     assert '"1"' in paragraph
 

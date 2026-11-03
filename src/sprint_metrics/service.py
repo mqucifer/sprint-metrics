@@ -39,10 +39,6 @@ from sprint_metrics.metrics import (
     metric_value,
 )
 from sprint_metrics.report import API_VERSION
-from sprint_metrics.session_stories import (
-    _RANGE_SESSION_STORIES_DESCRIPTION,
-    _attach_range_session_stories,
-)
 from sprint_metrics.rework import (
     _RANGE_REWORK_DESCRIPTION,
     _attach_range_rework,
@@ -51,6 +47,10 @@ from sprint_metrics.rework import (
     extract_qa_returns,
 )
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
+from sprint_metrics.session_stories import (
+    _RANGE_SESSION_STORIES_DESCRIPTION,
+    _attach_range_session_stories,
+)
 from sprint_metrics.sprint_range import (
     _RANGE_WINDOW_DESCRIPTION,
     _attach_range_window,
