@@ -762,11 +762,11 @@ def test_range_session_epics_to_date_equals_sum_of_per_story():
 
         # Compute expected per-story to-date from raw data:
         # S1 to-date: 50 min total (30 + 20), Developer 30, QA Engineer 20,
-        #   model 30 min (3000s), input 4300, output 700
+        #   model 50 min (3000s), input 4300, output 700
         # S2 to-date: 10 min, Developer 10, model 10 min (600s),
         #   input 800, output 200
         # Epic E to-date: 60 min, Developer 40, QA Engineer 20,
-        #   model 40 min (3600s), input 5100, output 900
+        #   model 60 min (3600s), input 5100, output 900
 
         to_date = entry["session_epics_to_date"]
         assert "E" in to_date
@@ -775,7 +775,7 @@ def test_range_session_epics_to_date_equals_sum_of_per_story():
         # Verify epic to-date equals sum of per-story to-date values
         assert epic_to_date["session_minutes"] == 60  # 50 + 10
         assert epic_to_date["minutes_by_role"] == {"Developer": 40, "QA Engineer": 20}
-        assert epic_to_date["model_minutes"] == 40  # 30 + 10
+        assert epic_to_date["model_minutes"] == 60  # 50 + 10
         assert epic_to_date["input_tokens"] == 5100  # 4300 + 800
         assert epic_to_date["output_tokens"] == 900  # 700 + 200
     finally:
