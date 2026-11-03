@@ -10,6 +10,8 @@
 
 ### Changed
 
+- The response `api_version` moves from "10" to "11" with the session event intake
+
 ### Fixed
 
 ### Removed
