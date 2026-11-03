@@ -121,10 +121,11 @@ def test_idle_clamps_window_to_registered_span():
 
 def test_idle_clamps_window_that_starts_before_span():
     """AC1 (contract change): a session window that starts before the registered
-    start date counts in full, not clamped to the span: a 4-hour session counts
-    as 240 minutes, not the 2 hours that sat inside the span."""
+    start date counts in full, not clamped to the span: a 4-hour session
+    (2023-12-31 22:00 -> 2024-01-01 02:00, straddling the span start) counts as
+    240 minutes, not the 2 hours that sat inside the span."""
     span = (date(2024, 1, 1), date(2024, 1, 14), "UTC")
-    story_data = {"c1": _story("2023-12-30T22:00:00Z", "2023-12-30T22:00:00Z", "2024-01-01T02:00:00Z")}
+    story_data = {"c1": _story("2023-12-31T22:00:00Z", "2023-12-31T22:00:00Z", "2024-01-01T02:00:00Z")}
     answer = calculate_idle(span=span, story_data=story_data, cardless_sessions=[])
     assert answer["idle_minutes"] == 20160 - 240
 

@@ -558,18 +558,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             status = 500
                             return
                         body = format_sprint_range_json(sprints, labels)
-                        from pathlib import Path as _P
-
-                        _P(__file__).with_name("_svc_dbg.json").write_text(
-                            f"labels={labels}\n"
-                            f"sprints_vals={[(k, len(v)) for k, v in sprints.items()]}\n"
-                        )
                         result = json.loads(body)
-                        from pathlib import Path as _P
-
-                        _P(__file__).with_name("_svc_dbg.json").write_text(
-                            f"after_format prior_type={type(result['sprints']['2025-06']['prior']).__name__}\n"
-                        )
                         _attach_range_window(result, labels, has_events)
                         _attach_range_cost(result, conn_holder[0], labels, has_events)
                         _attach_range_rework(result, labels, rework)

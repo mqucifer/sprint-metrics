@@ -35,7 +35,10 @@ def _register_sprint(conn, name: str, start: str, end: str, timezone: str = "UTC
 def _session_event(
     card_id: str | None, sprint: str, start: str, end: str, role: str = "developer"
 ) -> dict:
-    """A session event in the shape the crew's contract publishes."""
+    """A session event in the shape the crew's contract publishes.
+
+    Carded sessions carry card_id and card; a card-less session carries neither
+    (card_id and card are optional when the session has no card)."""
     event = {
         "api_version": "1",
         "type": "session",
@@ -68,7 +71,7 @@ def test_range_idle_shown_against_duration():
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 27 minutes of story session (delivery, from the story's start on).
+        # Establish the story's start (the planning/delivery boundary).
         _post_events(
             f"{base}/events",
             _make_event(
@@ -78,6 +81,7 @@ def test_range_idle_shown_against_duration():
                 sprint="2024-01",
             ),
         )
+        # 27 minutes of story session (delivery, from the story's start on).
         _post_events(
             f"{base}/events",
             _session_event("idle1", "2024-01", "2024-01-05T10:00:00Z", "2024-01-05T10:27:00Z"),
@@ -120,11 +124,22 @@ def test_range_idle_null_when_not_registered():
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 45 minutes of session records (30 story + 15 card-less).
+        # Establish the story's start so the 30-minute session is delivery.
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="idle2",
+                event_type="started",
+                timestamp="2024-02-05T10:00:00Z",
+                sprint="2024-02",
+            ),
+        )
+        # 30 minutes of story session (delivery).
         _post_events(
             f"{base}/events",
             _session_event("idle2", "2024-02", "2024-02-05T10:00:00Z", "2024-02-05T10:30:00Z"),
         )
+        # 15 minutes of card-less session. 30 + 15 = 45 session minutes.
         _post_events(
             f"{base}/events",
             _session_event(None, "2024-02", "2024-02-05T11:00:00Z", "2024-02-05T11:15:00Z"),
@@ -144,7 +159,8 @@ def test_range_idle_null_when_no_session_ran():
     """AC2: a registered sprint that holds only board events and no session
     records carries the idle answer null — not the span-based idle it read
     before this release, and not 0 — and the flat idle_minutes name reads null
-    in that sprint's prior and delta."""
+    in that sprint's prior and delta (the span-window calculation no longer
+    feeds the idle answer)."""
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-03', '2024-04')")
@@ -156,8 +172,7 @@ def test_range_idle_null_when_no_session_ran():
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # Board events only — a card that started but never closed, and no
-        # session records at all.
+        # Board events only — cards that started but never closed, no sessions.
         _post_events(
             f"{base}/events",
             _make_event(
@@ -182,8 +197,10 @@ def test_range_idle_null_when_no_session_ran():
         second = body["sprints"]["2024-04"]
         assert first["idle"] is None
         assert second["idle"] is None
+        assert first["prior"] is None
+        assert first["delta"] is None
         # The flat idle_minutes name reads null in the second sprint's prior and
-        # delta (the span-window calculation no longer feeds the idle answer).
+        # delta (no span-based idle, no zero).
         assert second["prior"]["idle_minutes"] is None
         assert second["delta"]["idle_minutes"] is None
         # The working-time answer reads null too (no session records).
@@ -201,9 +218,7 @@ def test_range_idle_prior_and_delta_carry_idle_minutes():
     on the second's delta (the second carries no session records)."""
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute(
-        "DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-05', '2024-06')"
-    )
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-05', '2024-06')")
     conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-05', '2024-06')")
     conn.commit()
     _register_sprint(conn, "2024-05", "2024-05-01", "2024-05-14")
@@ -213,6 +228,15 @@ def test_range_idle_prior_and_delta_carry_idle_minutes():
     base = f"http://127.0.0.1:{port}"
     try:
         # 2024-05: a 30-minute session -> idle 20130.
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="idle4a",
+                event_type="started",
+                timestamp="2024-05-05T10:00:00Z",
+                sprint="2024-05",
+            ),
+        )
         _post_events(
             f"{base}/events",
             _session_event("idle4a", "2024-05", "2024-05-05T10:00:00Z", "2024-05-05T10:30:00Z"),
@@ -245,8 +269,7 @@ def test_range_idle_prior_and_delta_carry_idle_minutes():
 def test_trend_idle_minutes():
     """AC4: GET /trend for the idle-time measure returns each sprint's idle
     minutes — the first sprint's value equals its /range idle time — and reads
-    null for the sprint carrying no session records, while the flat
-    idle_minutes name keeps its shape in prior and delta."""
+    null for the sprint carrying no session records."""
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-07', '2024-08')")
@@ -259,6 +282,15 @@ def test_trend_idle_minutes():
     base = f"http://127.0.0.1:{port}"
     try:
         # 2024-07: a 30-minute session -> idle 20130.
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="idle5",
+                event_type="started",
+                timestamp="2024-07-05T10:00:00Z",
+                sprint="2024-07",
+            ),
+        )
         _post_events(
             f"{base}/events",
             _session_event("idle5", "2024-07", "2024-07-05T10:00:00Z", "2024-07-05T10:30:00Z"),
@@ -292,7 +324,7 @@ def test_range_schema_declares_idle_on_sprint_entry():
     """AC5: SPRINT_RANGE_SCHEMA declares idle as an optional property per sprint
     entry (not in required), with sprint_duration_minutes (integer) and
     idle_minutes (integer — the sprint's registered span minus its session
-    minutes, never null when the object is present; null is carried by the
+    minutes, never null once the object is present; null is carried by the
     object itself), and the flat idle_minutes name on prior and delta."""
     from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
 
