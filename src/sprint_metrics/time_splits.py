@@ -180,53 +180,6 @@ def _sprint_span_datetimes(
     return span_start, span_end
 
 
-def _in_span_session_seconds(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
-    span_start: datetime,
-    span_end: datetime,
-) -> float:
-    """Total seconds of session time inside the sprint span, per clamped window.
-
-    Each closed session window is clamped to the span — only the part inside the
-    registered span counts as session time — and a blocked card's blocked
-    interval within the clamped window is not counted. Summed across the
-    sprint's stories.
-    """
-    total = 0.0
-    for events in events_by_card.values():
-        open_window: datetime | None = None
-        blocked: list[datetime] = []
-        unblocked: list[datetime] = []
-        for i, (event_type, event_time, _role) in enumerate(events):
-            if event_type == "started":
-                if open_window is not None and _is_step_boundary_pair(events, i):
-                    continue
-                open_window = event_time
-                blocked = []
-                unblocked = []
-            elif event_type == "blocked":
-                if open_window is not None:
-                    blocked.append(event_time)
-            elif event_type == "unblocked":
-                if open_window is not None:
-                    unblocked.append(event_time)
-            elif event_type in _TERMINAL:
-                if open_window is not None:
-                    clamped_start = max(open_window, span_start)
-                    clamped_end = min(event_time, span_end)
-                    if clamped_end > clamped_start:
-                        blocked_seconds = _blocked_seconds(
-                            blocked, unblocked, clamped_start, clamped_end
-                        )
-                        window_seconds = (
-                            (clamped_end - clamped_start).total_seconds() - blocked_seconds
-                        )
-                        if window_seconds > 0:
-                            total += window_seconds
-                    open_window = None
-    return total
-
-
 def calculate_idle(
     events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
     span: tuple[date, date, str] | None = None,
