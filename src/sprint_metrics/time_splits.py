@@ -361,10 +361,10 @@ def cost_by_kind_total(
     return answer.get(kind, 0)
 
 
-def calculate_model_time_split(story_data: dict[str, dict]) -> dict | None:
+def calculate_model_time_split(splits: dict[str, dict]) -> dict | None:
     """The sprint's model time split into planning and delivery, in whole minutes.
 
-    ``story_data`` has the same shape as for ``calculate_session_stories``:
+    ``splits`` has the same shape as for ``calculate_session_stories``:
     a dict mapping each card to a dict with ``started_at`` and ``sessions``.
     The planning part is the model seconds of sessions that start before the
     story's 'started' event (or all sessions for a story with no 'started'
@@ -373,14 +373,14 @@ def calculate_model_time_split(story_data: dict[str, dict]) -> dict | None:
     minutes (rounded). Returns ``None`` when no story in the sprint carries
     session records (no data, not zero).
     """
-    if not story_data:
+    if not splits:
         return None
-    has_sessions = any(data["sessions"] for data in story_data.values())
+    has_sessions = any(data["sessions"] for data in splits.values())
     if not has_sessions:
         return None
     planning_seconds = 0
     delivery_seconds = 0
-    for _card_id, data in story_data.items():
+    for _card_id, data in splits.items():
         started_at = data["started_at"]
         sessions = data["sessions"]
         if not sessions:
@@ -403,7 +403,7 @@ def calculate_model_time_split(story_data: dict[str, dict]) -> dict | None:
 
 
 def model_time_split_total(
-    story_data: dict[str, dict],
+    splits: dict[str, dict],
     part: str,
 ) -> int | None:
     """The sprint's model-time split total for the given part, in whole minutes.
@@ -411,7 +411,7 @@ def model_time_split_total(
     Returns None when no story in the sprint carries session records (no
     data, not zero). The ``part`` argument is 'planning' or 'delivery'.
     """
-    answer = calculate_model_time_split(story_data)
+    answer = calculate_model_time_split(splits)
     if answer is None:
         return None
     return answer.get(part, 0)
