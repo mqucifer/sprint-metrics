@@ -1,18 +1,22 @@
 """The per-epic session-time answer for a sprint's /range entry.
 
-The answer reports, for each epic whose stories had sessions in the sprint:
-its in-sprint session minutes in total and by role (roles named with the
-crew's role strings), its model minutes in whole model minutes, and its
-tokens as whole counts of input and output tokens, summed over that
-sprint's stories of the epic. An epic appears only when one of its stories
-had sessions in the sprint; a story with no epic link contributes to no
-epic's total; a card-less session belongs to no epic.
+The answer reports, for each epic whose stories have board rows in the
+sprint: its in-sprint session minutes in total and by role (roles named
+with the crew's role strings), its model minutes in whole model minutes,
+and its tokens as whole counts of input and output tokens, summed over that
+sprint's stories of the epic. An epic whose stories carried no session
+record in the sprint reads unknown (None) for its in-sprint total, never
+zero; where only some of its stories have records, the entry lists the
+unknown stories beside the total. A story with no epic link contributes to
+no epic's total; a card-less session belongs to no epic.
 
 The to-date part (session_epics_to_date) reports, for each epic whose
-stories had sessions in any sprint up to and including the current one,
-the same measures accumulated across every sprint to date, bridging gap
-sprints (a sprint with no sessions carries the prior to-date total forward
-without resetting to zero).
+stories have board rows in the current sprint, the same measures
+accumulated across every sprint to date, bridging gap sprints (a sprint
+with no sessions carries the prior to-date total forward without resetting
+to zero). An epic whose stories have no session record in any sprint up to
+and including the current one reads unknown (None) for its to-date total,
+never zero.
 """
 
 from __future__ import annotations
