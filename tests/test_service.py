@@ -11575,48 +11575,48 @@ def test_range_model_time_sprint_total_includes_planning_and_cardless():
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-07'")
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-07'")
-    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2024-07'")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2025-07'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2025-07'")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2025-07'")
     conn.commit()
 
-    upsert_sprint(conn, "2024-07", date(2024, 7, 1), date(2024, 7, 31), "UTC")
+    upsert_sprint(conn, "2025-07", date(2025, 7, 1), date(2025, 7, 31), "UTC")
 
-    # Story X: started at 2024-07-05T12:00:00Z, delivery session 840s (14 min)
+    # Story X: started at 2025-07-05T12:00:00Z, delivery session 840s (14 min)
     conn.execute(
         """INSERT INTO sprint_metrics.board_events
            (card_id, type, event_time, sprint, card_created)
-           VALUES ('mx', 'started', %s, '2024-07', '2024-07-01')""",
-        (datetime(2024, 7, 5, 12, 0, tzinfo=UTC),),
+           VALUES ('mx', 'started', %s, '2025-07', '2025-07-01')""",
+        (datetime(2025, 7, 5, 12, 0, tzinfo=UTC),),
     )
     upsert_session(
         conn,
         {
             "card": "mx",
             "role": "Developer",
-            "start": "2024-07-05T12:30:00Z",
-            "end": "2024-07-05T13:30:00Z",
-            "sprint": "2024-07",
+            "start": "2025-07-05T12:30:00Z",
+            "end": "2025-07-05T13:30:00Z",
+            "sprint": "2025-07",
             "model_seconds": 840,
             "input_tokens": 4000,
             "output_tokens": 900,
         },
     )
-    # Story Y: started at 2024-07-06T12:00:00Z, delivery session 60s (1 min)
+    # Story Y: started at 2025-07-06T12:00:00Z, delivery session 60s (1 min)
     conn.execute(
         """INSERT INTO sprint_metrics.board_events
            (card_id, type, event_time, sprint, card_created)
-           VALUES ('my', 'started', %s, '2024-07', '2024-07-01')""",
-        (datetime(2024, 7, 6, 12, 0, tzinfo=UTC),),
+           VALUES ('my', 'started', %s, '2025-07', '2025-07-01')""",
+        (datetime(2025, 7, 6, 12, 0, tzinfo=UTC),),
     )
     upsert_session(
         conn,
         {
             "card": "my",
             "role": "Developer",
-            "start": "2024-07-06T12:30:00Z",
-            "end": "2024-07-06T13:30:00Z",
-            "sprint": "2024-07",
+            "start": "2025-07-06T12:30:00Z",
+            "end": "2025-07-06T13:30:00Z",
+            "sprint": "2025-07",
             "model_seconds": 60,
             "input_tokens": 100,
             "output_tokens": 50,
@@ -11628,9 +11628,9 @@ def test_range_model_time_sprint_total_includes_planning_and_cardless():
         {
             "card": "mx",
             "role": "Developer",
-            "start": "2024-07-05T10:00:00Z",
-            "end": "2024-07-05T11:00:00Z",
-            "sprint": "2024-07",
+            "start": "2025-07-05T10:00:00Z",
+            "end": "2025-07-05T11:00:00Z",
+            "sprint": "2025-07",
             "model_seconds": 360,
             "input_tokens": 300,
             "output_tokens": 60,
@@ -11642,9 +11642,9 @@ def test_range_model_time_sprint_total_includes_planning_and_cardless():
         {
             "card": None,
             "role": "Developer",
-            "start": "2024-07-07T10:00:00Z",
-            "end": "2024-07-07T11:00:00Z",
-            "sprint": "2024-07",
+            "start": "2025-07-07T10:00:00Z",
+            "end": "2025-07-07T11:00:00Z",
+            "sprint": "2025-07",
             "model_seconds": 240,
             "input_tokens": 200,
             "output_tokens": 40,
@@ -11655,9 +11655,9 @@ def test_range_model_time_sprint_total_includes_planning_and_cardless():
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        status, body = _get_json(f"{base}/range?start=2024-07&end=2024-07")
+        status, body = _get_json(f"{base}/range?start=2025-07&end=2025-07")
         assert status == 200
-        entry = body["sprints"]["2024-07"]
+        entry = body["sprints"]["2025-07"]
         # Story delivery: 840+60=900s (15 min), 4100 in, 950 out
         # Planning: 360s (6 min), 300 in, 60 out
         # Card-less: 240s (4 min), 200 in, 40 out
