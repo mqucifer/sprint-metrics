@@ -323,13 +323,11 @@ def test_unreleased_added_names_session_event():
 
 
 def test_unreleased_added_names_session_epics():
-    """AC6: CHANGELOG.md's [Unreleased] Added section records that /range now
-    answers each epic's in-sprint session time."""
+    """AC6: CHANGELOG.md records that /range now answers each epic's
+    in-sprint session time, in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
-    start = content.index("## [Unreleased]")
-    end = content.index("## [", start + 1)
-    unreleased = content[start:end]
-    added_section = unreleased[unreleased.index("### Added") :]
+    added = _subheading_bodies(content, "### Added")
+    added_section = "\n".join(added)
     assert "session_epics" in added_section
     assert "epic" in added_section
     assert "in-sprint session minutes" in added_section

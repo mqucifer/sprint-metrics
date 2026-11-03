@@ -180,14 +180,15 @@ jobs:
             post /sprints '{"name":"2024-01","start_date":"2024-01-01","end_date":"2024-01-31","timezone":"UTC"}'
             post /events '{"api_version":"1","card_id":"c1","type":"started","timestamp":"2024-01-03T10:00:00Z","sprint":"2024-01","card":{"created":"2024-01-01"}}'
             post /events '{"api_version":"1","card_id":"c1","type":"finished","timestamp":"2024-01-07T10:00:00Z","sprint":"2024-01","card":{"created":"2024-01-01"}}'
+            post /events '{"api_version":"1","type":"session","timestamp":"2024-01-05T10:00:00Z","sprint":"2024-01","card_id":"c1","card":{"created":"2024-01-01"},"role":"developer","start":"2024-01-05T10:00:00Z","end":"2024-01-05T10:30:00Z"}'
             curl -sf "http://localhost:$port/range?start=2024-01&end=2024-01"
           }
           RANGE_BODY=$(tick 8080)
           PREVIOUS_BODY=$(tick 8081)
           echo "$RANGE_BODY"
           echo "OK: POST /sprints and POST /events returned 200, GET /range returned 200"
-          echo "$RANGE_BODY" | jq -e '.api_version == "15"' > /dev/null
-          echo "OK: api_version is 15"
+          echo "$RANGE_BODY" | jq -e '.api_version == "16"' > /dev/null
+          echo "OK: api_version is 16"
           # api_version is pinned above; every other field must match the earlier image.
           # The comparison is derived from the previous response's key structure:
           # every key the previous response carries must have the same value in the
@@ -214,7 +215,7 @@ jobs:
               else
                 .
               end;
-            ($new | del(.api_version) | del(.sprints[].working_time) | project($prev | del(.api_version) | del(.sprints[].working_time))) == ($prev | del(.api_version) | del(.sprints[].working_time))
+            ($new | del(.api_version) | del(.sprints[].working_time) | del(.sprints[].idle) | project($prev | del(.api_version) | del(.sprints[].working_time) | del(.sprints[].idle))) == ($prev | del(.api_version) | del(.sprints[].working_time) | del(.sprints[].idle))
           ' > /dev/null; then
             echo "ERROR: GET /range differs from the image before this change"
             exit 1

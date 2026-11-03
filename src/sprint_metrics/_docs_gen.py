@@ -147,13 +147,13 @@ def _generate_metrics_content() -> str:
             "model-time split."
         ),
         "idle_minutes": (
-            "Return the sprint's idle time — the time that passed with no "
-            "session running against the sprint's total registered "
-            "duration — in whole minutes (the registered span minus the "
-            "in-span session time, in the sprint's registered timezone; a "
-            "session window clamped to the span, a rework session never "
-            "re-sent as 'started' reads as idle). None where the sprint is "
-            "not registered or no session ran inside the span."
+            "Return the sprint's idle time — the registered sprint span "
+            "minus the sprint's session minutes, from the same session "
+            "records that feed the working time — in whole minutes, in the "
+            "sprint's registered timezone (a session belongs to the sprint "
+            "label it was sent with, with no clamping to the registered "
+            "span). None where the sprint has no session records or no "
+            "registered definition."
         ),
         "self_filed_share_percent": (
             "Return the whole percent of the sprint's total filed cards "

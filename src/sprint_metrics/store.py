@@ -1125,11 +1125,16 @@ def query_session_story_data_to_date(conn: Connection, sprint: str) -> dict[str,
     so the to-date total accumulates.
 
     For each card that has a session record in any sprint up to and including
-    the given sprint label, returns a dict with:
+    the given sprint label, or a 'started' board event in the current sprint,
+    returns a dict with:
     - ``started_at``: the card's first 'started' event time (datetime or None)
     - ``sessions``: list of (session_start, session_end, role, model_seconds,
       input_tokens, output_tokens) for the card's sessions across all sprints
       up to and including the given sprint
+
+    Cards that have a 'started' event in the current sprint but no session
+    records in any sprint up to and including the current one still appear
+    (with an empty sessions list), so the answer can report null.
     """
     session_rows = conn.execute(
         """
@@ -1144,6 +1149,18 @@ def query_session_story_data_to_date(conn: Connection, sprint: str) -> dict[str,
     all_card_ids: set[str] = set()
     for card_id, *_ in session_rows:
         all_card_ids.add(card_id)
+
+    # Get all cards that have started events in the current sprint (for null
+    # reporting: a story in the sprint with no session record reads unknown).
+    sprint_started_rows = conn.execute(
+        """
+        SELECT card_id FROM sprint_metrics.board_events
+        WHERE sprint = %s AND type = 'started'
+        """,
+        (sprint,),
+    ).fetchall()
+    sprint_started_cards = {row[0] for row in sprint_started_rows}
+    all_card_ids |= sprint_started_cards
 
     # Get the global first 'started' event per card (across all sprints), per R3.
     started_at: dict[str, object] = {}
@@ -1167,5 +1184,11 @@ def query_session_story_data_to_date(conn: Connection, sprint: str) -> dict[str,
         result[card_id]["sessions"].append(
             (s_start, s_end, role, model_sec, in_tok, out_tok)
         )
+    # Cards that have a 'started' event in the current sprint but no session
+    # records in any sprint up to date still appear (with an empty sessions
+    # list), so the answer can report null.
+    for card_id in sprint_started_cards:
+        if card_id not in result:
+            result[card_id] = {"started_at": started_at.get(card_id), "sessions": []}
 
     return result
