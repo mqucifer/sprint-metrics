@@ -733,9 +733,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 story_data = query_session_story_data(conn_holder[0], label)
                                 value = model_time_split_total(story_data, part)
                             elif metric == "idle_minutes":
+                                story_data = query_session_story_data(conn_holder[0], label)
+                                cardless = query_cardless_sessions(conn_holder[0], label)
                                 value = idle_minutes_total(
-                                    query_working_time_events(conn_holder[0], label),
-                                    query_sprint_span(conn_holder[0], label),
+                                    span=query_sprint_span(conn_holder[0], label),
+                                    story_data=story_data,
+                                    cardless_sessions=cardless,
                                 )
                             else:
                                 value = metric_value(metric, sprints[label])
@@ -906,9 +909,10 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "derivable DORA value (no events, or no epic link, or no epic "
         "release for the change-failure and recovery measures) returns "
         "JSON null. idle_minutes returns the sprint's idle time — the "
-        "time that passed with no session running against the sprint's "
-        "total registered duration — in whole minutes (null where the "
-        "sprint is not registered or carries no session timestamps). "
+        "registered sprint span minus the sprint's session minutes, from "
+        "the same session records that feed the working time — in whole "
+        "minutes, in the sprint's registered timezone (null where the "
+        "sprint has no session records or no registered definition). "
         "self_filed_share_percent returns the whole percent of the "
         "sprint's filed cards that the crew filed itself. Its unit is "
         "a percent of the sprint's filed cards: the crew-filed count "
