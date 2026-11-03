@@ -11101,18 +11101,18 @@ def test_trend_working_time_minutes():
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-12', '2024-13')")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-11', '2024-12')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wttd')")
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-12', '2024-13')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-11', '2024-12')")
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 2024-12: a 150-minute delivery session
+        # 2024-11: a 150-minute delivery session
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wttd", event_type="started", timestamp="2024-12-02T09:00:00Z", sprint="2024-12"),
+            _make_event(card_id="wttd", event_type="started", timestamp="2024-11-02T09:00:00Z", sprint="2024-11"),
         )
         _post_events(
             f"{base}/events",
@@ -11120,21 +11120,21 @@ def test_trend_working_time_minutes():
                 "api_version": "1",
                 "card_id": "wttd",
                 "type": "session",
-                "timestamp": "2024-12-02T09:00:00Z",
-                "sprint": "2024-12",
-                "card": {"created": "2024-12-01"},
+                "timestamp": "2024-11-02T09:00:00Z",
+                "sprint": "2024-11",
+                "card": {"created": "2024-11-01"},
                 "role": "developer",
-                "start": "2024-12-02T09:00:00Z",
-                "end": "2024-12-02T11:30:00Z",
+                "start": "2024-11-02T09:00:00Z",
+                "end": "2024-11-02T11:30:00Z",
             },
         )
-        status, body = _get_json(f"{base}/trend?metric=working_time_minutes&start=2024-12&end=2024-13")
+        status, body = _get_json(f"{base}/trend?metric=working_time_minutes&start=2024-11&end=2024-12")
         assert status == 200
         assert body["api_version"] == "14"
         assert body["metric"] == "working_time_minutes"
         assert body["values"] == [
-            {"sprint": "2024-12", "value": 150},
-            {"sprint": "2024-13", "value": None},
+            {"sprint": "2024-11", "value": 150},
+            {"sprint": "2024-12", "value": None},
         ]
     finally:
         conn.close()
@@ -12194,12 +12194,14 @@ def test_session_event_does_not_change_range_or_trend():
         # Capture /range and /trend after the session.
         status, after = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        # Every /range field except session_stories is unchanged.
+        # Every /range field except session_stories, session_planning, and
+        # working_time is unchanged.
+        _session_derived = {"session_stories", "session_planning", "working_time"}
         before_fields = {
-            k: v for k, v in before["sprints"]["2024-01"].items() if k != "session_stories"
+            k: v for k, v in before["sprints"]["2024-01"].items() if k not in _session_derived
         }
         after_fields = {
-            k: v for k, v in after["sprints"]["2024-01"].items() if k != "session_stories"
+            k: v for k, v in after["sprints"]["2024-01"].items() if k not in _session_derived
         }
         assert before_fields == after_fields
         # session_stories correctly carries the session's per-story numbers.
