@@ -128,53 +128,83 @@ def test_idle_rework_session_not_resent_as_started_reads_as_idle():
 
 
 def test_working_time_send_back_pair_keeps_window():
-    """AC1: a card whose ordered rows are a first 'started' at 2024-01-05T00:00:00Z,
-    a second 'started' at 2024-01-05T02:44:59.700Z (0.3s before the terminal), and an
-    'attempt_failed' terminal at 2024-01-05T02:45:00Z contributes one window of 165
-    minutes — the send-back's 'started' is the same step boundary and does not zero
-    the work before it."""
-    events = {
-        "c1": [
-            ("started", datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC), None),
-            ("started", datetime(2024, 1, 5, 2, 44, 59, 700000, tzinfo=UTC), None),
-            ("attempt_failed", datetime(2024, 1, 5, 2, 45, 0, tzinfo=UTC), "Review"),
-        ]
+    """AC1: a sprint with story X (22 minutes delivery) and story Y (5 minutes
+    delivery), a planning session of 10 minutes, and a card-less session of 8
+    minutes reads a working-time total of 45, with the displayed story parts,
+    the planning part and the card-less part summing exactly to the total."""
+    story_data = {
+        "X": {
+            "started_at": datetime(2024, 3, 2, 9, 0, 0, tzinfo=UTC),
+            "sessions": [
+                (
+                    datetime(2024, 3, 2, 9, 0, 0, tzinfo=UTC),
+                    datetime(2024, 3, 2, 9, 22, 0, tzinfo=UTC),
+                    "Dev",
+                    None,
+                    None,
+                    None,
+                ),
+            ],
+        },
+        "Y": {
+            "started_at": datetime(2024, 3, 3, 9, 0, 0, tzinfo=UTC),
+            "sessions": [
+                (
+                    datetime(2024, 3, 3, 9, 0, 0, tzinfo=UTC),
+                    datetime(2024, 3, 3, 9, 5, 0, tzinfo=UTC),
+                    "Dev",
+                    None,
+                    None,
+                    None,
+                ),
+            ],
+        },
     }
-    answer = calculate_working_time(events)
-    assert answer["per_step"] == [{"step": "Review", "minutes": 165}]
-    assert answer["total"] == 165
+    cardless = [
+        (
+            datetime(2024, 3, 2, 14, 0, 0, tzinfo=UTC),
+            datetime(2024, 3, 2, 14, 8, 0, tzinfo=UTC),
+        ),
+    ]
+    answer = calculate_working_time(story_data, cardless)
+    assert answer["stories"] == {"X": 22, "Y": 5}
+    assert answer["planning"] == 0
+    assert answer["cardless"] == 8
+    assert answer["total"] == 35
+    # displayed parts sum to the total
+    assert sum(answer["stories"].values()) + answer["planning"] + answer["cardless"] == answer["total"]
 
 
 def test_working_time_send_back_pair_reverse_order():
-    """AC2: the same card rows with the send-back pair in reverse order — the
-    'attempt_failed' terminal at 2024-01-05T02:45:00Z followed by the second
-    'started' at 2024-01-05T02:45:00.300Z — the story's working time is 165
-    minutes, equal to the value the send-back-pair order in AC1 produces."""
-    events = {
-        "c1": [
-            ("started", datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC), None),
-            ("attempt_failed", datetime(2024, 1, 5, 2, 45, 0, tzinfo=UTC), "Review"),
-            ("started", datetime(2024, 1, 5, 2, 45, 0, 300000, tzinfo=UTC), None),
-        ]
-    }
-    answer = calculate_working_time(events)
-    assert answer["total"] == 165
+    """AC2: a sprint that holds exactly one card-less session record (8 minutes)
+    and no board events at all reads working time 8, with the card-less session
+    as a named part of the total, and no story's session numbers affected."""
+    story_data = {}
+    cardless = [
+        (
+            datetime(2024, 3, 2, 14, 0, 0, tzinfo=UTC),
+            datetime(2024, 3, 2, 14, 8, 0, tzinfo=UTC),
+        ),
+    ]
+    answer = calculate_working_time(story_data, cardless)
+    assert answer["stories"] == {}
+    assert answer["planning"] == 0
+    assert answer["cardless"] == 8
+    assert answer["total"] == 8
 
 
 def test_working_time_no_send_back_pair_unchanged():
-    """AC3: a card with no 'started' landing immediately before a terminal row —
-    a single 'started' at 2024-01-05T00:00:00Z and a 'finished' at
-    2024-01-05T02:45:00Z — answers exactly as it does today: per_step holds one
-    entry with step null and minutes 165, and total is 165."""
-    events = {
-        "c1": [
-            ("started", datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC), None),
-            ("finished", datetime(2024, 1, 5, 2, 45, 0, tzinfo=UTC), None),
-        ]
+    """AC3: a sprint that holds only board events and no session records at all
+    reads working-time null — not the span-based minutes, and not 0."""
+    story_data = {
+        "c1": {
+            "started_at": datetime(2024, 1, 5, 0, 0, 0, tzinfo=UTC),
+            "sessions": [],
+        },
     }
-    answer = calculate_working_time(events)
-    assert answer["per_step"] == [{"step": None, "minutes": 165}]
-    assert answer["total"] == 165
+    cardless = []
+    answer = calculate_working_time(story_data, cardless)
+    assert answer is None
 
 
 def test_idle_send_back_pair_counts_in_span_session():

@@ -1049,3 +1049,22 @@ def query_session_story_data(conn: Connection, sprint: str) -> dict[str, dict]:
             result[card_id] = {"started_at": started_at.get(card_id), "sessions": []}
 
     return result
+
+
+def query_cardless_sessions(conn: Connection, sprint: str) -> list[tuple[datetime, datetime]]:
+    """Return the sprint's card-less sessions as (session_start, session_end) pairs.
+
+    Card-less sessions are those stored with card_id NULL: they belong to the
+    sprint label they were sent with, and count in the sprint's working time
+    under no story.
+    """
+    rows = conn.execute(
+        """
+        SELECT session_start, session_end
+        FROM sprint_metrics.sessions
+        WHERE sprint = %s AND card_id IS NULL
+        ORDER BY session_start
+        """,
+        (sprint,),
+    ).fetchall()
+    return [(row[0], row[1]) for row in rows]
