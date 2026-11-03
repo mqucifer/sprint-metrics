@@ -486,9 +486,10 @@ def test_range_session_epics_rollup():
 
 
 @requires_db
-def test_range_session_epics_epic_without_sessions_absent():
-    """AC2: an epic whose stories ran no session in the sprint appears nowhere
-    in the epic session answer; a card-less session contributes to no epic."""
+def test_range_session_epics_epic_without_sessions_reads_unknown():
+    """An epic whose stories ran no session in the sprint reads unknown (null),
+    never zero, with the unknown stories listed beside the total; a card-less
+    session contributes to no epic."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -532,13 +533,29 @@ def test_range_session_epics_epic_without_sessions_absent():
         assert status == 200
         entry = body["sprints"]["2026-13"]
 
-        # E2 appears nowhere in the epic session answer
+        # E2 appears with unknown (null) in-sprint total, never zero
         se = entry["session_epics"]
-        assert "E2" not in se
-        assert se == {}
+        assert "E2" in se
+        e2 = se["E2"]
+        assert e2["session_minutes"] is None
+        assert e2["minutes_by_role"] is None
+        assert e2["model_minutes"] is None
+        assert e2["input_tokens"] is None
+        assert e2["output_tokens"] is None
+        assert e2["unknown_story_count"] == 1
+        assert e2["unknown_stories"] == ["s3"]
 
         # The card-less session doesn't appear in any epic
-        assert se == {}
+        # (only E2 is present, from the board event, with null values)
+        assert list(se.keys()) == ["E2"]
+
+        # To-date: E2 also reads unknown (no sessions in any sprint up to here)
+        se_td = entry["session_epics_to_date"]
+        assert "E2" in se_td
+        e2_td = se_td["E2"]
+        assert e2_td["session_minutes"] is None
+        assert e2_td["unknown_story_count"] == 1
+        assert e2_td["unknown_stories"] == ["s3"]
     finally:
         conn.close()
 
