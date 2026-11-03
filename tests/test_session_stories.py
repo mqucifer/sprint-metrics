@@ -302,6 +302,19 @@ def test_empty_story_data_returns_empty_dict():
 # ---------------------------------------------------------------------------
 
 
+def test_planning_no_carded_sessions_returns_none():
+    """A sprint with started events but no session records reads planning null
+    (no data, not zero)."""
+    story_data = {
+        "story_a": {
+            "started_at": _dt("2024-03-02T09:00:00Z"),
+            "sessions": [],
+        }
+    }
+    result = calculate_session_planning(story_data)
+    assert result is None
+
+
 def test_planning_empty_story_data_returns_none():
     """AC2: a sprint with no carded session records reads session_planning
     null."""
@@ -730,6 +743,227 @@ def test_range_session_stories_session_belongs_to_sprint_label():
 
 
 @requires_db
+def test_range_session_planning_counts_sessions_before_start():
+    """AC2: GET /range over a sprint displays the sprint's planning as a
+    named part — planning session minutes and model minutes, against the
+    delivery. Story P carries a 10-minute session before P's start; story Q
+    carries a 20-minute session after Q's start. Planning reads 10 session
+    minutes and 6 model minutes; P's own session minutes read 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-05'")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-05'")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2024-05'")
+    conn.commit()
+
+    upsert_sprint(conn, "2024-05", date(2024, 5, 1), date(2024, 5, 31), "UTC")
+
+    # Story P: started board event
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('story_p', 'started', %s, '2024-05', '2024-05-01')""",
+        (datetime(2024, 5, 10, 9, 0, tzinfo=UTC),),
+    )
+    # Story Q: started board event
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('story_q', 'started', %s, '2024-05', '2024-05-01')""",
+        (datetime(2024, 5, 8, 9, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
+    # Story P's 10-minute planning session (before P's start)
+    upsert_session(
+        conn,
+        {
+            "card": "story_p",
+            "role": "Business Analyst",
+            "start": "2024-05-05T09:00:00Z",
+            "end": "2024-05-05T09:10:00Z",
+            "sprint": "2024-05",
+            "model_seconds": 360,
+            "tokens": 2500,
+            "input_tokens": 2000,
+            "output_tokens": 500,
+        },
+    )
+    # Story Q's 20-minute delivery session (after Q's start)
+    upsert_session(
+        conn,
+        {
+            "card": "story_q",
+            "role": "Developer",
+            "start": "2024-05-09T09:00:00Z",
+            "end": "2024-05-09T09:20:00Z",
+            "sprint": "2024-05",
+            "model_seconds": 1200,
+            "tokens": 5000,
+            "input_tokens": 4000,
+            "output_tokens": 1000,
+        },
+    )
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-05&end=2024-05")
+        assert status == 200
+        sprint_entry = body["sprints"]["2024-05"]
+        # The sprint's planning part: 10 session minutes, 6 model minutes
+        assert sprint_entry["session_planning"] == {
+            "session_minutes": 10,
+            "model_minutes": 6,
+        }
+        # Story P: sessions ran, all planning, so delivery reads zero
+        ss = sprint_entry["session_stories"]
+        assert ss["story_p"] == {
+            "session_minutes": 0,
+            "minutes_by_role": {},
+            "model_minutes": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        }
+        # Story Q: delivery session counts
+        assert ss["story_q"] == {
+            "session_minutes": 20,
+            "minutes_by_role": {"Developer": 20},
+            "model_minutes": 20,
+            "input_tokens": 4000,
+            "output_tokens": 1000,
+        }
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_session_planning_story_without_started_event():
+    """AC3: story R has a session record (7 minutes, model time 420 seconds)
+    but no stored 'started' board event. Its 7 minutes and 7 model minutes
+    read as the sprint's planning; story R's own session minutes read 0
+    (a true zero, distinct from null of a story with no session record)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-06'")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-06'")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2024-06'")
+    conn.commit()
+
+    upsert_sprint(conn, "2024-06", date(2024, 6, 1), date(2024, 6, 30), "UTC")
+
+    # Story S: has a started event (so the sprint has events)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('story_s', 'started', %s, '2024-06', '2024-06-01')""",
+        (datetime(2024, 6, 5, 9, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
+    # Story R: NO started event, but has a session record
+    upsert_session(
+        conn,
+        {
+            "card": "story_r",
+            "role": "Business Analyst",
+            "start": "2024-06-03T09:00:00Z",
+            "end": "2024-06-03T09:07:00Z",
+            "sprint": "2024-06",
+            "model_seconds": 420,
+            "tokens": 3800,
+            "input_tokens": 3000,
+            "output_tokens": 800,
+        },
+    )
+    # Story S: a delivery session
+    upsert_session(
+        conn,
+        {
+            "card": "story_s",
+            "role": "Developer",
+            "start": "2024-06-06T09:00:00Z",
+            "end": "2024-06-06T09:10:00Z",
+            "sprint": "2024-06",
+            "model_seconds": 600,
+            "tokens": 2000,
+            "input_tokens": 1500,
+            "output_tokens": 500,
+        },
+    )
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-06&end=2024-06")
+        assert status == 200
+        sprint_entry = body["sprints"]["2024-06"]
+        # Planning: story R's 7 minutes (no started event) + 7 model minutes
+        assert sprint_entry["session_planning"] == {
+            "session_minutes": 7,
+            "model_minutes": 7,
+        }
+        ss = sprint_entry["session_stories"]
+        # Story R: sessions ran, all planning, reads a true zero
+        assert ss["story_r"] == {
+            "session_minutes": 0,
+            "minutes_by_role": {},
+            "model_minutes": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        }
+        # Story S: delivery session counts
+        assert ss["story_s"] == {
+            "session_minutes": 10,
+            "minutes_by_role": {"Developer": 10},
+            "model_minutes": 10,
+            "input_tokens": 1500,
+            "output_tokens": 500,
+        }
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_session_planning_null_when_no_carded_sessions():
+    """AC2: a sprint with no carded session records reads session_planning
+    null (no data, not zero)."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-07'")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-07'")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2024-07'")
+    conn.commit()
+
+    upsert_sprint(conn, "2024-07", date(2024, 7, 1), date(2024, 7, 31), "UTC")
+
+    # Board event so the sprint has events
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('story_a', 'started', %s, '2024-07', '2024-07-01')""",
+        (datetime(2024, 7, 2, 9, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-07&end=2024-07")
+        assert status == 200
+        sprint_entry = body["sprints"]["2024-07"]
+        # No session records at all: planning reads null
+        assert sprint_entry["session_planning"] is None
+        # Story A: no session records, reads null
+        assert sprint_entry["session_stories"]["story_a"] is None
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_description_fragment_lives_in_session_stories_module():
     """AC4: the description fragment is defined in the session_stories module
     and composed into the /range endpoint description."""
@@ -743,4 +977,6 @@ def test_description_fragment_lives_in_session_stories_module():
     assert "input_tokens" in _RANGE_SESSION_STORIES_DESCRIPTION
     assert "output_tokens" in _RANGE_SESSION_STORIES_DESCRIPTION
     assert "null" in _RANGE_SESSION_STORIES_DESCRIPTION
+    assert "session_planning" in _RANGE_SESSION_STORIES_DESCRIPTION
+    assert "planning" in _RANGE_SESSION_STORIES_DESCRIPTION
     assert _RANGE_SESSION_STORIES_DESCRIPTION in _RANGE_DESCRIPTION

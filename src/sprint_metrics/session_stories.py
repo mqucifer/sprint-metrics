@@ -1,12 +1,23 @@
-"""The per-story session-time answer: each story's session minutes, by role, model minutes, and tokens.
+"""The per-story session-time answer and the sprint's planning part.
 
 The answer reports, for each story whose sessions ran in a sprint: its session
 minutes in total and by role (roles named with the crew's role strings), its
 model minutes in whole model minutes, and its tokens as whole counts of input
 and output tokens. A story's numbers appear whether or not the story
 finished. A story with no session record reads null (unknown), never zero.
+A story with session records but no delivery sessions (no 'started' board
+event, or sessions all before the story's start) reads a true zero: sessions
+ran, all of them are planning.
 A session counts in the sprint label it was sent with, unclamped to the
 sprint's registered span.
+
+The sprint's planning part (session_planning) reports the sessions that ran
+before their story's start, with their session minutes and model minutes,
+as a named part of the sprint's numbers against the delivery. A story with
+session records but no 'started' board event has no established start, and
+its sessions read as planning until one is stored. A card-less session is
+never planning-or-delivery-of-a-story: it counts in the sprint's numbers
+only. A sprint with no carded session records reads session_planning null.
 """
 
 from __future__ import annotations
@@ -123,6 +134,11 @@ def calculate_session_planning(story_data: dict[str, dict]) -> dict | None:
     Returns None when the sprint has no carded session records at all.
     """
     if not story_data:
+        return None
+
+    # If no card has any session records at all, there is no planning data.
+    has_sessions = any(data["sessions"] for data in story_data.values())
+    if not has_sessions:
         return None
 
     total_planning_seconds = 0
