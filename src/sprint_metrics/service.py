@@ -47,6 +47,10 @@ from sprint_metrics.rework import (
     extract_qa_returns,
 )
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
+from sprint_metrics.session_epics import (
+    _RANGE_SESSION_EPICS_DESCRIPTION,
+    _attach_range_session_epics,
+)
 from sprint_metrics.session_stories import (
     _RANGE_SESSION_STORIES_DESCRIPTION,
     _attach_range_session_stories,
@@ -565,6 +569,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
                         _attach_range_idle(result, conn_holder[0], labels, has_events)
                         _attach_range_session_stories(result, conn_holder[0], labels, has_events)
+                        _attach_range_session_epics(result, conn_holder[0], labels, has_events)
                         _attach_range_verdict(result, labels, has_events)
                         _attach_range_standouts(result, labels, has_events)
                         self._send_json(200, result)
@@ -829,6 +834,7 @@ _RANGE_ANSWER_DESCRIPTIONS = (
     _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
     _RANGE_IDLE_DESCRIPTION,
     _RANGE_SESSION_STORIES_DESCRIPTION,
+    _RANGE_SESSION_EPICS_DESCRIPTION,
 )
 
 # The composed /range description: the base plus every answer's fragment.

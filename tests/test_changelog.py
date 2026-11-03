@@ -321,6 +321,19 @@ def test_unreleased_added_names_session_event():
     assert any("intake" in body or "accept" in body.lower() for body in added)
 
 
+def test_unreleased_added_names_session_epics():
+    """AC6: CHANGELOG.md's [Unreleased] Added section records that /range now
+    answers each epic's in-sprint session time."""
+    content = CHANGELOG.read_text()
+    start = content.index("## [Unreleased]")
+    end = content.index("## [", start + 1)
+    unreleased = content[start:end]
+    added_section = unreleased[unreleased.index("### Added") :]
+    assert "session_epics" in added_section
+    assert "epic" in added_section
+    assert "in-sprint session minutes" in added_section
+
+
 def test_unreleased_changed_names_api_version_move():
     """The changelog names the response api_version move,
     in whichever section the entry currently sits in."""

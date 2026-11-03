@@ -1797,3 +1797,31 @@ def test_adr_0013_session_event_file_name_and_heading():
     assert "'session'" in text or "session" in text
     assert "10th" in text
     assert "event" in text.lower()
+
+
+def test_metrics_md_has_per_epic_session_time_section():
+    """AC4: docs/metrics.md's Computation details section carries a
+    Per-epic session time subsection that names the fields with their units
+    and states an epic appears only when one of its stories had sessions."""
+    path = DOCS_DIR / "metrics.md"
+    text = path.read_text()
+    assert "Per-epic session time" in text
+    section = text[text.index("Per-epic session time") :]
+    assert "session_epics" in section
+    assert "session_minutes" in section
+    assert "minutes_by_role" in section
+    assert "model_minutes" in section
+    assert "input_tokens" in section
+    assert "output_tokens" in section
+    assert "appears only when" in section
+
+
+def test_service_md_range_row_describes_session_epics():
+    """AC4: docs/service.md's /range endpoint table carries a row describing
+    the session_epics answer."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    generated = text[text.index("BEGIN:service") : text.index("END:service")]
+    assert "session_epics" in generated
+    assert "per-epic session-time answer" in generated
+    assert "summed over that sprint's stories of the epic" in generated
