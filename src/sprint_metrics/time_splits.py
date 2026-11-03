@@ -10,9 +10,9 @@ with, with no clamping to the registered span. A sprint with no session
 records reads null (no data, not zero).
 
 The module also owns the idle-time answer (the registered span minus the
-in-span session time, from board-event windows), the cost-by-kind answer,
-and the model-time split answer, which still read the board-event span
-windows.
+sprint's session minutes, from the same session records that feed the
+working time, so the two agree) and the cost-by-kind answer, which still
+reads the board-event span windows.
 """
 
 from __future__ import annotations
@@ -228,54 +228,78 @@ def _in_span_session_seconds(
 
 
 def calculate_idle(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
-    span: tuple[date, date, str] | None,
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    span: tuple[date, date, str] | None = None,
+    *,
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
 ) -> dict | None:
-    """The sprint's idle-time answer: the idle time against the sprint's total registered duration, in whole minutes.
+    """The sprint's idle-time answer: the registered span minus the sprint's session minutes, in whole minutes.
 
-    ``events_by_card`` maps each card_id to its ordered
-    (event_type, event_time, failure_role) rows (the same shape the
-    working-time answer uses). ``span`` is the sprint's registered definition
-    (start_date, end_date, timezone), or None when the sprint has no registered
-    definition.
+    ``span`` is the sprint's registered definition (start_date, end_date,
+    timezone), or None when the sprint has no registered definition.
+    ``story_data`` maps each card to a dict with ``started_at`` and
+    ``sessions``, and ``cardless_sessions`` is a list of
+    (session_start, session_end) tuples — the sprint's session records, the
+    same shape the working-time answer uses. The idle time is the registered
+    span minus the same session minutes the working time uses (the
+    working-time total: the stories' session minutes from each story's start
+    on, the planning sessions' minutes, and the card-less sessions'
+    minutes), so the working time and the idle time agree from the same
+    session records.
 
-    The span runs from the start of the registered start date to the end of the
-    registered end date, in the sprint's registered timezone. The total
-    duration is that span in whole minutes (null where the sprint is not
-    registered). The in-span session time is each closed session window clamped
-    to the span (a blocked card's blocked interval within the clamped window not
-    counted), summed across the sprint's stories. The idle time is the span
-    minus the in-span session time, in whole minutes; it is null where the
-    sprint is not registered or where no session ran inside the span — the whole
-    span is not reported as idle when no session ran.
+    The span runs from the start of the registered start date to the end of
+    the registered end date, in the sprint's registered timezone; the total
+    duration is that span in whole minutes. A session belongs to the sprint
+    label it was sent with, with no clamping to the registered span: when the
+    sprint's session minutes exceed its registered span the idle time is
+    negative, and when they exactly fill the span it is zero.
+
+    The answer is null (no data, not zero) where the sprint has no registered
+    definition or holds no session records — the whole span is not reported
+    as idle.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the idle-time answer (the span-window calculation was replaced by
+    the session-record computation).
     """
     if span is None:
         return None
+    session_minutes = working_time_total(
+        story_data=story_data, cardless_sessions=cardless_sessions
+    )
+    if session_minutes is None:
+        return None
     start_date, end_date, timezone = span
     span_start, span_end = _sprint_span_datetimes(start_date, end_date, timezone)
-    span_seconds = (span_end - span_start).total_seconds()
-    sprint_duration_minutes = round(span_seconds / 60)
-    in_span_session_seconds = _in_span_session_seconds(events_by_card, span_start, span_end)
-    if in_span_session_seconds <= 0:
-        idle_minutes = None
-    else:
-        idle_minutes = round((span_seconds - in_span_session_seconds) / 60)
+    sprint_duration_minutes = round((span_end - span_start).total_seconds() / 60)
     return {
         "sprint_duration_minutes": sprint_duration_minutes,
-        "idle_minutes": idle_minutes,
+        "idle_minutes": sprint_duration_minutes - session_minutes,
     }
 
 
 def idle_minutes_total(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
-    span: tuple[date, date, str] | None,
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    span: tuple[date, date, str] | None = None,
+    *,
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
 ) -> int | None:
-    """The sprint's idle time in whole minutes, or None when the sprint is not registered or no session ran inside the span.
+    """The sprint's idle time in whole minutes, or None when the sprint has no registered definition or no session records.
 
     The same idle minutes the /range idle answer carries, answered on its own
-    for /trend and the prior/delta figures.
+    for /trend and the prior/delta figures: the registered span minus the
+    sprint's session minutes, from the same session records that feed the
+    working time.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the idle-time total (the span-window calculation was replaced by
+    the session-record computation).
     """
-    answer = calculate_idle(events_by_card, span)
+    answer = calculate_idle(
+        span=span, story_data=story_data, cardless_sessions=cardless_sessions
+    )
     return answer["idle_minutes"] if answer is not None else None
 
 
@@ -707,28 +731,30 @@ def _attach_range_idle(
 ) -> None:
     """Attach the per-sprint idle-time answer to the range response, and its flat name to prior/delta.
 
-    Each sprint's entry carries its idle answer — the idle time (the time that
-    passed with no session running) against the sprint's total registered
-    duration, in whole minutes. A sprint with no events carries idle null,
-    matching the other null metrics; a sprint with events but no registered
-    definition (or no session ran inside the span) carries its idle time as
-    null (the whole span is not reported as idle when no session ran). The flat
-    ``idle_minutes`` name appears in each later entry's prior and delta, null
-    where a sprint has no data.
+    Each sprint's entry carries its idle answer — the registered sprint span
+    minus the sprint's session minutes, from the same session records that
+    feed the working time, in whole minutes, in the sprint's registered
+    timezone. A sprint with no session records, or with no registered
+    definition, carries idle null (no data, not zero) — the whole span is not
+    reported as idle. For every sprint after the first, the flat
+    ``idle_minutes`` name appears in that entry's prior and delta whenever
+    those objects are present, null where the corresponding sprint has no
+    idle data.
     """
+    from sprint_metrics.store import query_cardless_sessions, query_session_story_data
+
     answers: dict[str, dict | None] = {}
     totals: dict[str, int | None] = {}
     for label in labels:
-        if label in has_events:
-            answer = calculate_idle(
-                query_working_time_events(conn, label),
-                query_sprint_span(conn, label),
-            )
-            answers[label] = answer
-            totals[label] = answer["idle_minutes"] if answer is not None else None
-        else:
-            answers[label] = None
-            totals[label] = None
+        story_data = query_session_story_data(conn, label)
+        cardless = query_cardless_sessions(conn, label)
+        answer = calculate_idle(
+            span=query_sprint_span(conn, label),
+            story_data=story_data,
+            cardless_sessions=cardless,
+        )
+        answers[label] = answer
+        totals[label] = answer["idle_minutes"] if answer is not None else None
     for index, label in enumerate(labels):
         entry = result["sprints"][label]
         entry["idle"] = answers[label]
@@ -778,10 +804,12 @@ _RANGE_MODEL_TIME_SPLIT_DESCRIPTION = (
 
 _RANGE_IDLE_DESCRIPTION = (
     "Each entry also carries an idle answer: the sprint's idle "
-    "time — the time that passed with no session running — "
-    "against the sprint's total registered duration, in whole "
-    "minutes (a session window clamped to the registered span; "
-    "a rework session never re-sent as started reads as idle); "
-    "a sprint with no events or no registered definition reads "
-    "null."
+    "time — the registered sprint span minus the sprint's session "
+    "minutes, from the same session records that feed the working "
+    "time, in whole minutes, in the sprint's registered timezone "
+    "(a session belongs to the sprint label it was sent with, with "
+    "no clamping to the registered span; the span-window "
+    "calculation no longer feeds the idle answer); a sprint with "
+    "no session records, or with no registered definition, reads "
+    "null (no data, not zero)."
 )

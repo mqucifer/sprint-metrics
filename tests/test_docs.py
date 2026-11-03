@@ -1671,29 +1671,40 @@ def test_metrics_md_names_dora_measures():
 
 def test_metrics_md_idle_time_section_states_span_minus_session_time():
     """AC: docs/metrics.md's idle-time section states the idle time is the registered
-    sprint span minus the in-span session time, in whole minutes; the span is taken in
-    the sprint's registered timezone; a session window is clamped to the span; a rework
-    session never re-sent as 'started' reads as idle (the working-time fidelity bound);
-    and a sprint with no events or no registered definition reads null (the whole span
-    is not reported as idle when no session ran)."""
+    sprint span minus the sprint's session minutes, from the same session records
+    that feed the working time (the working time and the idle time agree), in
+    whole minutes; the span is taken in the sprint's registered timezone; a session
+    belongs to the sprint label it was sent with, with no clamping to the
+    registered span; when the sprint's session minutes exceed its registered span
+    the idle time is negative, and when they exactly fill the span it is zero;
+    and a sprint with no session records, or with no registered definition, reads
+    null (the whole span is not reported as idle when no session ran)."""
     text = (DOCS_DIR / "metrics.md").read_text()
     section = re.sub(
         r"\s+",
         " ",
         text.split("### Idle time against the sprint's duration", 1)[1].split("\n### ", 1)[0],
     )
-    # The idle time is the registered span minus the in-span session time, in whole minutes.
-    assert "registered span minus the in-span session time" in section
+    # The idle time is the registered span minus the sprint's session minutes,
+    # from the same session records that feed the working time.
+    assert "registered span minus the sprint's session minutes" in section
+    assert "the same session records that feed the working time" in section
     assert "whole minutes" in section
+    # The working time and the idle time agree from the same session records.
+    assert "agree" in section
     # The span is taken in the sprint's registered timezone.
     assert "registered timezone" in section
-    # A session window is clamped to the span.
-    assert "clamped to the span" in section
-    # The working-time fidelity bound: a rework session never re-sent as 'started'
-    # reads as idle.
-    assert "never re-sent as" in section and "reads as idle" in section
-    assert "fidelity bound" in section
-    # The whole span is not reported as idle when no session ran.
+    # A session belongs to the sprint label it was sent with, with no clamping
+    # to the registered span (the span-window calculation no longer feeds the
+    # idle answer).
+    assert "no clamping to the registered span" in section
+    # When the session minutes exceed the registered span the idle time is
+    # negative; when they exactly fill the span it is zero.
+    assert "negative" in section
+    assert "zero" in section
+    # A sprint with no session records, or with no registered definition,
+    # reads null (no data, not zero); the whole span is not reported as idle.
+    assert "no session records" in section and "no registered definition" in section
     assert "whole span is not reported as idle" in section
     # The idle_minutes table row names the unit (whole minutes).
     row = next(line for line in text.splitlines() if "`idle_minutes`" in line)
