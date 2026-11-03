@@ -1094,3 +1094,57 @@ def query_card_epics(conn: Connection, card_ids: set[str]) -> dict[str, str | No
     for card_id, epic in rows:
         result[card_id] = epic
     return result
+
+
+def query_session_story_data_to_date(conn: Connection, sprint: str) -> dict[str, dict]:
+    """Return per-card session data for the to-date per-story session answer.
+
+    Identical to ``query_session_story_data`` but across every sprint up to
+    and including the given sprint: sessions in earlier sprints are included
+    so the to-date total accumulates.
+
+    For each card that has a session record in any sprint up to and including
+    the given sprint label, returns a dict with:
+    - ``started_at``: the card's first 'started' event time (datetime or None)
+    - ``sessions``: list of (session_start, session_end, role, model_seconds,
+      input_tokens, output_tokens) for the card's sessions across all sprints
+      up to and including the given sprint
+    """
+    session_rows = conn.execute(
+        """
+        SELECT card_id, session_start, session_end, role, model_seconds, input_tokens, output_tokens
+        FROM sprint_metrics.sessions
+        WHERE sprint <= %s AND card_id IS NOT NULL
+        ORDER BY card_id, session_start
+        """,
+        (sprint,),
+    ).fetchall()
+
+    all_card_ids: set[str] = set()
+    for card_id, *_ in session_rows:
+        all_card_ids.add(card_id)
+
+    # Get the global first 'started' event per card (across all sprints), per R3.
+    started_at: dict[str, object] = {}
+    if all_card_ids:
+        placeholders = ",".join(["%s"] * len(all_card_ids))
+        started_rows = conn.execute(
+            f"""
+            SELECT card_id, MIN(event_time)
+            FROM sprint_metrics.board_events
+            WHERE type = 'started' AND card_id IN ({placeholders})
+            GROUP BY card_id
+            """,
+            tuple(all_card_ids),
+        ).fetchall()
+        started_at = {card: ts for card, ts in started_rows}
+
+    result: dict[str, dict] = {}
+    for card_id, s_start, s_end, role, model_sec, in_tok, out_tok in session_rows:
+        if card_id not in result:
+            result[card_id] = {"started_at": started_at.get(card_id), "sessions": []}
+        result[card_id]["sessions"].append(
+            (s_start, s_end, role, model_sec, in_tok, out_tok)
+        )
+
+    return result
