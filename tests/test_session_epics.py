@@ -347,14 +347,14 @@ def test_service_md_describes_unknown_semantics():
 
 
 def test_changelog_records_unknown_semantics():
-    """AC5: CHANGELOG.md's [Unreleased] Added section records that an epic's
-    missing in-sprint session time reads unknown, never zero, with the
-    unknown stories listed beside the total."""
+    """AC5: CHANGELOG.md records that an epic's missing in-sprint session time
+    reads unknown, never zero, with the unknown stories listed beside the
+    total, in whichever section the entry currently sits in."""
+    from test_changelog import _subheading_bodies
+
     content = CHANGELOG.read_text()
-    start = content.index("## [Unreleased]")
-    end = content.index("## [", start + 1)
-    unreleased = content[start:end]
-    added_section = unreleased[unreleased.index("### Added"):]
+    added = _subheading_bodies(content, "### Added")
+    added_section = "\n".join(added)
     assert "unknown" in added_section
     assert "never zero" in added_section
     assert "unknown_story_count" in added_section
