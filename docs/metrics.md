@@ -339,19 +339,27 @@ minutes (`model_minutes`, whole model minutes), and its tokens
 tokens), summed over that sprint's stories of the epic.
 
 The measures carry the same names, roles and units as the per-story session
-answer. An epic appears only when one of its stories had sessions in the
-sprint: a story with no session record contributes nothing, and a story
-whose board rows carry no epic link contributes to no epic's total. A
-card-less session belongs to no epic.
+answer. An epic appears only when one of its stories has board rows in the
+sprint. An epic whose stories carried no session record in the sprint reads
+unknown (null) for its in-sprint total, never zero: `session_minutes`,
+`minutes_by_role`, `model_minutes`, `input_tokens` and `output_tokens` are
+all null, and the entry lists the unknown stories beside the total — their
+count in `unknown_story_count` and their identifiers in `unknown_stories`.
+Where only some of the epic's stories have session records, the in-sprint
+total covers only the stories with records, and the entry lists the unknown
+stories beside the total. A story whose board rows carry no epic link
+contributes to no epic's total; a card-less session belongs to no epic.
 
 The `session_epics_to_date` answer on each sprint's `/range` entry carries
 the same measures (session minutes in whole minutes, in total and by role,
 model minutes, tokens) accumulated across every sprint to date, bridging
-gap sprints and not read as zero. An epic appears when one of its stories
-had sessions in any sprint up to and including the current one; a gap
-sprint with no sessions for the epic carries the prior to-date total
-forward. A story whose board rows carry no epic link contributes to no
-epic's to-date total; a card-less session belongs to no epic.
+gap sprints and not read as zero. An epic whose stories have no session
+record in any sprint up to and including the current one reads unknown
+(null) for its to-date total, never zero; the entry lists the unknown
+stories beside the total. A gap sprint with no sessions for the epic
+carries the prior to-date total forward. A story whose board rows carry no
+epic link contributes to no epic's to-date total; a card-less session
+belongs to no epic.
 
 ## Boundary conditions
 

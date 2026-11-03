@@ -389,14 +389,19 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         "additionalProperties": {
                             "type": "object",
                             "properties": {
-                                "session_minutes": {"type": "integer"},
+                                "session_minutes": {"type": ["integer", "null"]},
                                 "minutes_by_role": {
-                                    "type": "object",
+                                    "type": ["object", "null"],
                                     "additionalProperties": {"type": "integer"},
                                 },
-                                "model_minutes": {"type": "integer"},
-                                "input_tokens": {"type": "integer"},
-                                "output_tokens": {"type": "integer"},
+                                "model_minutes": {"type": ["integer", "null"]},
+                                "input_tokens": {"type": ["integer", "null"]},
+                                "output_tokens": {"type": ["integer", "null"]},
+                                "unknown_story_count": {"type": "integer"},
+                                "unknown_stories": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
                             },
                             "required": [
                                 "session_minutes",
@@ -412,14 +417,19 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         "additionalProperties": {
                             "type": "object",
                             "properties": {
-                                "session_minutes": {"type": "integer"},
+                                "session_minutes": {"type": ["integer", "null"]},
                                 "minutes_by_role": {
-                                    "type": "object",
+                                    "type": ["object", "null"],
                                     "additionalProperties": {"type": "integer"},
                                 },
-                                "model_minutes": {"type": "integer"},
-                                "input_tokens": {"type": "integer"},
-                                "output_tokens": {"type": "integer"},
+                                "model_minutes": {"type": ["integer", "null"]},
+                                "input_tokens": {"type": ["integer", "null"]},
+                                "output_tokens": {"type": ["integer", "null"]},
+                                "unknown_story_count": {"type": "integer"},
+                                "unknown_stories": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
                             },
                             "required": [
                                 "session_minutes",
