@@ -28,7 +28,7 @@ BEGIN:metrics
 | Model minutes (middle) | `model_minutes_middle` | Return the median whole model minutes across costed stories, or None when no story carries cost. |
 | Model minutes (total) | `model_minutes_total` | Return the total whole model minutes across costed stories, or None when no story carries cost. |
 | Model time split (delivery) | `model_time_split_delivery_minutes` | Return the sprint's model time spent in delivery, in whole minutes — each story's delivery seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
-| Model time split (refinement) | `model_time_split_refinement_minutes` | Return the sprint's model time spent in refinement, in whole minutes — each story's refinement seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
+| Model time split (planning) | `model_time_split_refinement_minutes` | Return the sprint's model time spent in planning, in whole minutes — each story's planning seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
 | Output tokens (middle) | `output_tokens_middle` | Return the median output tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards, in whole points. |

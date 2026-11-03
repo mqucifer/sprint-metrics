@@ -894,7 +894,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "stories of the given kind in whole minutes (null where the sprint "
         "carries no kind data). model_time_split_refinement_minutes and "
         "model_time_split_delivery_minutes return the sprint's model time "
-        "split into refinement and delivery, in whole minutes (null where "
+        "split into planning and delivery, in whole minutes (null where "
         "no story in the sprint carries a split). "
         "release_frequency returns the sprint's count of distinct epics "
         "released, in releases per sprint. dora_lead_time_days returns the "
