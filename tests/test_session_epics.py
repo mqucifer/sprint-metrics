@@ -14,7 +14,7 @@ import pytest
 from sprint_metrics.service import _start_service
 from sprint_metrics.session_epics import (
     calculate_session_epics,
-    calculate_session_epics_to_date,
+    calculate_session_epics_complete,
 )
 from sprint_metrics.store import init_db, upsert_session, upsert_sprint
 
@@ -183,6 +183,184 @@ def test_multiple_epics_rollup():
 
 
 # ---------------------------------------------------------------------------
+# Unit tests for calculate_session_epics_complete (unknown semantics)
+# ---------------------------------------------------------------------------
+
+
+def test_complete_epic_all_stories_unknown_reads_null():
+    """AC1: an epic whose stories carried no session record in the sprint
+    reads unknown (null) for its in-sprint total, never zero."""
+    story_results = {
+        "s1": None,
+        "s2": None,
+    }
+    card_epics = {"s1": "E", "s2": "E"}
+    result = calculate_session_epics_complete(story_results, card_epics)
+    assert result == {
+        "E": {
+            "session_minutes": None,
+            "minutes_by_role": None,
+            "model_minutes": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "unknown_story_count": 2,
+            "unknown_stories": ["s1", "s2"],
+        }
+    }
+
+
+def test_complete_epic_partial_unknown_lists_unknown_stories():
+    """AC2: where only some of the epic's stories have session records, the
+    in-sprint total covers only the stories with records, and the entry
+    lists the unknown stories beside the total."""
+    story_results = {
+        "s1": {
+            "session_minutes": 30,
+            "minutes_by_role": {"Developer": 30},
+            "model_minutes": 20,
+            "input_tokens": 3000,
+            "output_tokens": 600,
+        },
+        "s2": {
+            "session_minutes": 10,
+            "minutes_by_role": {"QA Engineer": 10},
+            "model_minutes": 5,
+            "input_tokens": 1000,
+            "output_tokens": 200,
+        },
+        "s3": None,
+    }
+    card_epics = {"s1": "E", "s2": "E", "s3": "E"}
+    result = calculate_session_epics_complete(story_results, card_epics)
+    assert result == {
+        "E": {
+            "session_minutes": 40,
+            "minutes_by_role": {"Developer": 30, "QA Engineer": 10},
+            "model_minutes": 25,
+            "input_tokens": 4000,
+            "output_tokens": 800,
+            "unknown_story_count": 1,
+            "unknown_stories": ["s3"],
+        }
+    }
+
+
+def test_complete_epic_no_unknown_stories_no_unknown_fields():
+    """When all stories have session records, the entry carries no unknown
+    fields (no unknown_story_count, no unknown_stories)."""
+    story_results = {
+        "s1": {
+            "session_minutes": 10,
+            "minutes_by_role": {"Developer": 10},
+            "model_minutes": 5,
+            "input_tokens": 1000,
+            "output_tokens": 200,
+        },
+    }
+    card_epics = {"s1": "E"}
+    result = calculate_session_epics_complete(story_results, card_epics)
+    assert result == {
+        "E": {
+            "session_minutes": 10,
+            "minutes_by_role": {"Developer": 10},
+            "model_minutes": 5,
+            "input_tokens": 1000,
+            "output_tokens": 200,
+        }
+    }
+    assert "unknown_story_count" not in result["E"]
+    assert "unknown_stories" not in result["E"]
+
+
+def test_complete_no_session_records_any_epic_reads_null():
+    """AC3: when the record holds board events for several epics' stories but
+    no session record at all, no epic's in-sprint total reads 0 — the
+    missing record is unknown, not zero."""
+    story_results = {
+        "s1": None,
+        "s2": None,
+        "s3": None,
+    }
+    card_epics = {"s1": "E1", "s2": "E2", "s3": "E3"}
+    result = calculate_session_epics_complete(story_results, card_epics)
+    for epic_name, entry in result.items():
+        assert entry["session_minutes"] is None, f"{epic_name} reads 0, not null"
+    assert result["E1"]["session_minutes"] is None
+    assert result["E2"]["session_minutes"] is None
+    assert result["E3"]["session_minutes"] is None
+    assert result["E1"]["unknown_story_count"] == 1
+    assert result["E2"]["unknown_story_count"] == 1
+    assert result["E3"]["unknown_story_count"] == 1
+
+
+def test_complete_story_without_epic_contributes_to_no_epic():
+    """A story whose board rows carry no epic link contributes to no epic's
+    total, even in the complete answer."""
+    story_results = {
+        "s1": None,
+        "s2": {
+            "session_minutes": 10,
+            "minutes_by_role": {"Developer": 10},
+            "model_minutes": 5,
+            "input_tokens": 1000,
+            "output_tokens": 200,
+        },
+    }
+    card_epics = {"s1": None, "s2": "E"}
+    result = calculate_session_epics_complete(story_results, card_epics)
+    assert result == {
+        "E": {
+            "session_minutes": 10,
+            "minutes_by_role": {"Developer": 10},
+            "model_minutes": 5,
+            "input_tokens": 1000,
+            "output_tokens": 200,
+        }
+    }
+
+
+def test_metrics_md_describes_unknown_semantics():
+    """AC4: docs/metrics.md's Per-epic session time section describes the
+    unknown semantics: an epic whose stories carried no session record in
+    the sprint reads unknown (null), never zero, and where only some of its
+    stories have records, the entry lists the unknown stories beside the
+    total."""
+    path = DOCS_DIR / "metrics.md"
+    text = path.read_text()
+    section = text[text.index("Per-epic session time"):]
+    assert "unknown (null)" in section
+    assert "never zero" in section
+    assert "unknown_story_count" in section
+    assert "unknown_stories" in section
+
+
+def test_service_md_describes_unknown_semantics():
+    """AC4: docs/service.md's /range description carries the unknown
+    semantics for the session_epics answer."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    generated = text[text.index("BEGIN:service") : text.index("END:service")]
+    assert "unknown (null)" in generated
+    assert "never zero" in generated
+    assert "unknown_story_count" in generated
+    assert "unknown_stories" in generated
+
+
+def test_changelog_records_unknown_semantics():
+    """AC5: CHANGELOG.md's [Unreleased] Added section records that an epic's
+    missing in-sprint session time reads unknown, never zero, with the
+    unknown stories listed beside the total."""
+    content = CHANGELOG.read_text()
+    start = content.index("## [Unreleased]")
+    end = content.index("## [", start + 1)
+    unreleased = content[start:end]
+    added_section = unreleased[unreleased.index("### Added"):]
+    assert "unknown" in added_section
+    assert "never zero" in added_section
+    assert "unknown_story_count" in added_section
+
+
+# ---------------------------------------------------------------------------
 # Integration tests for the /range endpoint
 # ---------------------------------------------------------------------------
 
@@ -307,9 +485,10 @@ def test_range_session_epics_rollup():
 
 
 @requires_db
-def test_range_session_epics_epic_without_sessions_absent():
-    """AC2: an epic whose stories ran no session in the sprint appears nowhere
-    in the epic session answer; a card-less session contributes to no epic."""
+def test_range_session_epics_epic_without_sessions_reads_unknown():
+    """An epic whose stories ran no session in the sprint reads unknown (null),
+    never zero, with the unknown stories listed beside the total; a card-less
+    session contributes to no epic."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -353,13 +532,110 @@ def test_range_session_epics_epic_without_sessions_absent():
         assert status == 200
         entry = body["sprints"]["2026-13"]
 
-        # E2 appears nowhere in the epic session answer
+        # E2 appears with unknown (null) in-sprint total, never zero
         se = entry["session_epics"]
-        assert "E2" not in se
-        assert se == {}
+        assert "E2" in se
+        e2 = se["E2"]
+        assert e2["session_minutes"] is None
+        assert e2["minutes_by_role"] is None
+        assert e2["model_minutes"] is None
+        assert e2["input_tokens"] is None
+        assert e2["output_tokens"] is None
+        assert e2["unknown_story_count"] == 1
+        assert e2["unknown_stories"] == ["s3"]
 
         # The card-less session doesn't appear in any epic
-        assert se == {}
+        # (only E2 is present, from the board event, with null values)
+        assert list(se.keys()) == ["E2"]
+
+        # To-date: E2 also reads unknown (no sessions in any sprint up to here)
+        se_td = entry["session_epics_to_date"]
+        assert "E2" in se_td
+        e2_td = se_td["E2"]
+        assert e2_td["session_minutes"] is None
+        assert e2_td["unknown_story_count"] == 1
+        assert e2_td["unknown_stories"] == ["s3"]
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_session_epics_in_sprint_unknown_to_date_stays():
+    """AC1: an epic whose story ran a 60-minute session in 2026-10 and no
+    session in 2026-13 reads null for its in-sprint total, while its to-date
+    total stays 60."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    for sprint in ("2026-10", "2026-13"):
+        conn.execute(f"DELETE FROM sprint_metrics.sessions WHERE sprint = '{sprint}'")
+        conn.execute(f"DELETE FROM sprint_metrics.board_events WHERE sprint = '{sprint}'")
+        conn.execute(f"DELETE FROM sprint_metrics.sprints WHERE name = '{sprint}'")
+    conn.commit()
+
+    upsert_sprint(conn, "2026-10", date(2026, 10, 1), date(2026, 10, 14), "UTC")
+    upsert_sprint(conn, "2026-13", date(2026, 12, 15), date(2026, 12, 28), "UTC")
+
+    # Story S1: started in 2026-10 with epic E, ran a 60-minute session there
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, epic)
+           VALUES ('s1', 'started', %s, '2026-10', '2026-10-01', 'E')""",
+        (datetime(2026, 10, 1, 9, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
+    upsert_session(
+        conn,
+        {
+            "card": "s1",
+            "role": "Developer",
+            "start": "2026-10-01T10:00:00Z",
+            "end": "2026-10-01T11:00:00Z",
+            "sprint": "2026-10",
+            "model_seconds": 3600,
+            "tokens": 6000,
+            "input_tokens": 5000,
+            "output_tokens": 1000,
+        },
+    )
+    # S1 also started in 2026-13 (board event), but no session in 2026-13
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, epic)
+           VALUES ('s1', 'started', %s, '2026-13', '2026-12-15', 'E')""",
+        (datetime(2026, 12, 16, 9, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2026-13&end=2026-13")
+        assert status == 200
+        entry = body["sprints"]["2026-13"]
+
+        # In-sprint: E's total is unknown (null), never 0
+        se = entry["session_epics"]
+        assert "E" in se
+        e = se["E"]
+        assert e["session_minutes"] is None
+        assert e["minutes_by_role"] is None
+        assert e["model_minutes"] is None
+        assert e["input_tokens"] is None
+        assert e["output_tokens"] is None
+        assert e["unknown_story_count"] == 1
+        assert e["unknown_stories"] == ["s1"]
+
+        # To-date: E's total stays 60 (from the 2026-10 session)
+        se_td = entry["session_epics_to_date"]
+        assert "E" in se_td
+        e_td = se_td["E"]
+        assert e_td["session_minutes"] == 60
+        assert e_td["minutes_by_role"] == {"Developer": 60}
+        assert e_td["model_minutes"] == 60
+        assert e_td["input_tokens"] == 5000
+        assert e_td["output_tokens"] == 1000
     finally:
         conn.close()
 
@@ -453,7 +729,7 @@ def test_to_date_epic_total_equals_sum_of_stories():
         },
     }
     card_epics = {"s1": "E", "s2": "E"}
-    result = calculate_session_epics_to_date(story_results, card_epics)
+    result = calculate_session_epics(story_results, card_epics)
     assert result == {
         "E": {
             "session_minutes": 60,
@@ -465,16 +741,27 @@ def test_to_date_epic_total_equals_sum_of_stories():
     }
 
 
-def test_to_date_epic_not_present_when_no_story_has_sessions():
-    """AC3: an epic whose stories had no sessions in any sprint up to date
-    appears nowhere in the to-date answer."""
+def test_to_date_epic_all_stories_unknown_reads_null():
+    """An epic whose stories have no session record in any sprint up to date
+    reads unknown (null) for its to-date total, never zero; the unknown
+    stories are listed beside the total."""
     story_results = {
         "s1": None,
         "s2": None,
     }
     card_epics = {"s1": "E2", "s2": "E2"}
-    result = calculate_session_epics_to_date(story_results, card_epics)
-    assert result == {}
+    result = calculate_session_epics_complete(story_results, card_epics)
+    assert result == {
+        "E2": {
+            "session_minutes": None,
+            "minutes_by_role": None,
+            "model_minutes": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "unknown_story_count": 2,
+            "unknown_stories": ["s1", "s2"],
+        }
+    }
 
 
 @requires_db
