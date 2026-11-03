@@ -47,6 +47,10 @@ from sprint_metrics.rework import (
     extract_qa_returns,
 )
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
+from sprint_metrics.session_stories import (
+    _RANGE_SESSION_STORIES_DESCRIPTION,
+    _attach_range_session_stories,
+)
 from sprint_metrics.sprint_range import (
     _RANGE_WINDOW_DESCRIPTION,
     _attach_range_window,
@@ -405,6 +409,8 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 "sprint": event["sprint"],
                                 "model_seconds": event.get("model_seconds"),
                                 "tokens": event.get("tokens"),
+                                "input_tokens": event.get("input_tokens"),
+                                "output_tokens": event.get("output_tokens"),
                             },
                         )
                     else:
@@ -556,6 +562,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
                         _attach_range_idle(result, conn_holder[0], labels, has_events)
+                        _attach_range_session_stories(result, conn_holder[0], labels, has_events)
                         _attach_range_verdict(result, labels, has_events)
                         _attach_range_standouts(result, labels, has_events)
                         self._send_json(200, result)
@@ -817,6 +824,7 @@ _RANGE_ANSWER_DESCRIPTIONS = (
     _RANGE_COST_BY_KIND_DESCRIPTION,
     _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
     _RANGE_IDLE_DESCRIPTION,
+    _RANGE_SESSION_STORIES_DESCRIPTION,
 )
 
 # The composed /range description: the base plus every answer's fragment.
@@ -1039,4 +1047,16 @@ def _validate_session_event(event: dict) -> str | None:
             return "tokens must be an integer"
         if tokens < 0:
             return "tokens must be >= 0"
+    input_tokens = event.get("input_tokens")
+    if input_tokens is not None:
+        if not isinstance(input_tokens, int) or isinstance(input_tokens, bool):
+            return "input_tokens must be an integer"
+        if input_tokens < 0:
+            return "input_tokens must be >= 0"
+    output_tokens = event.get("output_tokens")
+    if output_tokens is not None:
+        if not isinstance(output_tokens, int) or isinstance(output_tokens, bool):
+            return "output_tokens must be an integer"
+        if output_tokens < 0:
+            return "output_tokens must be >= 0"
     return None

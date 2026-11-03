@@ -7,10 +7,12 @@
 - The `sprint_metrics.sessions` table, created by the startup DDL, holds each crew session as what happened: card (nullable), role, start, end, model time, and tokens. An idempotent upsert keyed on the session's natural identity (card, role, start, end) lands each re-send once, including card-less sessions
 - The intake now accepts a `session` event, the 10th accepted event type on POST /events, recording the crew's sessions as what happened; card_id and card are optional at the envelope level for a session, and the event-intake schema (GET /schema/event, schemas/event-intake.json) names the session's own fields with their units (model time in seconds, tokens)
 - docs/service.md's Event intake section documents the `session` event: its fields with their units (model time in seconds, tokens as counts), that card_id and card are optional when the session has no card, a validating example event, and that the intake stays additive — events without a session are accepted exactly as today
+- The `input_tokens` and `output_tokens` fields on the session event intake and the sessions table, each a whole count of tokens
+- The `session_stories` answer on each sprint's `/range` entry: for each story whose sessions ran in the sprint, its session minutes in total (whole minutes), its minutes by role (roles named with the crew's role strings), its model minutes (whole model minutes), and its tokens (whole counts of input and output tokens). A story's numbers appear whether or not the story finished; a story with no session record reads null (unknown), never zero; a session counts in the sprint label it was sent with, unclamped to the sprint's registered span. docs/metrics.md's new Per-story session time section under Computation details names each field with its unit; the SPRINT_RANGE_SCHEMA declares session_stories as a property of a sprint entry
 
 ### Changed
 
-- The response `api_version` moves from "10" to "11" with the session event intake
+- The response `api_version` moves from "11" to "12" with the per-story session-time answer
 
 ### Fixed
 
