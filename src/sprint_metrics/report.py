@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-API_VERSION = "12"
+API_VERSION = "13"
 
 
 _METRIC_COLUMNS: dict[str, str] = {

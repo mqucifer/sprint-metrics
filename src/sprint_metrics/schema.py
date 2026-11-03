@@ -381,6 +381,14 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             ],
                         },
                     },
+                    "session_planning": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "session_minutes": {"type": "integer"},
+                            "model_minutes": {"type": "integer"},
+                        },
+                        "required": ["session_minutes", "model_minutes"],
+                    },
                     "prior": {
                         "type": ["object", "null"],
                         "properties": {

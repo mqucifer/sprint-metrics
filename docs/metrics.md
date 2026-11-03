@@ -330,10 +330,17 @@ registered start date and whose end follows its registered end date counts
 in full in the sprint it was sent with; it does not split across sprints.
 
 The planning/delivery boundary: a story's start is its first `started` board
-event. Sessions that start before that moment are planning; from the story's
-start, a session's time is that story's. A story with session records but no
-`started` board event has no established start, and its sessions read as
-planning until one is stored: its per-story numbers read null.
+event as stored on the card. Sessions that start before that moment are the
+sprint's planning — their minutes and model minutes, shown as a named part
+of the sprint's numbers (`session_planning`, with `session_minutes` and
+`model_minutes`) against the delivery (the stories' sessions from their
+starts on). From the story's start, a session's time is that story's. A
+story with session records but no `started` board event has no established
+start, and its sessions read as planning until one is stored: its per-story
+numbers read a true zero (sessions ran; all of them are planning), distinct
+from the null of a story with no session record. A card-less session is
+never planning-or-delivery-of-a-story: it counts in the sprint's numbers
+only. A sprint with no carded session records reads `session_planning` null.
 
 ## Boundary conditions
 

@@ -9,10 +9,11 @@
 - docs/service.md's Event intake section documents the `session` event: its fields with their units (model time in seconds, tokens as counts), that card_id and card are optional when the session has no card, a validating example event, and that the intake stays additive — events without a session are accepted exactly as today
 - The `input_tokens` and `output_tokens` fields on the session event intake and the sessions table, each a whole count of tokens
 - The `session_stories` answer on each sprint's `/range` entry: for each story whose sessions ran in the sprint, its session minutes in total (whole minutes), its minutes by role (roles named with the crew's role strings), its model minutes (whole model minutes), and its tokens (whole counts of input and output tokens). A story's numbers appear whether or not the story finished; a story with no session record reads null (unknown), never zero; a session counts in the sprint label it was sent with, unclamped to the sprint's registered span. docs/metrics.md's new Per-story session time section under Computation details names each field with its unit; the SPRINT_RANGE_SCHEMA declares session_stories as a property of a sprint entry
+- The `session_planning` answer on each sprint's `/range` entry: the sprint's planning part — the sessions that ran before their story's start, with their session minutes (whole minutes) and model minutes (whole model minutes), as a named part of the sprint's numbers against the delivery. A story with session records but no 'started' board event has no established start, and its sessions read as planning until one is stored. A card-less session is never planning-or-delivery-of-a-story. A sprint with no carded session records reads session_planning null. The SPRINT_RANGE_SCHEMA declares session_planning as a property of a sprint entry; docs/metrics.md's Per-story session time section describes the planning/delivery boundary
 
 ### Changed
 
-- The response `api_version` moves from "11" to "12" with the per-story session-time answer
+- The response `api_version` moves from "12" to "13" with the sprint's planning part (session_planning) and the redefined session_stories: a story with session records but no delivery sessions (no 'started' board event, or sessions all before the story's start) now reads a true zero (sessions ran, all of them are planning), distinct from the null of a story with no session record
 
 ### Fixed
 
