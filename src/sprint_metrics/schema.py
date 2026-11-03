@@ -319,20 +319,15 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     "working_time": {
                         "type": ["object", "null"],
                         "properties": {
-                            "per_step": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "step": {"type": ["string", "null"]},
-                                        "minutes": {"type": "integer"},
-                                    },
-                                    "required": ["step", "minutes"],
-                                },
+                            "stories": {
+                                "type": "object",
+                                "additionalProperties": {"type": "integer"},
                             },
+                            "planning": {"type": "integer"},
+                            "cardless": {"type": "integer"},
                             "total": {"type": "integer"},
                         },
-                        "required": ["per_step", "total"],
+                        "required": ["stories", "planning", "cardless", "total"],
                     },
                     "cost_by_kind": {
                         "type": ["object", "null"],

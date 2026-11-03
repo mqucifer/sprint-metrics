@@ -114,11 +114,13 @@ def _generate_metrics_content() -> str:
         ),
         "working_time_minutes": (
             "Return the sprint's working-time total, in whole minutes — "
-            "the sum of the crew's session windows (from a story's started "
-            "row to its returned/attempt_failed/finished row, a blocked "
-            "card's blocked interval not counted), per step of the "
-            "story's pipeline. None when no card carries a closed session "
-            "window."
+            "the minutes of the sprint's session records: the stories' "
+            "session minutes (from each story's start on) plus the "
+            "planning sessions' minutes plus the card-less sessions' "
+            "minutes, with the displayed parts summing to the sprint's "
+            "total. A session belongs to the sprint label it was sent "
+            "with, with no clamping to the registered span. None when "
+            "the sprint has no session records."
         ),
         "addition_working_time_minutes": (
             "Return the sprint's working time for stories whose kind is "

@@ -1412,10 +1412,12 @@ def test_metrics_md_computation_details_describes_rework_answer():
 
 def test_metrics_md_describes_working_time_answer():
     """AC5: docs/metrics.md's 'Working time per pipeline step' tells the reader
-    that working time per step is the minutes the crew's sessions ran (not the
-    creation-to-finish span), that a rework session not re-sent as 'started' is
-    invisible to working time (shows as idle), and that a blocked card's blocked
-    interval is not counted."""
+    that the working time is the minutes of the sprint's session records — the
+    stories' session minutes plus the planning sessions' plus the card-less
+    sessions', in whole minutes, with the displayed parts summing to the
+    sprint's total — that a session belongs to the sprint label it was sent
+    with, with no clamping to the registered span, and that a sprint with no
+    session records reads null (no data, not zero)."""
     text = (DOCS_DIR / "metrics.md").read_text()
     details = text.split("## Computation details")[1]
     heading = next(
@@ -1430,23 +1432,25 @@ def test_metrics_md_describes_working_time_answer():
     section = re.sub(r"\s+", " ", section)
     for phrase in (
         "`working_time`",
-        "minutes the crew's sessions ran",
-        "not the span",
-        "`started`",
-        "`finished`, `attempt_failed`, or `returned`",
-        "rework session",
-        "invisible to working time",
-        "idle time",
-        "blocked interval",
+        "minutes of the sprint's session records",
+        "stories' session minutes",
+        "planning sessions' minutes",
+        "card-less sessions' minutes",
+        "sum exactly to the",
+        "sprint label it was sent with",
+        "no clamping",
+        "no session records",
+        "null",
+        "not zero",
     ):
         assert phrase in section, f"working time computation details missing {phrase!r}"
 
 
 def test_metrics_md_working_time_states_step_boundary_pair():
-    """AC5: docs/metrics.md's 'Working time per pipeline step' states that a
-    'started' row landing immediately before its terminal row is the same step
-    boundary and does not open a new zero-minute session that zeros the
-    preceding window."""
+    """AC5: docs/metrics.md's 'Working time per pipeline step' states that the
+    span-window calculation no longer feeds the working-time answer, and that a
+    session belongs to the sprint label it was sent with, with no clamping to
+    the sprint's registered span."""
     text = (DOCS_DIR / "metrics.md").read_text()
     details = text.split("## Computation details")[1]
     heading = next(
@@ -1460,22 +1464,25 @@ def test_metrics_md_working_time_states_step_boundary_pair():
 
     section = re.sub(r"\s+", " ", section)
     for phrase in (
-        "same step boundary",
-        "does not open a new zero-minute session",
-        "zeros the preceding window",
+        "span-window",
+        "no longer feeds",
+        "sprint label it was sent with",
+        "no clamping",
     ):
-        assert phrase in section, f"step boundary description missing {phrase!r}"
+        assert phrase in section, f"working time span statement missing {phrase!r}"
 
 
 def test_metrics_md_metrics_table_has_working_time_row():
     """AC6: docs/metrics.md's metrics table carries a row for
-    working_time_minutes stating what it measures, in whole minutes."""
+    working_time_minutes stating what it measures (the minutes of the sprint's
+    session records), in whole minutes."""
     text = (DOCS_DIR / "metrics.md").read_text()
     table = _extract_marked_section(text, "metrics")
     row = next(line for line in table.splitlines() if "`working_time_minutes`" in line)
     cells = [c.strip() for c in row.split("|") if c.strip()]
     assert cells[1] == "`working_time_minutes`"
     assert "whole minutes" in row
+    assert "session records" in row
 
 
 def test_metrics_md_metrics_table_has_cost_by_kind_rows():

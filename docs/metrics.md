@@ -41,7 +41,7 @@ BEGIN:metrics
 | Superseded points | `superseded_points` | Return the sum of the points value on superseded cards, in whole points (0 when a superseded card carries no points value). Excluded from throughput and in-flight calculations. |
 | Throughput | `throughput` | Return the count of completed cards in the sprint, as a whole count. |
 | WIP violations | `wip_violations` | Return the count of states whose WIP limit was breached this sprint, as a whole count. |
-| Working time | `working_time_minutes` | Return the sprint's working-time total, in whole minutes — the sum of the crew's session windows (from a story's started row to its returned/attempt_failed/finished row, a blocked card's blocked interval not counted), per step of the story's pipeline. None when no card carries a closed session window. |
+| Working time | `working_time_minutes` | Return the sprint's working-time total, in whole minutes — the minutes of the sprint's session records: the stories' session minutes (from each story's start on) plus the planning sessions' minutes plus the card-less sessions' minutes, with the displayed parts summing to the sprint's total. A session belongs to the sprint label it was sent with, with no clamping to the registered span. None when the sprint has no session records. |
 END:metrics
 
 ## Computation details
@@ -96,35 +96,21 @@ timestamp, expressed in whole minutes and rounded to the nearest integer.
 ### Working time per pipeline step
 
 The `working_time` answer on each sprint's `/range` entry carries the
-minutes the crew's sessions ran, per step of a story's pipeline. A session
-window runs from a story's `started` row to the story's next terminal row
-(`finished`, `attempt_failed`, or `returned`); the story's working time is
-the sum of its windows, and the sprint's is the sum across its stories. The
-step a window belongs to is the role sent on its terminal row when that row
-is an `attempt_failed` or `returned` row (the row that marks the step
-boundary), or, for a window closed by `finished`, the step it is reworking.
-`working_time.per_step` carries one value per session window, and
-`working_time.total` is their sum in whole minutes.
+minutes of the sprint's session records, in whole minutes. The sprint's
+working time is the sum of its stories' session minutes (from each story's
+`started` event on), its planning sessions' minutes (before their story's
+start), and its card-less sessions' minutes (no story). The displayed story
+parts, the planning part, and the card-less part sum exactly to the
+displayed sprint total (`working_time.total`).
 
-A `started` row landing immediately before its terminal row (within half a
-second, as a send-back's does) is the same step boundary and does not open a
-new zero-minute session that zeros the preceding window: the session window
-that was already open is closed by that terminal row, and the work before it
-is counted in full.
+A session belongs to the sprint label it was sent with, with no clamping to
+the sprint's registered span: a session sent with sprint "2024-03" counts in
+"2024-03" even if its timestamps fall outside the registered span.
 
-Working time is the minutes the crew's sessions ran, not the span from the
-story's creation to its finish: it is measured session by session, so the
-calendar gap between one session and the next — and any time a card sat
-unworked — never counts. A rework session that the crew never re-sent as
-`started` is invisible to working time and shows as idle time instead; this
-is the fidelity bound, set by the granularity of the events the crew sends.
-A blocked card's blocked interval is not working time: while the story is
-blocked, the crew's clock does not run, so a session's minutes are its span
-minus the minutes it was blocked.
-
-A sprint whose cards carry no session timestamps (date-only fields) or whose
-sessions never closed reports `working_time` null, not zero, matching the
-null behaviour of the other minute-based metrics.
+A sprint with no session records (no carded sessions and no card-less
+sessions) reads `working_time` null — no data, not zero. The span-window
+calculation (from board-event windows) no longer feeds the working-time
+answer.
 
 ### Idle time against the sprint's duration
 

@@ -1517,33 +1517,26 @@
               "null"
             ],
             "properties": {
-              "per_step": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "step": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "minutes": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "step",
-                    "minutes"
-                  ]
+              "stories": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
                 }
+              },
+              "planning": {
+                "type": "integer"
+              },
+              "cardless": {
+                "type": "integer"
               },
               "total": {
                 "type": "integer"
               }
             },
             "required": [
-              "per_step",
+              "stories",
+              "planning",
+              "cardless",
               "total"
             ]
           },

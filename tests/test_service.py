@@ -697,7 +697,7 @@ def test_range_response_metrics_and_keys():
 
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert body["window"]["start"] == "2024-01"
         assert body["window"]["end"] == "2024-02"
         assert body["window"]["sprint_count"] == 2
@@ -2151,7 +2151,7 @@ def test_trend_cycle_time_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-02", "value": 3}
         assert body["values"][1] == {"sprint": "2024-03", "value": None}
@@ -2177,7 +2177,7 @@ def test_trend_empty_db_all_zeros():
             f"http://127.0.0.1:{port}/trend?metric=throughput&start=2024-01&end=2024-03"
         )
         assert status == 200
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": None}
         assert body["values"][1] == {"sprint": "2024-02", "value": None}
@@ -2294,7 +2294,7 @@ def test_trend_first_attempt_rate_two_sprints():
             f"&start=2024-01&end=2024-02"
         )
         assert status == 200
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert len(body["values"]) == 2
         assert body["values"][0]["sprint"] == "2024-01"
         assert body["values"][0]["value"] == 100
@@ -5828,7 +5828,7 @@ def test_trend_answers_api_version_4_and_still_refuses_escalation_count():
             assert _post_events(f"{base}/events", _make_event(*event))[0] == 200
         status, body = _get_json(f"{base}/trend?metric=throughput&start=2024-01&end=2024-02")
         assert status == 200
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert body["values"] == [
             {"sprint": "2024-01", "value": 1},
             {"sprint": "2024-02", "value": None},
@@ -5994,7 +5994,7 @@ def test_trend_points_delivered_two_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert len(body["values"]) == 2
         assert body["values"][0] == {"sprint": "2024-01", "value": 5}
         assert body["values"][1] == {"sprint": "2024-02", "value": 7}
@@ -7993,7 +7993,7 @@ def test_trend_superseded_count_three_sprints():
             assert "application/json" in resp.headers.get("Content-Type", "")
             body = json.loads(resp.read().decode())
 
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert len(body["values"]) == 3
         assert body["values"][0] == {"sprint": "2024-01", "value": 1}
         assert body["values"][1] == {"sprint": "2024-02", "value": 1}
@@ -9450,7 +9450,7 @@ def test_trend_sent_backs_count_two_sprints():
             f"http://127.0.0.1:{port}/trend?metric=sent_backs_count&start=2024-01&end=2024-02"
         )
         assert status == 200
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert body["metric"] == "sent_backs_count"
         assert body["start"] == "2024-01"
         assert body["end"] == "2024-02"
@@ -10771,191 +10771,201 @@ def test_trend_refuses_metric_names_outside_the_accepted_measures():
 
 @requires_db
 def test_range_working_time_per_step_and_total():
-    """AC1: a sprint whose story ran a session started->attempt_failed (150 min)
-    and a rework session started->finished (240 min) carries working_time with
-    per-step minutes 150 and 240, step labels matching the rework answer's
-    by_step, and total 390; a 'returned' row between two sessions marks the step
-    boundary the same way the 'attempt_failed' row does."""
+    """AC1: a sprint whose stored session records are: story X 22 minutes and
+    story Y 5 minutes (both from their stories' starts on), a planning session
+    of 10 minutes (before its story's start), and a card-less session of 8
+    minutes, all sent with the sprint's label — the sprint's working-time total
+    reads 45 (22 + 5 + 10 + 8) in whole minutes, and the displayed story parts,
+    the planning part and the card-less part sum exactly to the displayed sprint
+    total."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wt1', 'wt2')")
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-01', '2024-02')")
-    conn.commit()
-
-    port = _start_service(conn, 0)
-    base = f"http://127.0.0.1:{port}"
-    try:
-        # Sprint 2024-01: wt1 session started->attempt_failed (150 min), rework started->finished (240 min)
-        _post_events(
-            f"{base}/events",
-            _make_event(card_id="wt1", event_type="started", timestamp="2024-01-02T09:00:00Z", sprint="2024-01"),
-        )
-        _post_events(
-            f"{base}/events",
-            {
-                "api_version": "1",
-                "card_id": "wt1",
-                "type": "attempt_failed",
-                "timestamp": "2024-01-02T11:30:00Z",
-                "sprint": "2024-01",
-                "card": {"created": "2024-01-01"},
-                "failure_role": "Review",
-                "failure_class": "parse",
-            },
-        )
-        _post_events(
-            f"{base}/events",
-            _make_event(card_id="wt1", event_type="started", timestamp="2024-01-03T08:00:00Z", sprint="2024-01"),
-        )
-        _post_events(
-            f"{base}/events",
-            _make_event(
-                card_id="wt1",
-                event_type="finished",
-                timestamp="2024-01-03T12:00:00Z",
-                sprint="2024-01",
-                attempts=2,
-                failure_class="parse",
-                failure_role="Review",
-            ),
-        )
-        # Sprint 2024-02: wt2 session started->returned (150 min), rework started->finished (240 min)
-        _post_events(
-            f"{base}/events",
-            _make_event(card_id="wt2", event_type="started", timestamp="2024-02-02T09:00:00Z", sprint="2024-02"),
-        )
-        _post_events(
-            f"{base}/events",
-            _returned_event("wt2", "2024-02", "2024-02-02T11:30:00Z", failure_class="story_problem", failure_role="QA"),
-        )
-        _post_events(
-            f"{base}/events",
-            _make_event(card_id="wt2", event_type="started", timestamp="2024-02-03T08:00:00Z", sprint="2024-02"),
-        )
-        _post_events(
-            f"{base}/events",
-            _make_event(card_id="wt2", event_type="finished", timestamp="2024-02-03T12:00:00Z", sprint="2024-02"),
-        )
-
-        status, body = _get_json(f"{base}/range?start=2024-01&end=2024-02")
-        assert status == 200
-
-        wt1 = body["sprints"]["2024-01"]["working_time"]
-        assert [e["minutes"] for e in wt1["per_step"]] == [150, 240]
-        assert wt1["total"] == 390
-
-        wt2 = body["sprints"]["2024-02"]["working_time"]
-        assert [e["minutes"] for e in wt2["per_step"]] == [150, 240]
-        assert wt2["total"] == 390
-
-        # step labels exactly match the rework answer's step labels, per sprint
-        for label in ("2024-01", "2024-02"):
-            working_time = body["sprints"][label]["working_time"]
-            rework = body["sprints"][label]["rework"]
-            rework_steps = set()
-            for entry in rework.get("sent_backs") or []:
-                for sb in entry["send_backs"]:
-                    rework_steps.add(sb["step"])
-            for entry in rework.get("qa_returns") or []:
-                for ret in entry["returns"]:
-                    rework_steps.add(ret["step"])
-            wt_steps = {e["step"] for e in working_time["per_step"]}
-            assert wt_steps == rework_steps
-    finally:
-        conn.close()
-
-
-@requires_db
-def test_range_working_time_blocked_interval_not_counted():
-    """AC2: a session started 10:00, blocked 10:30, unblocked 10:40, finished
-    11:00 contributes 50 minutes of working time — a blocked card's blocked
-    interval is not working time."""
-    import psycopg
-
-    conn = psycopg.connect(SPRINT_METRICS_DB)
-    init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wtb')")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-03'")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-03'")
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
+        # Story X: started at 09:00, session from 09:00 to 09:22 (22 min delivery)
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtb", event_type="started", timestamp="2024-03-02T10:00:00Z", sprint="2024-03"),
+            _make_event(card_id="X", event_type="started", timestamp="2024-03-02T09:00:00Z", sprint="2024-03"),
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtb", event_type="blocked", timestamp="2024-03-02T10:30:00Z", sprint="2024-03"),
+            {
+                "api_version": "1",
+                "card_id": "X",
+                "type": "session",
+                "timestamp": "2024-03-02T09:00:00Z",
+                "sprint": "2024-03",
+                "card": {"created": "2024-03-01"},
+                "role": "developer",
+                "start": "2024-03-02T09:00:00Z",
+                "end": "2024-03-02T09:22:00Z",
+            },
+        )
+        # Story Y: started at 09:00, session from 09:00 to 09:05 (5 min delivery)
+        _post_events(
+            f"{base}/events",
+            _make_event(card_id="Y", event_type="started", timestamp="2024-03-03T09:00:00Z", sprint="2024-03"),
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtb", event_type="unblocked", timestamp="2024-03-02T10:40:00Z", sprint="2024-03"),
+            {
+                "api_version": "1",
+                "card_id": "Y",
+                "type": "session",
+                "timestamp": "2024-03-03T09:00:00Z",
+                "sprint": "2024-03",
+                "card": {"created": "2024-03-01"},
+                "role": "developer",
+                "start": "2024-03-03T09:00:00Z",
+                "end": "2024-03-03T09:05:00Z",
+            },
         )
+        # Planning session for story X: 10 minutes before the story's start (08:00 -> 08:10)
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtb", event_type="finished", timestamp="2024-03-02T11:00:00Z", sprint="2024-03"),
+            {
+                "api_version": "1",
+                "card_id": "X",
+                "type": "session",
+                "timestamp": "2024-03-02T08:00:00Z",
+                "sprint": "2024-03",
+                "card": {"created": "2024-03-01"},
+                "role": "developer",
+                "start": "2024-03-02T08:00:00Z",
+                "end": "2024-03-02T08:10:00Z",
+            },
         )
+        # Card-less session: 8 minutes (14:00 -> 14:08)
+        _post_events(
+            f"{base}/events",
+            {
+                "api_version": "1",
+                "type": "session",
+                "timestamp": "2024-03-02T14:00:00Z",
+                "sprint": "2024-03",
+                "role": "developer",
+                "start": "2024-03-02T14:00:00Z",
+                "end": "2024-03-02T14:08:00Z",
+            },
+        )
+
         status, body = _get_json(f"{base}/range?start=2024-03&end=2024-03")
         assert status == 200
         wt = body["sprints"]["2024-03"]["working_time"]
         assert wt is not None
-        assert wt["per_step"] == [{"step": None, "minutes": 50}]
-        assert wt["total"] == 50
+        assert wt["stories"] == {"X": 22, "Y": 5}
+        assert wt["planning"] == 10
+        assert wt["cardless"] == 8
+        assert wt["total"] == 45
+        # displayed parts sum to the total
+        assert sum(wt["stories"].values()) + wt["planning"] + wt["cardless"] == wt["total"]
     finally:
         conn.close()
 
 
 @requires_db
-def test_range_working_time_null_when_no_session_timestamps():
-    """AC3: a sprint with events but no card carrying a closed session window
-    (a card that started but never reached a terminal row) carries working_time
-    null (not zero), alongside its other null metrics."""
+def test_range_working_time_blocked_interval_not_counted():
+    """AC2: a sprint that holds exactly one card-less session record (8 minutes)
+    and no board events at all — the sprint's working time reads 8, with the
+    card-less session as a named part of the total the reader can pick out, and
+    the 8 minutes belong to no story — no story's session numbers are affected."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wtns')")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-04'")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-04'")
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
+        # Card-less session: 8 minutes (14:00 -> 14:08)
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtns", event_type="started", timestamp="2024-04-02T09:00:00Z", sprint="2024-04"),
+            {
+                "api_version": "1",
+                "type": "session",
+                "timestamp": "2024-04-02T14:00:00Z",
+                "sprint": "2024-04",
+                "role": "developer",
+                "start": "2024-04-02T14:00:00Z",
+                "end": "2024-04-02T14:08:00Z",
+            },
         )
         status, body = _get_json(f"{base}/range?start=2024-04&end=2024-04")
         assert status == 200
-        entry = body["sprints"]["2024-04"]
+        wt = body["sprints"]["2024-04"]["working_time"]
+        assert wt is not None
+        assert wt["stories"] == {}
+        assert wt["planning"] == 0
+        assert wt["cardless"] == 8
+        assert wt["total"] == 8
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_range_working_time_null_when_no_session_timestamps():
+    """AC3: a sprint that holds only board events ('started' and 'finished' rows,
+    including the old cost payload) and no session records at all — the
+    working-time answer reads null — not the span-based minutes it read before
+    this release, and not 0."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-05'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wtns')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-05'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        # Board events only, no session records
+        _post_events(
+            f"{base}/events",
+            _make_event(card_id="wtns", event_type="started", timestamp="2024-05-02T09:00:00Z", sprint="2024-05"),
+        )
+        _post_events(
+            f"{base}/events",
+            _make_event(card_id="wtns", event_type="finished", timestamp="2024-05-02T11:00:00Z", sprint="2024-05"),
+        )
+        status, body = _get_json(f"{base}/range?start=2024-05&end=2024-05")
+        assert status == 200
+        entry = body["sprints"]["2024-05"]
         assert entry["working_time"] is None
-        assert entry["cycle_time_minutes"] is None
     finally:
         conn.close()
 
 
 @requires_db
 def test_range_working_time_null_when_no_events():
-    """AC3b: a sprint in the window with no events at all carries working_time
-    null (not zero)."""
+    """AC3b: a sprint in the window with no events at all and no session records
+    carries working_time null (not zero)."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-05', '2024-06')")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-06', '2024-07')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-06', '2024-07')")
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        status, body = _get_json(f"{base}/range?start=2024-05&end=2024-06")
+        status, body = _get_json(f"{base}/range?start=2024-06&end=2024-07")
         assert status == 200
-        assert body["sprints"]["2024-05"]["working_time"] is None
         assert body["sprints"]["2024-06"]["working_time"] is None
+        assert body["sprints"]["2024-07"]["working_time"] is None
     finally:
         conn.close()
 
@@ -10969,35 +10979,56 @@ def test_range_working_time_prior_and_delta():
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-08', '2024-09')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wtp1', 'wtp2')")
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-07', '2024-08')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-08', '2024-09')")
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 2024-07: 60 min
+        # 2024-08: story wtp1 with 60 minutes of delivery session time
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtp1", event_type="started", timestamp="2024-07-02T09:00:00Z", sprint="2024-07"),
+            _make_event(card_id="wtp1", event_type="started", timestamp="2024-08-02T09:00:00Z", sprint="2024-08"),
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtp1", event_type="finished", timestamp="2024-07-02T10:00:00Z", sprint="2024-07"),
+            {
+                "api_version": "1",
+                "card_id": "wtp1",
+                "type": "session",
+                "timestamp": "2024-08-02T09:00:00Z",
+                "sprint": "2024-08",
+                "card": {"created": "2024-08-01"},
+                "role": "developer",
+                "start": "2024-08-02T09:00:00Z",
+                "end": "2024-08-02T10:00:00Z",
+            },
         )
-        # 2024-08: 120 min
+        # 2024-09: story wtp2 with 120 minutes of delivery session time
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtp2", event_type="started", timestamp="2024-08-02T09:00:00Z", sprint="2024-08"),
+            _make_event(card_id="wtp2", event_type="started", timestamp="2024-09-02T09:00:00Z", sprint="2024-09"),
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtp2", event_type="finished", timestamp="2024-08-02T11:00:00Z", sprint="2024-08"),
+            {
+                "api_version": "1",
+                "card_id": "wtp2",
+                "type": "session",
+                "timestamp": "2024-09-02T09:00:00Z",
+                "sprint": "2024-09",
+                "card": {"created": "2024-09-01"},
+                "role": "developer",
+                "start": "2024-09-02T09:00:00Z",
+                "end": "2024-09-02T11:00:00Z",
+            },
         )
-        status, body = _get_json(f"{base}/range?start=2024-07&end=2024-08")
+        status, body = _get_json(f"{base}/range?start=2024-08&end=2024-09")
         assert status == 200
-        e1 = body["sprints"]["2024-07"]
-        e2 = body["sprints"]["2024-08"]
+        e1 = body["sprints"]["2024-08"]
+        e2 = body["sprints"]["2024-09"]
         assert e1["working_time"]["total"] == 60
         assert e2["working_time"]["total"] == 120
         assert e1["prior"] is None
@@ -11010,42 +11041,53 @@ def test_range_working_time_prior_and_delta():
 
 @requires_db
 def test_range_working_time_null_prior_delta_when_prior_no_data():
-    """AC4b: when the prior sprint has events but no closed session window (no
-    working-time data), that entry's prior and delta carry working_time_minutes
-    null, while the current sprint's own total is present."""
+    """AC4b: when the prior sprint has no session records (no working-time data),
+    that entry's prior and delta carry working_time_minutes null, while the
+    current sprint's own total is present."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-10', '2024-11')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wtpd_a', 'wtpd_b')")
-    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-09', '2024-10')")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-10', '2024-11')")
     conn.commit()
 
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
-        # 2024-09: a session that started but never closed (events, but no working time)
+        # 2024-10: board events but no session records (no working time data)
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtpd_a", event_type="started", timestamp="2024-09-02T09:00:00Z", sprint="2024-09"),
+            _make_event(card_id="wtpd_a", event_type="started", timestamp="2024-10-02T09:00:00Z", sprint="2024-10"),
         )
-        # 2024-10: a closed 60-minute session
+        # 2024-11: a 60-minute delivery session
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtpd_b", event_type="started", timestamp="2024-10-02T09:00:00Z", sprint="2024-10"),
+            _make_event(card_id="wtpd_b", event_type="started", timestamp="2024-11-02T09:00:00Z", sprint="2024-11"),
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wtpd_b", event_type="finished", timestamp="2024-10-02T10:00:00Z", sprint="2024-10"),
+            {
+                "api_version": "1",
+                "card_id": "wtpd_b",
+                "type": "session",
+                "timestamp": "2024-11-02T09:00:00Z",
+                "sprint": "2024-11",
+                "card": {"created": "2024-11-01"},
+                "role": "developer",
+                "start": "2024-11-02T09:00:00Z",
+                "end": "2024-11-02T10:00:00Z",
+            },
         )
-        status, body = _get_json(f"{base}/range?start=2024-09&end=2024-10")
+        status, body = _get_json(f"{base}/range?start=2024-10&end=2024-11")
         assert status == 200
-        e9 = body["sprints"]["2024-09"]
         e10 = body["sprints"]["2024-10"]
-        assert e9["working_time"] is None
-        assert e10["working_time"]["total"] == 60
-        assert e10["prior"]["working_time_minutes"] is None
-        assert e10["delta"]["working_time_minutes"] is None
+        e11 = body["sprints"]["2024-11"]
+        assert e10["working_time"] is None
+        assert e11["working_time"]["total"] == 60
+        assert e11["prior"]["working_time_minutes"] is None
+        assert e11["delta"]["working_time_minutes"] is None
     finally:
         conn.close()
 
@@ -11053,11 +11095,13 @@ def test_range_working_time_null_prior_delta_when_prior_no_data():
 @requires_db
 def test_trend_working_time_minutes():
     """AC6: GET /trend?metric=working_time_minutes returns the sprint's
-    working-time total in whole minutes (null for a sprint with no events)."""
+    working-time total in whole minutes (null for a sprint with no session
+    records)."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-11', '2024-12')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE card_id IN ('wttd')")
     conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2024-11', '2024-12')")
     conn.commit()
@@ -11065,17 +11109,28 @@ def test_trend_working_time_minutes():
     port = _start_service(conn, 0)
     base = f"http://127.0.0.1:{port}"
     try:
+        # 2024-11: a 150-minute delivery session
         _post_events(
             f"{base}/events",
             _make_event(card_id="wttd", event_type="started", timestamp="2024-11-02T09:00:00Z", sprint="2024-11"),
         )
         _post_events(
             f"{base}/events",
-            _make_event(card_id="wttd", event_type="finished", timestamp="2024-11-02T11:30:00Z", sprint="2024-11"),
+            {
+                "api_version": "1",
+                "card_id": "wttd",
+                "type": "session",
+                "timestamp": "2024-11-02T09:00:00Z",
+                "sprint": "2024-11",
+                "card": {"created": "2024-11-01"},
+                "role": "developer",
+                "start": "2024-11-02T09:00:00Z",
+                "end": "2024-11-02T11:30:00Z",
+            },
         )
         status, body = _get_json(f"{base}/trend?metric=working_time_minutes&start=2024-11&end=2024-12")
         assert status == 200
-        assert body["api_version"] == "13"
+        assert body["api_version"] == "14"
         assert body["metric"] == "working_time_minutes"
         assert body["values"] == [
             {"sprint": "2024-11", "value": 150},
@@ -11087,19 +11142,20 @@ def test_trend_working_time_minutes():
 
 def test_sprint_range_schema_declares_working_time_on_sprint_entry():
     """AC7: SPRINT_RANGE_SCHEMA declares working_time as an optional property per
-    sprint entry (not in required), with per_step (array of {step, minutes}) and
-    total (integer)."""
+    sprint entry (not in required), with stories (object of integers), planning
+    (integer), cardless (integer), and total (integer)."""
     from sprint_metrics.schema import SPRINT_RANGE_SCHEMA
 
     sprint_entry = SPRINT_RANGE_SCHEMA["properties"]["sprints"]["additionalProperties"]
     assert "working_time" not in sprint_entry["required"]
     wt = sprint_entry["properties"]["working_time"]
     assert wt["type"] == ["object", "null"]
-    assert wt["required"] == ["per_step", "total"]
+    assert wt["required"] == ["stories", "planning", "cardless", "total"]
     assert wt["properties"]["total"] == {"type": "integer"}
-    assert wt["properties"]["per_step"]["type"] == "array"
-    assert wt["properties"]["per_step"]["items"]["properties"]["minutes"] == {"type": "integer"}
-    assert wt["properties"]["per_step"]["items"]["properties"]["step"] == {"type": ["string", "null"]}
+    assert wt["properties"]["stories"]["type"] == "object"
+    assert wt["properties"]["stories"]["additionalProperties"] == {"type": "integer"}
+    assert wt["properties"]["planning"] == {"type": "integer"}
+    assert wt["properties"]["cardless"] == {"type": "integer"}
 
 
 @requires_db
@@ -12138,12 +12194,14 @@ def test_session_event_does_not_change_range_or_trend():
         # Capture /range and /trend after the session.
         status, after = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        # Every /range field except session_stories is unchanged.
+        # Every /range field except session_stories, session_planning, and
+        # working_time is unchanged.
+        _session_derived = {"session_stories", "session_planning", "working_time"}
         before_fields = {
-            k: v for k, v in before["sprints"]["2024-01"].items() if k != "session_stories"
+            k: v for k, v in before["sprints"]["2024-01"].items() if k not in _session_derived
         }
         after_fields = {
-            k: v for k, v in after["sprints"]["2024-01"].items() if k != "session_stories"
+            k: v for k, v in after["sprints"]["2024-01"].items() if k not in _session_derived
         }
         assert before_fields == after_fields
         # session_stories correctly carries the session's per-story numbers.

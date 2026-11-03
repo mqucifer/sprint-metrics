@@ -63,12 +63,14 @@ from sprint_metrics.store import (
     init_db,
     insert_event,
     query_card_kinds,
+    query_cardless_sessions,
     query_dora_data,
     query_dora_rework_data,
     query_filed_events,
     query_model_time_splits,
     query_range,
     query_returned_events,
+    query_session_story_data,
     query_sprint,
     query_sprint_span,
     query_started_count,
@@ -702,7 +704,9 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 )
                                 value = cf[metric]
                             elif metric == "working_time_minutes":
-                                value = working_time_total(query_working_time_events(conn_holder[0], label))
+                                story_data = query_session_story_data(conn_holder[0], label)
+                                cardless = query_cardless_sessions(conn_holder[0], label)
+                                value = working_time_total(story_data=story_data, cardless_sessions=cardless)
                             elif metric in ("addition_working_time_minutes", "change_working_time_minutes"):
                                 kind = "addition" if metric == "addition_working_time_minutes" else "change"
                                 value = cost_by_kind_total(
@@ -877,7 +881,7 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null. working_time_minutes returns the sprint's "
         "working-time total in whole minutes (null where the sprint has no "
-        "closed session window). addition_working_time_minutes and "
+        "session records). addition_working_time_minutes and "
         "change_working_time_minutes return the sprint's working time for "
         "stories of the given kind in whole minutes (null where the sprint "
         "carries no kind data). model_time_split_refinement_minutes and "
