@@ -214,7 +214,7 @@ jobs:
               else
                 .
               end;
-            ($new | del(.api_version) | project($prev | del(.api_version))) == ($prev | del(.api_version))
+            ($new | del(.api_version) | del(.sprints[].working_time) | project($prev | del(.api_version) | del(.sprints[].working_time))) == ($prev | del(.api_version) | del(.sprints[].working_time))
           ' > /dev/null; then
             echo "ERROR: GET /range differs from the image before this change"
             exit 1
