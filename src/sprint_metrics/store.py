@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS sprint_metrics.sessions (
     model_seconds INT,
     tokens BIGINT
 );
+ALTER TABLE sprint_metrics.sessions ADD COLUMN IF NOT EXISTS input_tokens BIGINT;
+ALTER TABLE sprint_metrics.sessions ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_natural_identity
     ON sprint_metrics.sessions (COALESCE(card_id, ''), role, session_start, session_end);
 """
@@ -932,14 +934,16 @@ def upsert_session(conn: Connection, session: dict) -> None:
     - sprint: str, the sprint label
     - model_seconds: optional int, model time in seconds
     - tokens: optional int, total tokens
+    - input_tokens: optional int, input tokens
+    - output_tokens: optional int, output tokens
 
     The natural identity is (card, role, start, end); a re-send with the same
     identity adds nothing and changes nothing.
     """
     conn.execute(
         """
-        INSERT INTO sprint_metrics.sessions (card_id, role, session_start, session_end, sprint, model_seconds, tokens)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO sprint_metrics.sessions (card_id, role, session_start, session_end, sprint, model_seconds, tokens, input_tokens, output_tokens)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (COALESCE(card_id, ''), role, session_start, session_end) DO NOTHING
         """,
         (
@@ -950,6 +954,8 @@ def upsert_session(conn: Connection, session: dict) -> None:
             session["sprint"],
             session.get("model_seconds"),
             session.get("tokens"),
+            session.get("input_tokens"),
+            session.get("output_tokens"),
         ),
     )
     conn.commit()
@@ -970,3 +976,55 @@ def query_sessions(conn: Connection, sprint: str) -> list[tuple]:
         (sprint,),
     ).fetchall()
     return list(rows)
+
+
+def query_session_story_data(conn: Connection, sprint: str) -> dict[str, dict]:
+    """Return per-card session data for the sprint's per-story session answer.
+
+    For each card that has either a 'started' board event in the sprint or a
+    session record with that sprint label, returns a dict with:
+    - ``started_at``: the card's first 'started' event time (datetime or None)
+    - ``sessions``: list of (session_start, session_end, role, model_seconds,
+      input_tokens, output_tokens) for the card's sessions in the sprint
+
+    The card's first 'started' event time is the planning/delivery boundary:
+    sessions that start before it are planning; from it, a session's time is
+    the story's.
+    """
+    # Get the first 'started' event per card in the sprint.
+    started_rows = conn.execute(
+        """
+        SELECT card_id, MIN(event_time)
+        FROM sprint_metrics.board_events
+        WHERE sprint = %s AND type = 'started'
+        GROUP BY card_id
+        """,
+        (sprint,),
+    ).fetchall()
+    started_at: dict[str, object] = {card: ts for card, ts in started_rows}
+
+    # Get all sessions in the sprint.
+    session_rows = conn.execute(
+        """
+        SELECT card_id, session_start, session_end, role, model_seconds, input_tokens, output_tokens
+        FROM sprint_metrics.sessions
+        WHERE sprint = %s AND card_id IS NOT NULL
+        ORDER BY card_id, session_start
+        """,
+        (sprint,),
+    ).fetchall()
+
+    result: dict[str, dict] = {}
+    for card_id, s_start, s_end, role, model_sec, in_tok, out_tok in session_rows:
+        if card_id not in result:
+            result[card_id] = {"started_at": started_at.get(card_id), "sessions": []}
+        result[card_id]["sessions"].append(
+            (s_start, s_end, role, model_sec, in_tok, out_tok)
+        )
+    # Cards that have a 'started' event but no session records still appear
+    # (with an empty sessions list), so the answer can report null for them.
+    for card_id in started_at:
+        if card_id not in result:
+            result[card_id] = {"started_at": started_at[card_id], "sessions": []}
+
+    return result

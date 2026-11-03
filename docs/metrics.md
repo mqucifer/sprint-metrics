@@ -306,6 +306,35 @@ the filed rows, independent of the delivery-event gate. In `/trend`, delivery
 measures read null for such a sprint, while `self_filed_share_percent` keeps
 its value.
 
+### Per-story session time
+
+The `session_stories` answer on each sprint's `/range` entry reports, for
+each story whose sessions ran in the sprint: its session minutes in total
+(`session_minutes`, whole minutes), its minutes by role (`minutes_by_role`,
+roles named with the crew's role strings), its model minutes (`model_minutes`,
+whole model minutes), and its tokens (`input_tokens` and `output_tokens`,
+whole counts of input and output tokens).
+
+A story's numbers appear whether or not the story finished: the answer reads
+the story's session records, not its delivery state. A story that started but
+never finished still carries its session numbers beside its unfinished
+delivery measures.
+
+A story with no session record reads null (unknown), never zero. This
+includes the pre-session sprints — sprints that predate the crew's session
+recording — where every story's session numbers read null.
+
+A session counts in the sprint label it was sent with, unclamped to the
+sprint's registered span. A session whose start precedes the sprint's
+registered start date and whose end follows its registered end date counts
+in full in the sprint it was sent with; it does not split across sprints.
+
+The planning/delivery boundary: a story's start is its first `started` board
+event. Sessions that start before that moment are planning; from the story's
+start, a session's time is that story's. A story with session records but no
+`started` board event has no established start, and its sessions read as
+planning until one is stored: its per-story numbers read null.
+
 ## Boundary conditions
 
 ### Zero values for an empty sprint
