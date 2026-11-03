@@ -342,3 +342,33 @@ def test_unreleased_changed_names_api_version_move():
     assert any('"12"' in body for body in changed)
     assert any("api_version" in body for body in changed)
 
+
+def test_unreleased_changed_says_how_much_past_numbers_move():
+    """The changelog's Changed entry says by how much past numbers move:
+    working time, idle time, cost and model-time-split now read from session
+    records; Sprint 38's working time moves from 72 to about 22; cost and
+    model-time move from no data to real values; sprints with no session record
+    read null; a story with no session record reads unknown, never zero;
+    flat prior/delta names keep their shape under the new api_version."""
+    content = CHANGELOG.read_text()
+    changed = _subheading_bodies(content, "### Changed")
+    changed_section = "\n".join(changed)
+    # The answers now read from session records instead of span windows / cost payload
+    assert "session records" in changed_section
+    assert "span" in changed_section
+    # Sprint 38's worked example: 72 to about 22
+    assert "Sprint 38" in changed_section
+    assert "72" in changed_section
+    assert "22" in changed_section
+    # Cost and model-time move from no data to real values
+    assert "no data" in changed_section
+    assert "real values" in changed_section
+    # Sprints with no session record read null (unknown)
+    assert "null" in changed_section
+    assert "unknown" in changed_section
+    # A story with no session record reads unknown, never zero
+    assert "never zero" in changed_section
+    # Flat prior/delta names keep their shape under the new api_version
+    assert "prior" in changed_section
+    assert "api_version" in changed_section
+
