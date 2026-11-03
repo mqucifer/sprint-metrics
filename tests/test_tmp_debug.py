@@ -1,4 +1,4 @@
-"""Temporary debug: dump the /range response for two registered sprints."""
+"""Temporary debug: compare format_sprint_range_json with service inputs."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from test_service import (
     _start_service,
     requires_db,
 )
-
-from sprint_metrics.store import init_db
+from sprint_metrics.sprint_range import format_sprint_range_json
+from sprint_metrics.store import init_db, query_sprint
 
 
 @requires_db
@@ -46,11 +46,21 @@ def test_debug_prior():
                 sprint="2025-06",
             ),
         )
-        status, body = _get_json(f"{base}/range?start=2025-05&end=2025-06")
-        second = body["sprints"]["2025-06"]
+        # Direct formatter call with the service's inputs.
+        sprints = {
+            "2025-05": query_sprint(conn, "2025-05"),
+            "2025-06": query_sprint(conn, "2025-06"),
+        }
+        body = json.loads(format_sprint_range_json(sprints, ["2025-05", "2025-06"]))
+        direct = body["sprints"]["2025-06"]
+
+        status, svc = _get_json(f"{base}/range?start=2025-05&end=2025-06")
+        service = svc["sprints"]["2025-06"]
+
         Path(__file__).with_name("tmp_debug_out.json").write_text(
-            f"prior_type={type(second['prior']).__name__} delta_type={type(second['delta']).__name__}\n"
-            + json.dumps(second, indent=2)
+            f"direct prior_type={type(direct['prior']).__name__}\n"
+            f"service prior_type={type(service['prior']).__name__}\n"
+            f"sprints 2025-05 len={len(sprints['2025-05'])} 2025-06 len={len(sprints['2025-06'])}\n"
         )
     finally:
         conn.close()
