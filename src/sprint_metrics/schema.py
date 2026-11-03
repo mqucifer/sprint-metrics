@@ -354,7 +354,7 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                         "type": ["object", "null"],
                         "properties": {
                             "sprint_duration_minutes": {"type": "integer"},
-                            "idle_minutes": {"type": ["integer", "null"]},
+                            "idle_minutes": {"type": "integer"},
                         },
                         "required": ["sprint_duration_minutes", "idle_minutes"],
                     },

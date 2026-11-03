@@ -1600,10 +1600,7 @@
                 "type": "integer"
               },
               "idle_minutes": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
+                "type": "integer"
               }
             },
             "required": [

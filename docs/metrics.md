@@ -19,7 +19,7 @@ BEGIN:metrics
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards, as a whole count. |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1, as a whole count. |
 | First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt, as a whole percent. |
-| Idle time | `idle_minutes` | Return the sprint's idle time — the time that passed with no session running against the sprint's total registered duration — in whole minutes (the registered span minus the in-span session time, in the sprint's registered timezone; a session window clamped to the span, a rework session never re-sent as 'started' reads as idle). None where the sprint is not registered or no session ran inside the span. |
+| Idle time | `idle_minutes` | Return the sprint's idle time — the registered sprint span minus the sprint's session minutes, from the same session records that feed the working time — in whole minutes, in the sprint's registered timezone (a session belongs to the sprint label it was sent with, with no clamping to the registered span). None where the sprint has no session records or no registered definition. |
 | Input tokens (middle) | `input_tokens_middle` | Return the median input tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Input tokens (total) | `input_tokens_total` | Return the total input tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
@@ -115,8 +115,10 @@ answer.
 ### Idle time against the sprint's duration
 
 The `idle` answer on each sprint's `/range` entry carries the idle time — the
-time that passed with no session running — against the sprint's total
-registered duration, in whole minutes.
+registered sprint span minus the sprint's session minutes, from the same
+session records that feed the working time — in whole minutes, so the working
+time and the idle time agree from the same session records: the working time
+plus the idle time is the sprint's registered duration.
 
 The total duration (`idle.sprint_duration_minutes`) is the sprint's registered
 span, from the start of the registered start date to the end of the registered
@@ -124,24 +126,19 @@ end date, taken in the sprint's registered timezone: the span is the real
 elapsed time in that zone, so a day the calendar does not turn twenty-four
 hours (a DST transition) reads as the minutes that actually elapsed.
 
-The idle time (`idle.idle_minutes`) is the registered span minus the in-span
-session time, in whole minutes. A session window is clamped to the span — only
-the part of a window inside the registered span counts as session time, so a
-window that runs past the end date (or starts before the start date) counts
-only its in-span part. A blocked card's blocked interval within a clamped
-window is not session time, the way it is not working time.
+The idle time (`idle.idle_minutes`) is the registered span minus the sprint's
+session minutes — the working-time total: the stories' session minutes (from
+each story's start on), the planning sessions' minutes (before their story's
+start), and the card-less sessions' minutes (no story). A session belongs to
+the sprint label it was sent with, with no clamping to the registered span: a
+session that runs past the registered end date is counted in full, not cut at
+the span. When the sprint's session minutes exceed its registered span the
+idle time is negative, and when they exactly fill the span it is zero.
 
-Because a session window opens only on a `started` row, a rework session the
-crew never re-sent as `started` contributes no session time and reads as idle —
-the working-time fidelity bound, set by the granularity of the events the crew
-sends.
-
-A sprint with no events, or with no registered definition, reads `idle` null,
-matching the null behaviour of the other minute-based metrics. Where the sprint
-is registered but no session ran inside the span, `idle.sprint_duration_minutes`
-carries the span and `idle.idle_minutes` is null — the whole span is not
-reported as idle when no session ran. The flat `idle_minutes` name also appears
-in each later sprint's `prior` and `delta`, null where a sprint has no data.
+A sprint with no session records, or with no registered definition, reads
+`idle` null — no data, not zero — and the whole span is not reported as
+idle. The flat `idle_minutes` name also appears in each later sprint's
+`prior` and `delta`, null where the corresponding sprint has no idle data.
 
 ### Model cost
 
