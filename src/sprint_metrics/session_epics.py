@@ -7,6 +7,12 @@ tokens as whole counts of input and output tokens, summed over that
 sprint's stories of the epic. An epic appears only when one of its stories
 had sessions in the sprint; a story with no epic link contributes to no
 epic's total; a card-less session belongs to no epic.
+
+The to-date part (session_epics_to_date) reports, for each epic whose
+stories had sessions in any sprint up to and including the current one,
+the same measures accumulated across every sprint to date, bridging gap
+sprints (a sprint with no sessions carries the prior to-date total forward
+without resetting to zero).
 """
 
 from __future__ import annotations
@@ -64,24 +70,71 @@ def calculate_session_epics(
     return epic_totals
 
 
+def calculate_session_epics_to_date(
+    story_results: dict[str, dict | None],
+    card_epics: dict[str, str | None],
+) -> dict[str, dict]:
+    """Compute the per-epic to-date session-time answer for a sprint.
+
+    ``story_results`` maps each card_id to its to-date per-story session
+    result (the output of ``calculate_session_stories`` applied to
+    sessions across all sprints up to and including the current sprint):
+    a dict with session_minutes, minutes_by_role, model_minutes,
+    input_tokens, output_tokens — or None when the card has no session
+    records in any sprint up to the current one.
+
+    ``card_epics`` maps each card_id to its epic (or None when the card's
+    stored board rows carry no epic link).
+
+    Returns a dict mapping epic name to its to-date session totals: the
+    same measures as the in-sprint answer, accumulated across every sprint
+    to date. An epic appears when one of its stories had sessions in any
+    sprint up to and including the current one (a non-None per-story
+    result). A story whose per-story result is None contributes nothing.
+    A story whose card_epics entry is None (no epic link) contributes to
+    no epic's total.
+    """
+    return calculate_session_epics(story_results, card_epics)
+
+
 def _attach_range_session_epics(
     result: dict, conn, labels: list[str], has_events: set[str]
 ) -> None:
-    """Attach the per-epic session-time answer to each range entry.
+    """Attach the per-epic session-time answer (in-sprint and to-date) to
+    each range entry.
 
-    The answer is computed as a rollup of the per-story session totals,
-    joined to each card's epic from its stored board-event rows. An epic
-    appears only when one of its stories had sessions in the sprint.
+    The in-sprint answer is computed as a rollup of the per-story session
+    totals for the sprint. The to-date answer is computed as a rollup of
+    the per-story to-date totals (sessions across all sprints up to and
+    including the sprint). An epic appears in the in-sprint answer only
+    when one of its stories had sessions in the sprint; it appears in the
+    to-date answer when one of its stories had sessions in any sprint up
+    to and including the current one (gap sprints bridged, not read as
+    zero).
     """
     from sprint_metrics.session_stories import calculate_session_stories
-    from sprint_metrics.store import query_card_epics, query_session_story_data
+    from sprint_metrics.store import (
+        query_card_epics,
+        query_session_story_data,
+        query_session_story_data_to_date,
+    )
 
     for label in labels:
+        # In-sprint answer (unchanged).
         story_data = query_session_story_data(conn, label)
         story_results = calculate_session_stories(story_data)
         card_epics = query_card_epics(conn, set(story_data.keys()))
         result["sprints"][label]["session_epics"] = calculate_session_epics(
             story_results, card_epics
+        )
+
+        # To-date answer: sessions across all sprints up to and including
+        # this sprint.
+        to_date_data = query_session_story_data_to_date(conn, label)
+        to_date_results = calculate_session_stories(to_date_data)
+        to_date_card_epics = query_card_epics(conn, set(to_date_data.keys()))
+        result["sprints"][label]["session_epics_to_date"] = (
+            calculate_session_epics_to_date(to_date_results, to_date_card_epics)
         )
 
 
@@ -97,4 +150,16 @@ _RANGE_SESSION_EPICS_DESCRIPTION = (
     "sprint. A story whose board rows carry no epic link contributes to no "
     "epic's total; its sessions still appear in the per-story answer. "
     "A card-less session belongs to no epic. "
+    "Each entry also carries session_epics_to_date: the sprint's per-epic "
+    "to-date session-time answer — for each epic whose stories had sessions "
+    "in any sprint up to and including this one, the same measures "
+    "(session_minutes in whole minutes, minutes by role, model_minutes in "
+    "whole model minutes, input_tokens and output_tokens as whole counts) "
+    "accumulated across every sprint to date, with gap sprints bridged and "
+    "not read as zero. "
+    "An epic appears when one of its stories had sessions in any sprint up "
+    "to and including the current one; a gap sprint with no sessions for "
+    "the epic carries the prior to-date total forward. "
+    "A story whose board rows carry no epic link contributes to no epic's "
+    "to-date total; a card-less session belongs to no epic. "
 )

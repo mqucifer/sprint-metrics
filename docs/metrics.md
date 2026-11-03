@@ -344,6 +344,15 @@ sprint: a story with no session record contributes nothing, and a story
 whose board rows carry no epic link contributes to no epic's total. A
 card-less session belongs to no epic.
 
+The `session_epics_to_date` answer on each sprint's `/range` entry carries
+the same measures (session minutes in whole minutes, in total and by role,
+model minutes, tokens) accumulated across every sprint to date, bridging
+gap sprints and not read as zero. An epic appears when one of its stories
+had sessions in any sprint up to and including the current one; a gap
+sprint with no sessions for the epic carries the prior to-date total
+forward. A story whose board rows carry no epic link contributes to no
+epic's to-date total; a card-less session belongs to no epic.
+
 ## Boundary conditions
 
 ### Zero values for an empty sprint
