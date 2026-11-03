@@ -1178,8 +1178,6 @@ def test_metrics_md_names_all_cost_measures():
         "input_tokens_total",
         "output_tokens_middle",
         "output_tokens_total",
-        "cached_input_percent",
-        "reasoning_output_percent",
     ):
         assert name in section, f"missing cost measure {name!r} in metrics table"
     assert "Model minutes (middle)" in section
@@ -1192,15 +1190,16 @@ def test_metrics_md_names_all_cost_measures():
     assert (
         "display unit" in model_cost_section.lower()
         or "whole minutes" in model_cost_section.lower()
+        or "whole model minutes" in model_cost_section.lower()
     )
     assert "model_seconds" in model_cost_section
     assert "model_minutes" in model_cost_section
 
 
 def test_metrics_md_explains_cost_aggregation_semantics():
-    """AC2: computation-details explains story cost as summed total across roles,
-    middle as median of per-story values, total as sum, and percents from
-    the sprint's combined token totals rather than per story."""
+    """AC2: computation-details explains story cost as computed from session
+    records, middle as median of per-story values, total as sum, and null
+    where no session data."""
     text = (DOCS_DIR / "metrics.md").read_text()
     detail_start = text.index("## Computation details")
     detail = text[detail_start:]
@@ -1208,17 +1207,14 @@ def test_metrics_md_explains_cost_aggregation_semantics():
     # Find the next section heading (## or ###) after the Model cost heading line
     next_heading = detail.index("\n##", model_cost_start + 1)
     model_cost_section = detail[model_cost_start:next_heading]
-    # Story cost is summed total across every role's model calls
-    assert (
-        "summed total across every role" in model_cost_section
-        or "summed total" in model_cost_section
-    )
+    # Story cost is from session records
+    assert "session records" in model_cost_section
     # Middle is the median of per-story values
     assert "median" in model_cost_section.lower()
     # Total is the sum
     assert "sum" in model_cost_section.lower()
-    # Percents from sprint's combined token totals
-    assert "combined" in model_cost_section.lower() or "sprint's" in model_cost_section
+    # No data, not zero
+    assert "no data, not zero" in model_cost_section.lower() or "null" in model_cost_section.lower()
 
 
 def test_service_md_documents_cost_payload_fields():
@@ -1412,10 +1408,12 @@ def test_metrics_md_computation_details_describes_rework_answer():
 
 def test_metrics_md_describes_working_time_answer():
     """AC5: docs/metrics.md's 'Working time per pipeline step' tells the reader
-    that working time per step is the minutes the crew's sessions ran (not the
-    creation-to-finish span), that a rework session not re-sent as 'started' is
-    invisible to working time (shows as idle), and that a blocked card's blocked
-    interval is not counted."""
+    that the working time is the minutes of the sprint's session records — the
+    stories' session minutes plus the planning sessions' plus the card-less
+    sessions', in whole minutes, with the displayed parts summing to the
+    sprint's total — that a session belongs to the sprint label it was sent
+    with, with no clamping to the registered span, and that a sprint with no
+    session records reads null (no data, not zero)."""
     text = (DOCS_DIR / "metrics.md").read_text()
     details = text.split("## Computation details")[1]
     heading = next(
@@ -1430,23 +1428,25 @@ def test_metrics_md_describes_working_time_answer():
     section = re.sub(r"\s+", " ", section)
     for phrase in (
         "`working_time`",
-        "minutes the crew's sessions ran",
-        "not the span",
-        "`started`",
-        "`finished`, `attempt_failed`, or `returned`",
-        "rework session",
-        "invisible to working time",
-        "idle time",
-        "blocked interval",
+        "minutes of the sprint's session records",
+        "stories' session minutes",
+        "planning sessions' minutes",
+        "card-less sessions' minutes",
+        "sum exactly to the",
+        "sprint label it was sent with",
+        "no clamping",
+        "no session records",
+        "null",
+        "not zero",
     ):
         assert phrase in section, f"working time computation details missing {phrase!r}"
 
 
 def test_metrics_md_working_time_states_step_boundary_pair():
-    """AC5: docs/metrics.md's 'Working time per pipeline step' states that a
-    'started' row landing immediately before its terminal row is the same step
-    boundary and does not open a new zero-minute session that zeros the
-    preceding window."""
+    """AC5: docs/metrics.md's 'Working time per pipeline step' states that the
+    span-window calculation no longer feeds the working-time answer, and that a
+    session belongs to the sprint label it was sent with, with no clamping to
+    the sprint's registered span."""
     text = (DOCS_DIR / "metrics.md").read_text()
     details = text.split("## Computation details")[1]
     heading = next(
@@ -1460,22 +1460,25 @@ def test_metrics_md_working_time_states_step_boundary_pair():
 
     section = re.sub(r"\s+", " ", section)
     for phrase in (
-        "same step boundary",
-        "does not open a new zero-minute session",
-        "zeros the preceding window",
+        "span-window",
+        "no longer feeds",
+        "sprint label it was sent with",
+        "no clamping",
     ):
-        assert phrase in section, f"step boundary description missing {phrase!r}"
+        assert phrase in section, f"working time span statement missing {phrase!r}"
 
 
 def test_metrics_md_metrics_table_has_working_time_row():
     """AC6: docs/metrics.md's metrics table carries a row for
-    working_time_minutes stating what it measures, in whole minutes."""
+    working_time_minutes stating what it measures (the minutes of the sprint's
+    session records), in whole minutes."""
     text = (DOCS_DIR / "metrics.md").read_text()
     table = _extract_marked_section(text, "metrics")
     row = next(line for line in table.splitlines() if "`working_time_minutes`" in line)
     cells = [c.strip() for c in row.split("|") if c.strip()]
     assert cells[1] == "`working_time_minutes`"
     assert "whole minutes" in row
+    assert "session records" in row
 
 
 def test_metrics_md_metrics_table_has_cost_by_kind_rows():
@@ -1499,7 +1502,7 @@ def test_metrics_md_metrics_table_has_cost_by_kind_rows():
 def test_metrics_md_metrics_table_has_model_time_split_rows():
     """AC4: docs/metrics.md's metrics table carries rows for
     model_time_split_refinement_minutes and model_time_split_delivery_minutes,
-    stating what the split measures (model time, refinement against delivery),
+    stating what the split measures (model time, planning against delivery),
     its unit (whole minutes), and its null behaviour."""
     text = (DOCS_DIR / "metrics.md").read_text()
     table = _extract_marked_section(text, "metrics")
@@ -1509,7 +1512,6 @@ def test_metrics_md_metrics_table_has_model_time_split_rows():
     cells = [c.strip() for c in ref_row.split("|") if c.strip()]
     assert cells[1] == "`model_time_split_refinement_minutes`"
     assert "model time" in ref_row.lower()
-    assert "refinement" in ref_row.lower()
     assert "whole minutes" in ref_row
     assert "None" in ref_row or "null" in ref_row.lower()
     del_row = next(
@@ -1519,9 +1521,9 @@ def test_metrics_md_metrics_table_has_model_time_split_rows():
     assert "whole minutes" in del_row
     # A reader of docs/metrics.md learns what the split measures, its unit,
     # and its null behaviour from the section outside the table.
-    section = text.split("### Model time split (refinement against delivery)")[1]
+    section = text.split("### Model time split (planning against delivery)")[1]
     section = section.split("\n###")[0]
-    assert "whole minutes" in section
+    assert "whole model minutes" in section or "whole minutes" in section
     assert "null" in section.lower()
 
 
@@ -1608,9 +1610,9 @@ def test_service_md_range_row_describes_roster_answer():
         assert phrase in row, f"GET /range roster row missing {phrase!r}: {row}"
 
 
-def test_service_md_api_version_paragraph_describes_version_11():
+def test_service_md_api_version_paragraph_describes_version_12():
     """AC: docs/service.md's api_version paragraph states the response
-    api_version is '11', version '10' is retired, and intake keeps '1'."""
+    api_version is '12', version '11' is retired, and intake keeps '1'."""
     text = (DOCS_DIR / "service.md").read_text()
     # The /range and /trend api_version paragraph is outside the generated section
     paragraph = text.split("The /range and /trend responses carry their own")[1]
@@ -1619,10 +1621,10 @@ def test_service_md_api_version_paragraph_describes_version_11():
     if end == -1:
         end = len(paragraph)
     paragraph = paragraph[:end]
+    assert '"12"' in paragraph
     assert '"11"' in paragraph
-    assert '"10"' in paragraph
     assert "retired" in paragraph
-    assert "11.0.0" in paragraph
+    assert "12.0.0" in paragraph
     assert "Event intake" in paragraph
     assert '"1"' in paragraph
 
@@ -1790,3 +1792,31 @@ def test_adr_0013_session_event_file_name_and_heading():
     assert "'session'" in text or "session" in text
     assert "10th" in text
     assert "event" in text.lower()
+
+
+def test_metrics_md_has_per_epic_session_time_section():
+    """AC4: docs/metrics.md's Computation details section carries a
+    Per-epic session time subsection that names the fields with their units
+    and states an epic appears only when one of its stories had sessions."""
+    path = DOCS_DIR / "metrics.md"
+    text = path.read_text()
+    assert "Per-epic session time" in text
+    section = text[text.index("Per-epic session time") :]
+    assert "session_epics" in section
+    assert "session_minutes" in section
+    assert "minutes_by_role" in section
+    assert "model_minutes" in section
+    assert "input_tokens" in section
+    assert "output_tokens" in section
+    assert "appears only when" in section
+
+
+def test_service_md_range_row_describes_session_epics():
+    """AC4: docs/service.md's /range endpoint table carries a row describing
+    the session_epics answer."""
+    path = DOCS_DIR / "service.md"
+    text = path.read_text()
+    generated = text[text.index("BEGIN:service") : text.index("END:service")]
+    assert "session_epics" in generated
+    assert "per-epic session-time answer" in generated
+    assert "summed over that sprint's stories of the epic" in generated

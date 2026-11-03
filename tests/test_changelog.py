@@ -55,6 +55,17 @@ def _unreleased_body_span(content: str) -> tuple[int, int]:
     return first.end(), end
 
 
+def _subheading_bodies(content: str, subheading: str) -> list[str]:
+    """Return the body text of every section that has the given subheading line."""
+    bodies = []
+    for m in re.finditer(rf"^{re.escape(subheading)}\s*$", content, re.MULTILINE):
+        start = m.end()
+        next_h = re.search(r"^### |^## \[", content[start:], re.MULTILINE)
+        end = start + next_h.start() if next_h else len(content)
+        bodies.append(content[start:end])
+    return bodies
+
+
 def check_pyproject_version(changelog_text: str, pyproject_version: str) -> list[str]:
     """Rule 1: the version in pyproject.toml equals the newest released section's version."""
     violations = []
@@ -302,32 +313,34 @@ def test_rule_released_headings_dated():
 
 
 def test_unreleased_added_names_session_event():
-    """AC9: CHANGELOG.md's [Unreleased] Added section learns the intake now
-    accepts a 'session' event, recording the crew's sessions as what happened."""
+    """The changelog names the intake accepting a 'session' event,
+    in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
-    # Extract the [Unreleased] section.
+    added = _subheading_bodies(content, "### Added")
+    assert any(
+        "session" in body and "intake" in body and "accepts" in body for body in added
+    )
+
+
+def test_unreleased_added_names_session_epics():
+    """AC6: CHANGELOG.md's [Unreleased] Added section records that /range now
+    answers each epic's in-sprint session time."""
+    content = CHANGELOG.read_text()
     start = content.index("## [Unreleased]")
     end = content.index("## [", start + 1)
     unreleased = content[start:end]
     added_section = unreleased[unreleased.index("### Added") :]
-    # The Added list mentions the session event.
-    assert "session" in added_section
-    assert "intake" in added_section or "accept" in added_section.lower()
+    assert "session_epics" in added_section
+    assert "epic" in added_section
+    assert "in-sprint session minutes" in added_section
 
 
 def test_unreleased_changed_names_api_version_move():
-    """AC: CHANGELOG.md's [Unreleased] Changed section learns the response
-    api_version moves from "10" to "11"."""
+    """The changelog names the response api_version move,
+    in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
-    start = content.index("## [Unreleased]")
-    end = content.index("## [", start + 1)
-    unreleased = content[start:end]
-    changed_start = unreleased.index("### Changed") + len("### Changed")
-    next_heading = unreleased.find("### ", changed_start)
-    if next_heading == -1:
-        next_heading = len(unreleased)
-    changed = unreleased[changed_start:next_heading]
-    assert '"10"' in changed
-    assert '"11"' in changed
-    assert "api_version" in changed
+    changed = _subheading_bodies(content, "### Changed")
+    assert any('"11"' in body for body in changed)
+    assert any('"12"' in body for body in changed)
+    assert any("api_version" in body for body in changed)
 

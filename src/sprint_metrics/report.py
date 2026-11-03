@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-API_VERSION = "11"
+API_VERSION = "15"
 
 
 _METRIC_COLUMNS: dict[str, str] = {
@@ -38,7 +38,7 @@ _METRIC_COLUMNS: dict[str, str] = {
     "working_time_minutes": "Working time",
     "addition_working_time_minutes": "Addition working time",
     "change_working_time_minutes": "Change working time",
-    "model_time_split_refinement_minutes": "Model time split (refinement)",
+    "model_time_split_refinement_minutes": "Model time split (planning)",
     "model_time_split_delivery_minutes": "Model time split (delivery)",
     "idle_minutes": "Idle time",
     "self_filed_share_percent": "Self-filed share",

@@ -1177,13 +1177,7 @@
                 "input_tokens": {
                   "type": "integer"
                 },
-                "cached_input_percent": {
-                  "type": "integer"
-                },
                 "output_tokens": {
-                  "type": "integer"
-                },
-                "reasoning_output_percent": {
                   "type": "integer"
                 }
               },
@@ -1191,9 +1185,7 @@
                 "card_id",
                 "model_minutes",
                 "input_tokens",
-                "cached_input_percent",
-                "output_tokens",
-                "reasoning_output_percent"
+                "output_tokens"
               ]
             }
           },
@@ -1517,33 +1509,26 @@
               "null"
             ],
             "properties": {
-              "per_step": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "step": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "minutes": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "step",
-                    "minutes"
-                  ]
+              "stories": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
                 }
+              },
+              "planning": {
+                "type": "integer"
+              },
+              "cardless": {
+                "type": "integer"
               },
               "total": {
                 "type": "integer"
               }
             },
             "required": [
-              "per_step",
+              "stories",
+              "planning",
+              "cardless",
               "total"
             ]
           },
@@ -1571,7 +1556,7 @@
               "null"
             ],
             "properties": {
-              "refinement": {
+              "planning": {
                 "type": "integer"
               },
               "delivery": {
@@ -1579,8 +1564,30 @@
               }
             },
             "required": [
-              "refinement",
+              "planning",
               "delivery"
+            ]
+          },
+          "model_time": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "model_minutes": {
+                "type": "integer"
+              },
+              "input_tokens": {
+                "type": "integer"
+              },
+              "output_tokens": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "model_minutes",
+              "input_tokens",
+              "output_tokens"
             ]
           },
           "idle": {
@@ -1603,6 +1610,129 @@
               "sprint_duration_minutes",
               "idle_minutes"
             ]
+          },
+          "session_stories": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "session_minutes": {
+                  "type": "integer"
+                },
+                "minutes_by_role": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "model_minutes": {
+                  "type": "integer"
+                },
+                "input_tokens": {
+                  "type": "integer"
+                },
+                "output_tokens": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "session_minutes",
+                "minutes_by_role",
+                "model_minutes",
+                "input_tokens",
+                "output_tokens"
+              ]
+            }
+          },
+          "session_planning": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "session_minutes": {
+                "type": "integer"
+              },
+              "model_minutes": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "session_minutes",
+              "model_minutes"
+            ]
+          },
+          "session_epics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "session_minutes": {
+                  "type": "integer"
+                },
+                "minutes_by_role": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "model_minutes": {
+                  "type": "integer"
+                },
+                "input_tokens": {
+                  "type": "integer"
+                },
+                "output_tokens": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "session_minutes",
+                "minutes_by_role",
+                "model_minutes",
+                "input_tokens",
+                "output_tokens"
+              ]
+            }
+          },
+          "session_epics_to_date": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "session_minutes": {
+                  "type": "integer"
+                },
+                "minutes_by_role": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "model_minutes": {
+                  "type": "integer"
+                },
+                "input_tokens": {
+                  "type": "integer"
+                },
+                "output_tokens": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "session_minutes",
+                "minutes_by_role",
+                "model_minutes",
+                "input_tokens",
+                "output_tokens"
+              ]
+            }
           },
           "prior": {
             "type": [
@@ -1755,6 +1885,24 @@
                 ]
               },
               "model_time_split_delivery_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_input_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_output_tokens": {
                 "type": [
                   "integer",
                   "null"
@@ -1919,6 +2067,24 @@
                 ]
               },
               "model_time_split_delivery_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_input_tokens": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_output_tokens": {
                 "type": [
                   "integer",
                   "null"

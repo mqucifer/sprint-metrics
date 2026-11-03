@@ -146,17 +146,13 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                                 "card_id": {"type": "string"},
                                 "model_minutes": {"type": "integer"},
                                 "input_tokens": {"type": "integer"},
-                                "cached_input_percent": {"type": "integer"},
                                 "output_tokens": {"type": "integer"},
-                                "reasoning_output_percent": {"type": "integer"},
                             },
                             "required": [
                                 "card_id",
                                 "model_minutes",
                                 "input_tokens",
-                                "cached_input_percent",
                                 "output_tokens",
-                                "reasoning_output_percent",
                             ],
                         },
                     },
@@ -319,20 +315,15 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     "working_time": {
                         "type": ["object", "null"],
                         "properties": {
-                            "per_step": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "step": {"type": ["string", "null"]},
-                                        "minutes": {"type": "integer"},
-                                    },
-                                    "required": ["step", "minutes"],
-                                },
+                            "stories": {
+                                "type": "object",
+                                "additionalProperties": {"type": "integer"},
                             },
+                            "planning": {"type": "integer"},
+                            "cardless": {"type": "integer"},
                             "total": {"type": "integer"},
                         },
-                        "required": ["per_step", "total"],
+                        "required": ["stories", "planning", "cardless", "total"],
                     },
                     "cost_by_kind": {
                         "type": ["object", "null"],
@@ -345,10 +336,19 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                     "model_time_split": {
                         "type": ["object", "null"],
                         "properties": {
-                            "refinement": {"type": "integer"},
+                            "planning": {"type": "integer"},
                             "delivery": {"type": "integer"},
                         },
-                        "required": ["refinement", "delivery"],
+                        "required": ["planning", "delivery"],
+                    },
+                    "model_time": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "model_minutes": {"type": "integer"},
+                            "input_tokens": {"type": "integer"},
+                            "output_tokens": {"type": "integer"},
+                        },
+                        "required": ["model_minutes", "input_tokens", "output_tokens"],
                     },
                     "idle": {
                         "type": ["object", "null"],
@@ -357,6 +357,83 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "idle_minutes": {"type": ["integer", "null"]},
                         },
                         "required": ["sprint_duration_minutes", "idle_minutes"],
+                    },
+                    "session_stories": {
+                        "type": ["object", "null"],
+                        "additionalProperties": {
+                            "type": ["object", "null"],
+                            "properties": {
+                                "session_minutes": {"type": "integer"},
+                                "minutes_by_role": {
+                                    "type": "object",
+                                    "additionalProperties": {"type": "integer"},
+                                },
+                                "model_minutes": {"type": "integer"},
+                                "input_tokens": {"type": "integer"},
+                                "output_tokens": {"type": "integer"},
+                            },
+                            "required": [
+                                "session_minutes",
+                                "minutes_by_role",
+                                "model_minutes",
+                                "input_tokens",
+                                "output_tokens",
+                            ],
+                        },
+                    },
+                    "session_planning": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "session_minutes": {"type": "integer"},
+                            "model_minutes": {"type": "integer"},
+                        },
+                        "required": ["session_minutes", "model_minutes"],
+                    },
+                    "session_epics": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                                "session_minutes": {"type": "integer"},
+                                "minutes_by_role": {
+                                    "type": "object",
+                                    "additionalProperties": {"type": "integer"},
+                                },
+                                "model_minutes": {"type": "integer"},
+                                "input_tokens": {"type": "integer"},
+                                "output_tokens": {"type": "integer"},
+                            },
+                            "required": [
+                                "session_minutes",
+                                "minutes_by_role",
+                                "model_minutes",
+                                "input_tokens",
+                                "output_tokens",
+                            ],
+                        },
+                    },
+                    "session_epics_to_date": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                                "session_minutes": {"type": "integer"},
+                                "minutes_by_role": {
+                                    "type": "object",
+                                    "additionalProperties": {"type": "integer"},
+                                },
+                                "model_minutes": {"type": "integer"},
+                                "input_tokens": {"type": "integer"},
+                                "output_tokens": {"type": "integer"},
+                            },
+                            "required": [
+                                "session_minutes",
+                                "minutes_by_role",
+                                "model_minutes",
+                                "input_tokens",
+                                "output_tokens",
+                            ],
+                        },
                     },
                     "prior": {
                         "type": ["object", "null"],
@@ -381,6 +458,9 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "model_time_split_delivery_minutes": {
                                 "type": ["integer", "null"]
                             },
+                            "model_time_minutes": {"type": ["integer", "null"]},
+                            "model_time_input_tokens": {"type": ["integer", "null"]},
+                            "model_time_output_tokens": {"type": ["integer", "null"]},
                             "idle_minutes": {"type": ["integer", "null"]},
                         },
                     },
@@ -407,6 +487,9 @@ SPRINT_RANGE_SCHEMA: dict[str, object] = {
                             "model_time_split_delivery_minutes": {
                                 "type": ["integer", "null"]
                             },
+                            "model_time_minutes": {"type": ["integer", "null"]},
+                            "model_time_input_tokens": {"type": ["integer", "null"]},
+                            "model_time_output_tokens": {"type": ["integer", "null"]},
                             "idle_minutes": {"type": ["integer", "null"]},
                         },
                     },
@@ -482,6 +565,8 @@ EVENT_INTAKE_SCHEMA: dict[str, object] = {
         "end": {"type": "string", "format": "date-time"},
         "model_seconds": {"type": "integer", "minimum": 0},
         "tokens": {"type": "integer", "minimum": 0},
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
     },
 }
 
