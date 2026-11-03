@@ -11,7 +11,10 @@ from datetime import UTC, date, datetime
 import pytest
 
 from sprint_metrics.service import _start_service
-from sprint_metrics.session_stories import calculate_session_stories
+from sprint_metrics.session_stories import (
+    calculate_session_planning,
+    calculate_session_stories,
+)
 from sprint_metrics.store import init_db, upsert_session, upsert_sprint
 
 SPRINT_METRICS_DB = os.environ.get("SPRINT_METRICS_DB")
@@ -142,9 +145,11 @@ def test_story_with_no_session_record_reads_null():
     assert result["story_z"] is None
 
 
-def test_story_with_sessions_but_no_started_event_reads_null():
-    """AC2 (R3): a story with session records but no started event has no
-    established start; its sessions read as planning, and its numbers read null."""
+def test_story_with_sessions_but_no_started_event_reads_zero():
+    """AC3 (R3): a story with session records but no started event has no
+    established start; its sessions read as planning, and its per-story
+    numbers read a true zero (sessions ran; all of them are planning),
+    distinct from the null of a story with no session record."""
     story_data = {
         "story_p": {
             "started_at": None,
@@ -161,7 +166,13 @@ def test_story_with_sessions_but_no_started_event_reads_null():
         }
     }
     result = calculate_session_stories(story_data)
-    assert result["story_p"] is None
+    assert result["story_p"] == {
+        "session_minutes": 0,
+        "minutes_by_role": {},
+        "model_minutes": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }
 
 
 def test_session_before_started_event_is_planning_not_delivery():
@@ -250,10 +261,179 @@ def test_pre_session_sprint_all_stories_read_null():
     assert result["story_b"] is None
 
 
+def test_sessions_all_before_started_event_read_zero():
+    """AC2 (R3): a story whose sessions all start before its 'started' event
+    has no delivery sessions; its per-story numbers read a true zero."""
+    started_at = _dt("2024-03-02T12:00:00Z")
+    story_data = {
+        "story_p": {
+            "started_at": started_at,
+            "sessions": [
+                # A 10-minute session that started before the story's start
+                (
+                    _dt("2024-03-02T09:00:00Z"),
+                    _dt("2024-03-02T09:10:00Z"),
+                    "Business Analyst",
+                    360,
+                    2000,
+                    500,
+                ),
+            ],
+        }
+    }
+    result = calculate_session_stories(story_data)
+    assert result["story_p"] == {
+        "session_minutes": 0,
+        "minutes_by_role": {},
+        "model_minutes": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }
+
+
 def test_empty_story_data_returns_empty_dict():
     """No stories at all: the answer is an empty dict."""
     result = calculate_session_stories({})
     assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for calculate_session_planning
+# ---------------------------------------------------------------------------
+
+
+def test_planning_empty_story_data_returns_none():
+    """AC2: a sprint with no carded session records reads session_planning
+    null."""
+    result = calculate_session_planning({})
+    assert result is None
+
+
+def test_planning_story_without_started_event_counts_all_sessions():
+    """AC3: a story with session records but no 'started' board event has no
+    established start; its sessions read as planning."""
+    story_data = {
+        "story_r": {
+            "started_at": None,
+            "sessions": [
+                (
+                    _dt("2024-03-02T09:00:00Z"),
+                    _dt("2024-03-02T09:07:00Z"),
+                    "Business Analyst",
+                    420,
+                    3000,
+                    800,
+                ),
+            ],
+        }
+    }
+    result = calculate_session_planning(story_data)
+    assert result == {
+        "session_minutes": 7,
+        "model_minutes": 7,
+    }
+
+
+def test_planning_session_before_start_counts_as_planning():
+    """AC1/AC2: a session that starts before the story's 'started' event is
+    planning; its minutes and model minutes count in the sprint's planning
+    part."""
+    started_at = _dt("2024-03-02T12:00:00Z")
+    story_data = {
+        "story_a": {
+            "started_at": started_at,
+            "sessions": [
+                # Planning session: 11 minutes, model time 360 seconds
+                (
+                    _dt("2024-03-02T08:00:00Z"),
+                    _dt("2024-03-02T08:11:00Z"),
+                    "Business Analyst",
+                    360,
+                    5000,
+                    1000,
+                ),
+                # Delivery session: 5 minutes, starts after the story's start
+                (
+                    _dt("2024-03-02T13:00:00Z"),
+                    _dt("2024-03-02T13:05:00Z"),
+                    "Developer",
+                    300,
+                    500,
+                    100,
+                ),
+            ],
+        }
+    }
+    result = calculate_session_planning(story_data)
+    assert result == {
+        "session_minutes": 11,
+        "model_minutes": 6,
+    }
+
+
+def test_planning_mixed_stories_sums_planning_only():
+    """AC2: planning is the sum of all planning sessions across all stories.
+    Story P has a 10-minute planning session (model 360s); story Q has a
+    20-minute delivery session. Planning reads 10 session minutes and 6
+    model minutes."""
+    story_data = {
+        "story_p": {
+            "started_at": _dt("2024-01-10T09:00:00Z"),
+            "sessions": [
+                (
+                    _dt("2024-01-05T09:00:00Z"),
+                    _dt("2024-01-05T09:10:00Z"),
+                    "Business Analyst",
+                    360,
+                    2000,
+                    500,
+                ),
+            ],
+        },
+        "story_q": {
+            "started_at": _dt("2024-01-08T09:00:00Z"),
+            "sessions": [
+                (
+                    _dt("2024-01-09T09:00:00Z"),
+                    _dt("2024-01-09T09:20:00Z"),
+                    "Developer",
+                    1200,
+                    4000,
+                    1000,
+                ),
+            ],
+        },
+    }
+    result = calculate_session_planning(story_data)
+    assert result == {
+        "session_minutes": 10,
+        "model_minutes": 6,
+    }
+
+
+def test_planning_all_delivery_reads_zero():
+    """AC2: when all carded sessions are delivery (none before their story's
+    start), planning reads a true zero (sessions ran; none are planning)."""
+    story_data = {
+        "story_a": {
+            "started_at": _dt("2024-03-02T09:00:00Z"),
+            "sessions": [
+                (
+                    _dt("2024-03-02T10:00:00Z"),
+                    _dt("2024-03-02T10:05:00Z"),
+                    "Developer",
+                    300,
+                    500,
+                    100,
+                ),
+            ],
+        }
+    }
+    result = calculate_session_planning(story_data)
+    assert result == {
+        "session_minutes": 0,
+        "model_minutes": 0,
+    }
 
 
 # ---------------------------------------------------------------------------
