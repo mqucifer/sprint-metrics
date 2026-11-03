@@ -989,21 +989,10 @@ def query_session_story_data(conn: Connection, sprint: str) -> dict[str, dict]:
 
     The card's first 'started' event time is the planning/delivery boundary:
     sessions that start before it are planning; from it, a session's time is
-    the story's.
+    the story's. The boundary is the card's global first 'started' event
+    (across all sprints), per R3.
     """
-    # Get the first 'started' event per card in the sprint.
-    started_rows = conn.execute(
-        """
-        SELECT card_id, MIN(event_time)
-        FROM sprint_metrics.board_events
-        WHERE sprint = %s AND type = 'started'
-        GROUP BY card_id
-        """,
-        (sprint,),
-    ).fetchall()
-    started_at: dict[str, object] = {card: ts for card, ts in started_rows}
-
-    # Get all sessions in the sprint.
+    # Get all cards that have sessions in this sprint.
     session_rows = conn.execute(
         """
         SELECT card_id, session_start, session_end, role, model_seconds, input_tokens, output_tokens
@@ -1014,6 +1003,38 @@ def query_session_story_data(conn: Connection, sprint: str) -> dict[str, dict]:
         (sprint,),
     ).fetchall()
 
+    # Get all cards that have started events in this sprint (for null reporting).
+    sprint_started_rows = conn.execute(
+        """
+        SELECT card_id FROM sprint_metrics.board_events
+        WHERE sprint = %s AND type = 'started'
+        """,
+        (sprint,),
+    ).fetchall()
+    sprint_started_cards = {row[0] for row in sprint_started_rows}
+
+    # Collect all card_ids we need data for: cards with sessions + cards
+    # with started events in this sprint.
+    all_card_ids = set()
+    for card_id, *_ in session_rows:
+        all_card_ids.add(card_id)
+    all_card_ids |= sprint_started_cards
+
+    # Get the global first 'started' event per card (across all sprints), per R3.
+    started_at: dict[str, object] = {}
+    if all_card_ids:
+        placeholders = ",".join(["%s"] * len(all_card_ids))
+        started_rows = conn.execute(
+            f"""
+            SELECT card_id, MIN(event_time)
+            FROM sprint_metrics.board_events
+            WHERE type = 'started' AND card_id IN ({placeholders})
+            GROUP BY card_id
+            """,
+            tuple(all_card_ids),
+        ).fetchall()
+        started_at = {card: ts for card, ts in started_rows}
+
     result: dict[str, dict] = {}
     for card_id, s_start, s_end, role, model_sec, in_tok, out_tok in session_rows:
         if card_id not in result:
@@ -1021,10 +1042,10 @@ def query_session_story_data(conn: Connection, sprint: str) -> dict[str, dict]:
         result[card_id]["sessions"].append(
             (s_start, s_end, role, model_sec, in_tok, out_tok)
         )
-    # Cards that have a 'started' event but no session records still appear
-    # (with an empty sessions list), so the answer can report null for them.
-    for card_id in started_at:
+    # Cards that have a 'started' event in the sprint but no session records
+    # still appear (with an empty sessions list), so the answer can report null.
+    for card_id in sprint_started_cards:
         if card_id not in result:
-            result[card_id] = {"started_at": started_at[card_id], "sessions": []}
+            result[card_id] = {"started_at": started_at.get(card_id), "sessions": []}
 
     return result
