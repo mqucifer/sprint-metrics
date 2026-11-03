@@ -28,7 +28,7 @@ BEGIN:metrics
 | Model minutes (middle) | `model_minutes_middle` | Return the median whole model minutes across costed stories, or None when no story carries cost. |
 | Model minutes (total) | `model_minutes_total` | Return the total whole model minutes across costed stories, or None when no story carries cost. |
 | Model time split (delivery) | `model_time_split_delivery_minutes` | Return the sprint's model time spent in delivery, in whole minutes — each story's delivery seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
-| Model time split (refinement) | `model_time_split_refinement_minutes` | Return the sprint's model time spent in refinement, in whole minutes — each story's refinement seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
+| Model time split (planning) | `model_time_split_refinement_minutes` | Return the sprint's model time spent in planning, in whole minutes — each story's planning seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
 | Output tokens (middle) | `output_tokens_middle` | Return the median output tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards, in whole points. |
@@ -145,65 +145,44 @@ in each later sprint's `prior` and `delta`, null where a sprint has no data.
 
 ### Model cost
 
-The crew's event-sending automation attaches a cost payload to each
-`finished` event it sends. The payload carries five fields, each a
-non-negative integer:
+The cost answer is computed from the stories' session records (delivery
+sessions only): sessions that start at or after the story's `started`
+board event. Each story's numbers are its model minutes in whole model
+minutes and its input and output tokens as whole counts. A story's
+numbers appear whether or not the story finished.
 
-- `model_seconds` — total model time across every role's calls for this story
-- `input_tokens` — total input tokens consumed
-- `cached_input_tokens` — input tokens served from cache
-- `output_tokens` — total output tokens produced
-- `reasoning_output_tokens` — output tokens spent on reasoning
-
-All five fields are sent together or not at all; a partial payload is
-rejected at intake.
-
-The cost payload may also carry an optional `model_time_split` sub-object
-that splits the story's model time between refinement and delivery. Its two
-fields are each a non-negative integer (model seconds):
-
-- `refinement` — model seconds spent in refinement
-- `delivery` — model seconds spent in delivery
-
-The two fields are sent together or not at all; a partial sub-object is
-rejected at intake. The sub-object is independent of the five cost fields:
-a finished event may carry the split without the five fields, or the five
-fields without the split.
-
-The report's display unit for model cost is whole minutes. The crew sends
-model seconds on the event; the report shows `round(model_seconds / 60)`
-as `model_minutes`.
-
-A story's cost is the summed total across every role's model calls for that
-story. The sprint's cost summary reports two aggregates per measure
+The cost's total equals the sum of the `story_costs` entries. The
+sprint's cost summary reports two aggregates per measure
 (`model_minutes`, `input_tokens`, `output_tokens`):
 
-- **middle** — the median of the per-story values across all costed stories
-- **total** — the sum across the costed stories
+- **middle** — the median of the per-story values across all stories
+  that carry delivery session data
+- **total** — the sum across the stories that carry delivery session
+  data
 
-The two percents, `cached_input_percent` and `reasoning_output_percent`,
-are computed from the sprint's combined token totals, not per story:
-`cached_input_percent` is the sprint's cached-input share of all input
-tokens, and `reasoning_output_percent` is the sprint's reasoning share of
-all output tokens. Both percents are identical on every story in the
-`story_costs` list.
+A sprint's model minutes and tokens include the planning and card-less
+sessions in the sprint's total (the `model_time` answer). A sprint with
+no delivery session records reads null for cost and an empty
+`story_costs` list (no data, not zero).
 
-### Model time split (refinement against delivery)
+The finished-event cost payload (`model_seconds` and friends) is still
+accepted at intake but no longer feeds any answer. The `model_seconds`
+field on the event is the model time in seconds; the cost answer
+converts it to whole model minutes as its display unit.
+
+### Model time split (planning against delivery)
 
 `model_time_split_refinement_minutes` and
-`model_time_split_delivery_minutes` split the sprint's model time between
-refinement and delivery. The unit is whole minutes, the model_minutes
-display unit: the crew sends model seconds on each story's finished event
-(`model_time_split`'s `refinement` and `delivery` fields), and each story's
-two values are converted to whole minutes (rounded) before the sprint's
-totals sum them across the costed stories. The pair lets a reader see,
-sprint by sprint, how much model time went to refinement and how much to
-delivery.
+`model_time_split_delivery_minutes` split the sprint's model time
+between planning and delivery, computed from the session records. The
+unit is whole model minutes: the planning part is the model minutes of
+sessions that ran before their story's start; the delivery part is the
+model minutes of sessions from the story's start on. The pair lets a
+reader see, sprint by sprint, how much model time went to planning and
+how much to delivery.
 
-A sprint whose stories carry no model-time split — the pre-Goal payloads
-that carry the five-field cost but no split, or a sprint with no costed
-stories at all — reports both measures as null, not zero: no data, matching
-the null behaviour of the other minute-based metrics.
+A sprint with no carded session records reads null (no data, not
+zero).
 
 ### Rework (send-backs to refinement and review/QA returns)
 

@@ -1070,6 +1070,27 @@ def query_cardless_sessions(conn: Connection, sprint: str) -> list[tuple[datetim
     return [(row[0], row[1]) for row in rows]
 
 
+def query_cardless_session_details(
+    conn: Connection, sprint: str
+) -> list[tuple]:
+    """Return the sprint's card-less sessions with full details.
+
+    Each entry is a tuple of (session_start, session_end, role, model_seconds,
+    input_tokens, output_tokens). Card-less sessions are those stored with
+    card_id NULL.
+    """
+    rows = conn.execute(
+        """
+        SELECT session_start, session_end, role, model_seconds, input_tokens, output_tokens
+        FROM sprint_metrics.sessions
+        WHERE sprint = %s AND card_id IS NULL
+        ORDER BY session_start
+        """,
+        (sprint,),
+    ).fetchall()
+    return list(rows)
+
+
 def query_card_epics(conn: Connection, card_ids: set[str]) -> dict[str, str | None]:
     """Return the epic for each card_id, from the card's stored board-event rows.
 

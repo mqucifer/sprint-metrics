@@ -23,7 +23,6 @@ from zoneinfo import ZoneInfo
 
 from sprint_metrics.store import (
     query_card_kinds,
-    query_model_time_splits,
     query_sprint_span,
     query_working_time_events,
 )
@@ -362,45 +361,117 @@ def cost_by_kind_total(
     return answer.get(kind, 0)
 
 
-def calculate_model_time_split(
-    splits: Mapping[str, tuple[int | None, int | None]],
-) -> dict | None:
-    """The sprint's model time split into refinement and delivery, in whole minutes.
+def calculate_model_time_split(splits: dict[str, dict]) -> dict | None:
+    """The sprint's model time split into planning and delivery, in whole minutes.
 
-    ``splits`` maps each card_id to the (refinement, delivery) model seconds
-    its finished event's cost payload carried. Each story's two values are
-    converted to whole minutes (rounded, the model_minutes display unit) and
-    the sprint's split is the sum across the stories that carry a split, so a
-    story with a smaller refinement share pulls the sprint's refinement total
-    down against its delivery total. ``None`` when no story in the sprint
-    carries a split (the pre-Goal payloads, or no costed stories at all), so a
-    sprint without split data reads as no data, not zero.
+    ``splits`` has the same shape as for ``calculate_session_stories``:
+    a dict mapping each card to a dict with ``started_at`` and ``sessions``.
+    The planning part is the model seconds of sessions that start before the
+    story's 'started' event (or all sessions for a story with no 'started'
+    event); the delivery part is the model seconds of sessions that start at
+    or after the story's 'started' event. Each part is converted to whole
+    minutes (rounded). Returns ``None`` when no story in the sprint carries
+    session records (no data, not zero).
     """
     if not splits:
         return None
-    refinement = 0
-    delivery = 0
-    for refinement_seconds, delivery_seconds in splits.values():
-        if refinement_seconds is not None:
-            refinement += round(refinement_seconds / 60)
-        if delivery_seconds is not None:
-            delivery += round(delivery_seconds / 60)
-    return {"refinement": refinement, "delivery": delivery}
+    has_sessions = any(data["sessions"] for data in splits.values())
+    if not has_sessions:
+        return None
+    planning_seconds = 0
+    delivery_seconds = 0
+    for _card_id, data in splits.items():
+        started_at = data["started_at"]
+        sessions = data["sessions"]
+        if not sessions:
+            continue
+        if started_at is None:
+            for _s_start, _s_end, _role, model_sec, _in_tok, _out_tok in sessions:
+                if model_sec is not None:
+                    planning_seconds += model_sec
+        else:
+            for s_start, _s_end, _role, model_sec, _in_tok, _out_tok in sessions:
+                if model_sec is not None:
+                    if s_start < started_at:
+                        planning_seconds += model_sec
+                    else:
+                        delivery_seconds += model_sec
+    return {
+        "planning": round(planning_seconds / 60),
+        "delivery": round(delivery_seconds / 60),
+    }
 
 
 def model_time_split_total(
-    splits: Mapping[str, tuple[int | None, int | None]],
+    splits: dict[str, dict],
     part: str,
 ) -> int | None:
     """The sprint's model-time split total for the given part, in whole minutes.
 
-    Returns None when no story in the sprint carries a split (no data, not
-    zero). The ``part`` argument is 'refinement' or 'delivery'.
+    Returns None when no story in the sprint carries session records (no
+    data, not zero). The ``part`` argument is 'planning' or 'delivery'.
     """
     answer = calculate_model_time_split(splits)
     if answer is None:
         return None
     return answer.get(part, 0)
+
+
+def calculate_sprint_model_time(
+    story_data: dict[str, dict],
+    cardless_sessions: list[tuple],
+) -> dict | None:
+    """The sprint's total model time across all session records, in whole minutes
+    and whole token counts.
+
+    The total includes the stories' delivery sessions, the planning sessions,
+    and the card-less sessions. ``story_data`` has the same shape as for
+    ``calculate_session_stories``. ``cardless_sessions`` is a list of
+    (session_start, session_end, role, model_seconds, input_tokens,
+    output_tokens) for the sprint's card-less sessions.
+
+    Returns ``{"model_minutes": X, "input_tokens": Y, "output_tokens": Z}``
+    where X, Y, Z are the totals across all sessions. Returns None when the
+    sprint has no session records at all (no data, not zero).
+    """
+    # Check if there are any sessions at all.
+    has_card_sessions = any(data["sessions"] for data in story_data.values())
+    has_cardless = len(cardless_sessions) > 0
+    if not has_card_sessions and not has_cardless:
+        return None
+
+    total_model_seconds = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
+
+    for _card_id, data in story_data.items():
+        sessions = data["sessions"]
+        if not sessions:
+            continue
+        for _s_start, _s_end, _role, model_sec, in_tok, out_tok in sessions:
+            if model_sec is not None:
+                total_model_seconds += model_sec
+            if in_tok is not None:
+                total_input_tokens += in_tok
+            if out_tok is not None:
+                total_output_tokens += out_tok
+
+    for entry in cardless_sessions:
+        # cardless_sessions entries are (session_start, session_end, role, model_seconds, input_tokens, output_tokens)
+        if len(entry) >= 6:
+            _s_start, _s_end, _role, model_sec, in_tok, out_tok = entry[0], entry[1], entry[2], entry[3], entry[4], entry[5]
+            if model_sec is not None:
+                total_model_seconds += model_sec
+            if in_tok is not None:
+                total_input_tokens += in_tok
+            if out_tok is not None:
+                total_output_tokens += out_tok
+
+    return {
+        "model_minutes": round(total_model_seconds / 60),
+        "input_tokens": total_input_tokens,
+        "output_tokens": total_output_tokens,
+    }
 
 
 def _attach_range_working_time(
@@ -501,24 +572,28 @@ def _attach_range_model_time_split(
 ) -> None:
     """Attach the model-time split answer to each range entry, and its flat names to prior/delta.
 
-    A sprint with no events carries model_time_split null. A sprint with
-    events whose costed stories carry the five-field cost payload but no split
-    (the pre-Goal payloads), or a sprint with no costed stories at all, also
-    carries model_time_split null (no data, not zero; no backfill). For every
-    sprint after the first, the flat names model_time_split_refinement_minutes
-    and model_time_split_delivery_minutes appear in that entry's prior and
-    delta whenever those objects are present, null where the corresponding
-    sprint has no split data.
+    The split is computed from the sprint's session records: the planning
+    part is the model minutes of sessions that ran before their story's start;
+    the delivery part is the model minutes of sessions from the story's start
+    on. A sprint with no session records carries model_time_split null (no
+    data, not zero). For every sprint after the first, the flat names
+    model_time_split_refinement_minutes (the planning part) and
+    model_time_split_delivery_minutes appear in that entry's prior and delta
+    whenever those objects are present, null where the corresponding sprint
+    has no split data.
     """
+    from sprint_metrics.store import query_session_story_data
+
     answers: dict[str, dict | None] = {}
     flat: dict[str, dict[str, int | None]] = {}
     for label in labels:
         if label in has_events:
-            answer = calculate_model_time_split(query_model_time_splits(conn, label))
+            story_data = query_session_story_data(conn, label)
+            answer = calculate_model_time_split(story_data)
             answers[label] = answer
             if answer is not None:
                 flat[label] = {
-                    "model_time_split_refinement_minutes": answer["refinement"],
+                    "model_time_split_refinement_minutes": answer["planning"],
                     "model_time_split_delivery_minutes": answer["delivery"],
                 }
             else:
@@ -551,6 +626,80 @@ def _attach_range_model_time_split(
             ):
                 cur, pri = flat[label][name], flat[prior_label][name]
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+def _attach_range_model_time(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the sprint's model-time total answer to each range entry, and its flat names to prior/delta.
+
+    The sprint's model time is the total model minutes and tokens across all
+    session records (stories, planning, and card-less sessions). A sprint with
+    no session records carries model_time null (no data, not zero). For every
+    sprint after the first, the flat names model_time_minutes,
+    model_time_input_tokens, and model_time_output_tokens appear in that
+    entry's prior and delta whenever those objects are present, null where
+    the corresponding sprint has no model-time data.
+    """
+    from sprint_metrics.store import query_cardless_session_details, query_session_story_data
+
+    answers: dict[str, dict | None] = {}
+    flat: dict[str, dict[str, int | None]] = {}
+    for label in labels:
+        if label in has_events:
+            story_data = query_session_story_data(conn, label)
+            cardless = query_cardless_session_details(conn, label)
+            answer = calculate_sprint_model_time(story_data, cardless)
+            answers[label] = answer
+            if answer is not None:
+                flat[label] = {
+                    "model_time_minutes": answer["model_minutes"],
+                    "model_time_input_tokens": answer["input_tokens"],
+                    "model_time_output_tokens": answer["output_tokens"],
+                }
+            else:
+                flat[label] = {
+                    "model_time_minutes": None,
+                    "model_time_input_tokens": None,
+                    "model_time_output_tokens": None,
+                }
+        else:
+            answers[label] = None
+            flat[label] = {
+                "model_time_minutes": None,
+                "model_time_input_tokens": None,
+                "model_time_output_tokens": None,
+            }
+    for index, label in enumerate(labels):
+        entry = result["sprints"][label]
+        entry["model_time"] = answers[label]
+        if index == 0:
+            continue
+        prior_label = labels[index - 1]
+        if isinstance(entry.get("prior"), dict):
+            for name in (
+                "model_time_minutes",
+                "model_time_input_tokens",
+                "model_time_output_tokens",
+            ):
+                entry["prior"][name] = flat[prior_label][name]
+        if isinstance(entry.get("delta"), dict):
+            for name in (
+                "model_time_minutes",
+                "model_time_input_tokens",
+                "model_time_output_tokens",
+            ):
+                cur, pri = flat[label][name], flat[prior_label][name]
+                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+_RANGE_MODEL_TIME_DESCRIPTION = (
+    "Each entry also carries a model_time answer: the sprint's total "
+    "model time across all session records (stories, planning, and "
+    "card-less sessions), in whole model minutes and whole token "
+    "counts. A sprint with no session records reads null (no data, "
+    "not zero). "
+)
 
 
 def _attach_range_idle(
@@ -619,11 +768,12 @@ _RANGE_COST_BY_KIND_DESCRIPTION = (
 
 _RANGE_MODEL_TIME_SPLIT_DESCRIPTION = (
     "Each entry also carries a model_time_split answer: the "
-    "sprint's model time split into refinement and delivery, in "
-    "whole minutes (each story's split converted to whole minutes "
-    "and summed over the costed stories); a sprint whose stories "
-    "carry no model-time split (or no costed stories at all) "
-    "reads null (no data, not zero). "
+    "sprint's model time split into planning and delivery, in "
+    "whole model minutes, from the session records. The planning "
+    "part is the model minutes of sessions that ran before their "
+    "story's start; the delivery part is the model minutes of "
+    "sessions from the story's start on. A sprint with no "
+    "carded session records reads null (no data, not zero). "
 )
 
 _RANGE_IDLE_DESCRIPTION = (

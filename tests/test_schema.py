@@ -214,9 +214,7 @@ def test_sprint_range_schema_accepts_range_entry_with_cost():
         "card_id": "p1",
         "model_minutes": 18,
         "input_tokens": 2500,
-        "cached_input_percent": 40,
         "output_tokens": 600,
-        "reasoning_output_percent": 17,
     }
     cost = {
         "middle": {"model_minutes": 31, "input_tokens": 4000, "output_tokens": 1200},
