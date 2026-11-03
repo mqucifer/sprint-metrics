@@ -1,5 +1,4 @@
-"""Temporary debug: dump the /range response for two registered sprints where the
-first has only session events and the second has only board events."""
+"""Temporary debug: dump the /range response for two registered sprints."""
 
 from __future__ import annotations
 
@@ -21,12 +20,37 @@ from sprint_metrics.store import init_db
 
 @requires_db
 def test_debug_prior():
-    from sprint_metrics.sprint_range import format_sprint_range_json
-
     from pathlib import Path
 
-    body = format_sprint_range_json(
-        {"2025-05": [], "2025-06": []}, ["2025-05", "2025-06"]
-    )
-    Path(__file__).with_name("tmp_debug_out.json").write_text(body)
-    assert True
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint IN ('2025-05', '2025-06')")
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2025-05', '2025-06')")
+    conn.commit()
+    _register_sprint(conn, "2025-05", "2025-05-01", "2025-05-14")
+    _register_sprint(conn, "2025-06", "2025-06-01", "2025-06-14")
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        _post_events(
+            f"{base}/events",
+            _session_event("dga", "2025-05", "2025-05-05T10:00:00Z", "2025-05-05T10:30:00Z"),
+        )
+        _post_events(
+            f"{base}/events",
+            _make_event(
+                card_id="dgb",
+                event_type="started",
+                timestamp="2025-06-05T10:00:00Z",
+                sprint="2025-06",
+            ),
+        )
+        status, body = _get_json(f"{base}/range?start=2025-05&end=2025-06")
+        second = body["sprints"]["2025-06"]
+        Path(__file__).with_name("tmp_debug_out.json").write_text(
+            f"prior_type={type(second['prior']).__name__} delta_type={type(second['delta']).__name__}\n"
+            + json.dumps(second, indent=2)
+        )
+    finally:
+        conn.close()
