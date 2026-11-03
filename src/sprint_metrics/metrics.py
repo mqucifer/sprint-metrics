@@ -626,6 +626,9 @@ def _attach_range_cost(
     for i, label in enumerate(labels):
         if label not in has_events:
             entry = result["sprints"][label]
+            for key in entry:
+                if key not in ("prior", "delta"):
+                    entry[key] = None
             entry["story_costs"] = []
             entry["cost"] = None
             continue

@@ -1045,103 +1045,103 @@ def test_range_window_verdicts_judged_against_their_direction():
     first_attempt_rate_percent is lower (worse, higher-is-better), its
     model_minutes_total is higher (up, a movement-only measure), and a measure
     equal in both reference sprints (points_delivered) reads flat."""
+    from datetime import datetime
+
     import psycopg
+
+    from sprint_metrics.store import upsert_session
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.sessions WHERE sprint IN ('2024-01', '2024-02')"
+    )
     conn.execute(
         "DELETE FROM sprint_metrics.board_events WHERE card_id IN ('v2_a1', 'v2_b1', 'v2_b2')"
     )
     conn.commit()
 
+    # 2024-01: one story with a delivery session (600 model seconds -> 10 min)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, points, attempts)
+           VALUES ('v2_a1', 'started', %s, '2024-01', '2024-01-01', 5, 1)""",
+        (datetime(2024, 1, 2, 10, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "v2_a1",
+            "role": "Developer",
+            "start": "2024-01-02T11:00:00Z",
+            "end": "2024-01-02T12:00:00Z",
+            "sprint": "2024-01",
+            "model_seconds": 600,
+            "input_tokens": 1000,
+            "output_tokens": 500,
+        },
+    )
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, points, attempts)
+           VALUES ('v2_a1', 'finished', %s, '2024-01', '2024-01-01', 5, 1)""",
+        (datetime(2024, 1, 5, 10, 0, tzinfo=UTC),),
+    )
+    # 2024-02: two stories with delivery sessions (1800+1200=3000 model seconds -> 50 min)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, points, attempts)
+           VALUES ('v2_b1', 'started', %s, '2024-02', '2024-02-01', 3, 1)""",
+        (datetime(2024, 2, 2, 10, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "v2_b1",
+            "role": "Developer",
+            "start": "2024-02-02T11:00:00Z",
+            "end": "2024-02-02T12:00:00Z",
+            "sprint": "2024-02",
+            "model_seconds": 1800,
+            "input_tokens": 1000,
+            "output_tokens": 500,
+        },
+    )
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, points, attempts)
+           VALUES ('v2_b1', 'finished', %s, '2024-02', '2024-02-01', 3, 1)""",
+        (datetime(2024, 2, 5, 10, 0, tzinfo=UTC),),
+    )
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, points, attempts)
+           VALUES ('v2_b2', 'started', %s, '2024-02', '2024-02-01', 2, 2)""",
+        (datetime(2024, 2, 2, 10, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "v2_b2",
+            "role": "Developer",
+            "start": "2024-02-02T11:00:00Z",
+            "end": "2024-02-02T12:00:00Z",
+            "sprint": "2024-02",
+            "model_seconds": 1200,
+            "input_tokens": 1000,
+            "output_tokens": 500,
+        },
+    )
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created, points, attempts)
+           VALUES ('v2_b2', 'finished', %s, '2024-02', '2024-02-01', 2, 2)""",
+        (datetime(2024, 2, 5, 10, 0, tzinfo=UTC),),
+    )
+    conn.commit()
+
     port = _start_service(conn, 0)
     try:
-        # 2024-01 (first): one costed card -> throughput 1, first-attempt 100,
-        # model_minutes_total 10, points_delivered 5.
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="v2_a1",
-                event_type="started",
-                timestamp="2024-01-02T10:00:00Z",
-                sprint="2024-01",
-                created="2024-01-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="v2_a1",
-                event_type="finished",
-                timestamp="2024-01-05T10:00:00Z",
-                sprint="2024-01",
-                created="2024-01-01",
-                points=5,
-                attempts=1,
-                model_seconds=600,
-                input_tokens=1000,
-                cached_input_tokens=100,
-                output_tokens=500,
-                reasoning_output_tokens=50,
-            ),
-        )
-        # 2024-02 (last): two costed cards -> throughput 2, first-attempt 50,
-        # model_minutes_total 50, points_delivered 5.
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="v2_b1",
-                event_type="started",
-                timestamp="2024-02-02T10:00:00Z",
-                sprint="2024-02",
-                created="2024-02-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="v2_b1",
-                event_type="finished",
-                timestamp="2024-02-05T10:00:00Z",
-                sprint="2024-02",
-                created="2024-02-01",
-                points=3,
-                attempts=1,
-                model_seconds=1800,
-                input_tokens=1000,
-                cached_input_tokens=100,
-                output_tokens=500,
-                reasoning_output_tokens=50,
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="v2_b2",
-                event_type="started",
-                timestamp="2024-02-02T10:00:00Z",
-                sprint="2024-02",
-                created="2024-02-01",
-            ),
-        )
-        _post_events(
-            f"http://127.0.0.1:{port}/events",
-            _make_event(
-                card_id="v2_b2",
-                event_type="finished",
-                timestamp="2024-02-05T10:00:00Z",
-                sprint="2024-02",
-                created="2024-02-01",
-                points=2,
-                attempts=2,
-                model_seconds=1200,
-                input_tokens=1000,
-                cached_input_tokens=100,
-                output_tokens=500,
-                reasoning_output_tokens=50,
-            ),
-        )
-
         status, body = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-02")
         assert status == 200
         verdicts = body["window"]["verdicts"]
@@ -12441,9 +12441,18 @@ def test_session_event_does_not_change_range_or_trend():
         # Capture /range and /trend after the session.
         status, after = _get_json(f"http://127.0.0.1:{port}/range?start=2024-01&end=2024-01")
         assert status == 200
-        # Every /range field except session_stories, session_planning, and
-        # working_time is unchanged.
-        _session_derived = {"session_stories", "session_planning", "working_time"}
+        # Every /range field except session_stories, session_planning,
+        # working_time, cost, story_costs, model_time, and model_time_split
+        # is unchanged.
+        _session_derived = {
+            "session_stories",
+            "session_planning",
+            "working_time",
+            "cost",
+            "story_costs",
+            "model_time",
+            "model_time_split",
+        }
         before_fields = {
             k: v for k, v in before["sprints"]["2024-01"].items() if k not in _session_derived
         }

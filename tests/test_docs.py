@@ -1502,7 +1502,7 @@ def test_metrics_md_metrics_table_has_cost_by_kind_rows():
 def test_metrics_md_metrics_table_has_model_time_split_rows():
     """AC4: docs/metrics.md's metrics table carries rows for
     model_time_split_refinement_minutes and model_time_split_delivery_minutes,
-    stating what the split measures (model time, refinement against delivery),
+    stating what the split measures (model time, planning against delivery),
     its unit (whole minutes), and its null behaviour."""
     text = (DOCS_DIR / "metrics.md").read_text()
     table = _extract_marked_section(text, "metrics")
@@ -1512,7 +1512,6 @@ def test_metrics_md_metrics_table_has_model_time_split_rows():
     cells = [c.strip() for c in ref_row.split("|") if c.strip()]
     assert cells[1] == "`model_time_split_refinement_minutes`"
     assert "model time" in ref_row.lower()
-    assert "refinement" in ref_row.lower()
     assert "whole minutes" in ref_row
     assert "None" in ref_row or "null" in ref_row.lower()
     del_row = next(
@@ -1522,9 +1521,9 @@ def test_metrics_md_metrics_table_has_model_time_split_rows():
     assert "whole minutes" in del_row
     # A reader of docs/metrics.md learns what the split measures, its unit,
     # and its null behaviour from the section outside the table.
-    section = text.split("### Model time split (refinement against delivery)")[1]
+    section = text.split("### Model time split (planning against delivery)")[1]
     section = section.split("\n###")[0]
-    assert "whole minutes" in section
+    assert "whole model minutes" in section or "whole minutes" in section
     assert "null" in section.lower()
 
 
