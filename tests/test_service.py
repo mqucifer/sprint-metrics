@@ -12014,6 +12014,92 @@ def test_post_session_event_without_card_returns_200_and_stores_null_card():
 
 
 @requires_db
+def test_post_session_event_with_card_twice_holds_one_row():
+    """R7: a session event with card_id POSTed to /events twice gets 200 both
+    times and the sessions table holds exactly one row for that card_id."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE card_id = 'sess_r7_card'")
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "card_id": "sess_r7_card",
+            "type": "session",
+            "timestamp": "2024-02-15T10:00:00Z",
+            "sprint": "2024-02",
+            "card": {"created": "2024-02-01"},
+            "role": "developer",
+            "start": "2024-02-15T09:00:00Z",
+            "end": "2024-02-15T10:00:00Z",
+            "model_seconds": 3600,
+            "tokens": 100000,
+        }
+        status1, body1 = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status1 == 200
+        assert "error" not in body1
+
+        status2, body2 = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status2 == 200
+        assert "error" not in body2
+
+        rows = conn.execute(
+            "SELECT card_id FROM sprint_metrics.sessions WHERE card_id = 'sess_r7_card'"
+        ).fetchall()
+        assert len(rows) == 1
+    finally:
+        conn.close()
+
+
+@requires_db
+def test_post_session_event_cardless_twice_holds_one_row():
+    """R7: a card-less session event POSTed to /events twice gets 200 both
+    times and the sessions table holds exactly one row with card_id NULL."""
+    import psycopg
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute(
+        "DELETE FROM sprint_metrics.sessions WHERE card_id IS NULL AND role = 'qa_r7_cardless'"
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    try:
+        event = {
+            "api_version": "1",
+            "type": "session",
+            "timestamp": "2024-02-15T10:00:00Z",
+            "sprint": "2024-02",
+            "role": "qa_r7_cardless",
+            "start": "2024-02-15T09:00:00Z",
+            "end": "2024-02-15T10:00:00Z",
+            "model_seconds": 1800,
+            "tokens": 50000,
+        }
+        status1, body1 = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status1 == 200
+        assert "error" not in body1
+
+        status2, body2 = _post_events(f"http://127.0.0.1:{port}/events", event)
+        assert status2 == 200
+        assert "error" not in body2
+
+        rows = conn.execute(
+            "SELECT card_id FROM sprint_metrics.sessions "
+            "WHERE role = 'qa_r7_cardless' AND sprint = '2024-02'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] is None
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_post_session_event_missing_role_returns_400():
     """AC3: a session event with role missing gets 400 naming the problem,
     and the record holds no session."""
