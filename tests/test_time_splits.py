@@ -166,7 +166,7 @@ def test_working_time_send_back_pair_keeps_window():
             datetime(2024, 3, 2, 14, 8, 0, tzinfo=UTC),
         ),
     ]
-    answer = calculate_working_time(story_data, cardless)
+    answer = calculate_working_time(story_data=story_data, cardless_sessions=cardless)
     assert answer["stories"] == {"X": 22, "Y": 5}
     assert answer["planning"] == 0
     assert answer["cardless"] == 8
@@ -186,7 +186,7 @@ def test_working_time_send_back_pair_reverse_order():
             datetime(2024, 3, 2, 14, 8, 0, tzinfo=UTC),
         ),
     ]
-    answer = calculate_working_time(story_data, cardless)
+    answer = calculate_working_time(story_data=story_data, cardless_sessions=cardless)
     assert answer["stories"] == {}
     assert answer["planning"] == 0
     assert answer["cardless"] == 8
@@ -203,7 +203,7 @@ def test_working_time_no_send_back_pair_unchanged():
         },
     }
     cardless = []
-    answer = calculate_working_time(story_data, cardless)
+    answer = calculate_working_time(story_data=story_data, cardless_sessions=cardless)
     assert answer is None
 
 

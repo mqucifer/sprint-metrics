@@ -706,7 +706,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                             elif metric == "working_time_minutes":
                                 story_data = query_session_story_data(conn_holder[0], label)
                                 cardless = query_cardless_sessions(conn_holder[0], label)
-                                value = working_time_total(story_data, cardless)
+                                value = working_time_total(story_data=story_data, cardless_sessions=cardless)
                             elif metric in ("addition_working_time_minutes", "change_working_time_minutes"):
                                 kind = "addition" if metric == "addition_working_time_minutes" else "change"
                                 value = cost_by_kind_total(

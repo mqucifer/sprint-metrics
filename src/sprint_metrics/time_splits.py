@@ -74,10 +74,10 @@ def _blocked_seconds(
 
 
 def calculate_working_time(
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    *,
     story_data: dict[str, dict] | None = None,
     cardless_sessions: list[tuple[datetime, datetime]] | None = None,
-    *,
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
 ) -> dict | None:
     """The sprint's working-time answer: session minutes per story, planning, card-less, and the sprint total.
 
@@ -146,10 +146,10 @@ def calculate_working_time(
 
 
 def working_time_total(
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    *,
     story_data: dict[str, dict] | None = None,
     cardless_sessions: list[tuple[datetime, datetime]] | None = None,
-    *,
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
 ) -> int | None:
     """The sprint's working-time total in whole minutes, or None when no session records are held.
 
@@ -160,7 +160,7 @@ def working_time_total(
     feeds the working-time total (the span-window calculation was replaced by
     the session-record computation).
     """
-    answer = calculate_working_time(story_data, cardless_sessions)
+    answer = calculate_working_time(story_data=story_data, cardless_sessions=cardless_sessions)
     return answer["total"] if answer is not None else None
 
 
@@ -424,7 +424,7 @@ def _attach_range_working_time(
     for label in labels:
         story_data = query_session_story_data(conn, label)
         cardless = query_cardless_sessions(conn, label)
-        answer = calculate_working_time(story_data, cardless)
+        answer = calculate_working_time(story_data=story_data, cardless_sessions=cardless)
         answers[label] = answer
         totals[label] = answer["total"] if answer is not None else None
     for index, label in enumerate(labels):
