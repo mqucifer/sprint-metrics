@@ -317,10 +317,8 @@ def test_unreleased_added_names_session_event():
     in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
     added = _subheading_bodies(content, "### Added")
-    assert any(
-        "session" in body and ("intake" in body or "accept" in body.lower())
-        for body in added
-    )
+    assert any("session" in body for body in added)
+    assert any("intake" in body or "accept" in body.lower() for body in added)
 
 
 def test_unreleased_changed_names_api_version_move():
@@ -328,8 +326,7 @@ def test_unreleased_changed_names_api_version_move():
     in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
     changed = _subheading_bodies(content, "### Changed")
-    assert any(
-        '"12"' in body and '"13"' in body and "api_version" in body
-        for body in changed
-    )
+    assert any('"12"' in body for body in changed)
+    assert any('"13"' in body for body in changed)
+    assert any("api_version" in body for body in changed)
 
