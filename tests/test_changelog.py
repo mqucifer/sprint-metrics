@@ -317,7 +317,7 @@ def test_unreleased_added_names_session_event():
     in whichever section the entry currently sits in."""
     content = CHANGELOG.read_text()
     added = _subheading_bodies(content, "### Added")
-    assert any("session" in body and "accepts" in body for body in added)
+    assert any("session" in body and "intake" in body for body in added)
 
 
 def test_unreleased_added_names_session_epics():
