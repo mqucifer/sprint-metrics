@@ -328,6 +328,22 @@ from the null of a story with no session record. A card-less session is
 never planning-or-delivery-of-a-story: it counts in the sprint's numbers
 only. A sprint with no carded session records reads `session_planning` null.
 
+### Per-epic session time
+
+The `session_epics` answer on each sprint's `/range` entry reports, for each
+epic whose stories had sessions in the sprint: its in-sprint session minutes
+in total (`session_minutes`, whole minutes), its minutes by role
+(`minutes_by_role`, roles named with the crew's role strings), its model
+minutes (`model_minutes`, whole model minutes), and its tokens
+(`input_tokens` and `output_tokens`, whole counts of input and output
+tokens), summed over that sprint's stories of the epic.
+
+The measures carry the same names, roles and units as the per-story session
+answer. An epic appears only when one of its stories had sessions in the
+sprint: a story with no session record contributes nothing, and a story
+whose board rows carry no epic link contributes to no epic's total. A
+card-less session belongs to no epic.
+
 ## Boundary conditions
 
 ### Zero values for an empty sprint

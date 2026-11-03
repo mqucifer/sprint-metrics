@@ -1068,3 +1068,29 @@ def query_cardless_sessions(conn: Connection, sprint: str) -> list[tuple[datetim
         (sprint,),
     ).fetchall()
     return [(row[0], row[1]) for row in rows]
+
+
+def query_card_epics(conn: Connection, card_ids: set[str]) -> dict[str, str | None]:
+    """Return the epic for each card_id, from the card's stored board-event rows.
+
+    For each card_id in ``card_ids``, the epic stored on any of its board-event
+    rows (the epic is the same on every row that carries it), or None when no
+    row for that card carries an epic. A card_id with no board-event rows at
+    all is absent from the result.
+    """
+    if not card_ids:
+        return {}
+    placeholders = ",".join(["%s"] * len(card_ids))
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT ON (card_id) card_id, epic
+        FROM sprint_metrics.board_events
+        WHERE card_id IN ({placeholders})
+        ORDER BY card_id, (epic IS NULL), event_time
+        """,
+        tuple(card_ids),
+    ).fetchall()
+    result: dict[str, str | None] = {}
+    for card_id, epic in rows:
+        result[card_id] = epic
+    return result
