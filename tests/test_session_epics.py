@@ -808,12 +808,14 @@ def test_service_md_describes_session_epics_to_date():
 
 
 def test_changelog_records_to_date():
-    """AC5: CHANGELOG.md's [Unreleased] Added section records that /range now
-    answers each epic's session time to date."""
+    """AC5: CHANGELOG.md records that /range now answers each epic's session time
+    to date, in whichever section the entry currently sits in."""
+    from test_changelog import _subheading_bodies
+
     content = CHANGELOG.read_text()
-    start = content.index("## [Unreleased]")
-    end = content.index("## [", start + 1)
-    unreleased = content[start:end]
-    added_section = unreleased[unreleased.index("### Added") :]
-    assert "session_epics_to_date" in added_section
-    assert "to date" in added_section or "to-date" in added_section
+    added = _subheading_bodies(content, "### Added")
+    assert any(
+        "session_epics_to_date" in body
+        and ("to date" in body or "to-date" in body)
+        for body in added
+    )
