@@ -11560,6 +11560,118 @@ def test_sprint_range_schema_declares_cost_by_kind_on_sprint_entry():
 
 
 @requires_db
+def test_range_model_time_sprint_total_includes_planning_and_cardless():
+    """AC3: the sprint's model_time reads the total model minutes and tokens
+    across all session records (stories, planning, and card-less sessions).
+    Story sessions totalling 15 model minutes (4100 input, 950 output), a
+    planning session of 6 model minutes (300 input, 60 output), and a
+    card-less session of 4 model minutes (200 input, 40 output) read 25
+    model minutes, 4600 input, 1050 output."""
+    from datetime import datetime
+
+    import psycopg
+
+    from sprint_metrics.store import upsert_session, upsert_sprint
+
+    conn = psycopg.connect(SPRINT_METRICS_DB)
+    init_db(conn)
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE sprint = '2024-07'")
+    conn.execute("DELETE FROM sprint_metrics.board_events WHERE sprint = '2024-07'")
+    conn.execute("DELETE FROM sprint_metrics.sprints WHERE name = '2024-07'")
+    conn.commit()
+
+    upsert_sprint(conn, "2024-07", date(2024, 7, 1), date(2024, 7, 31), "UTC")
+
+    # Story X: started at 2024-07-05T12:00:00Z, delivery session 840s (14 min)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('mx', 'started', %s, '2024-07', '2024-07-01')""",
+        (datetime(2024, 7, 5, 12, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "mx",
+            "role": "Developer",
+            "start": "2024-07-05T12:30:00Z",
+            "end": "2024-07-05T13:30:00Z",
+            "sprint": "2024-07",
+            "model_seconds": 840,
+            "input_tokens": 4000,
+            "output_tokens": 900,
+        },
+    )
+    # Story Y: started at 2024-07-06T12:00:00Z, delivery session 60s (1 min)
+    conn.execute(
+        """INSERT INTO sprint_metrics.board_events
+           (card_id, type, event_time, sprint, card_created)
+           VALUES ('my', 'started', %s, '2024-07', '2024-07-01')""",
+        (datetime(2024, 7, 6, 12, 0, tzinfo=UTC),),
+    )
+    upsert_session(
+        conn,
+        {
+            "card": "my",
+            "role": "Developer",
+            "start": "2024-07-06T12:30:00Z",
+            "end": "2024-07-06T13:30:00Z",
+            "sprint": "2024-07",
+            "model_seconds": 60,
+            "input_tokens": 100,
+            "output_tokens": 50,
+        },
+    )
+    # Planning session for story X: 360s (6 min), before the story's start
+    upsert_session(
+        conn,
+        {
+            "card": "mx",
+            "role": "Developer",
+            "start": "2024-07-05T10:00:00Z",
+            "end": "2024-07-05T11:00:00Z",
+            "sprint": "2024-07",
+            "model_seconds": 360,
+            "input_tokens": 300,
+            "output_tokens": 60,
+        },
+    )
+    # Card-less session: 240s (4 min)
+    upsert_session(
+        conn,
+        {
+            "card": None,
+            "role": "Developer",
+            "start": "2024-07-07T10:00:00Z",
+            "end": "2024-07-07T11:00:00Z",
+            "sprint": "2024-07",
+            "model_seconds": 240,
+            "input_tokens": 200,
+            "output_tokens": 40,
+        },
+    )
+    conn.commit()
+
+    port = _start_service(conn, 0)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        status, body = _get_json(f"{base}/range?start=2024-07&end=2024-07")
+        assert status == 200
+        entry = body["sprints"]["2024-07"]
+        # Story delivery: 840+60=900s (15 min), 4100 in, 950 out
+        # Planning: 360s (6 min), 300 in, 60 out
+        # Card-less: 240s (4 min), 200 in, 40 out
+        # Total: 1500s (25 min), 4600 in, 1050 out
+        assert entry["model_time"] == {
+            "model_minutes": 25,
+            "input_tokens": 4600,
+            "output_tokens": 1050,
+        }
+    finally:
+        conn.close()
+
+
+@requires_db
 def test_range_model_time_split_summed_whole_minutes():
     """AC1: a sprint whose stories carry sessions split into planning and
     delivery has its model_time_split answer carry the whole-minute totals,
