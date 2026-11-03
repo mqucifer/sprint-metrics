@@ -12015,8 +12015,9 @@ def test_post_session_event_without_card_returns_200_and_stores_null_card():
 
 @requires_db
 def test_post_session_event_with_card_twice_holds_one_row():
-    """R7: a session event with card_id POSTed to /events twice gets 200 both
-    times and the sessions table holds exactly one row for that card_id."""
+    """R7: a session event with a card, sent twice to /events, is held once.
+    Both responses are 200 with no error, and the sessions table holds exactly
+    one row for that card_id."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
@@ -12048,24 +12049,29 @@ def test_post_session_event_with_card_twice_holds_one_row():
         assert "error" not in body2
 
         rows = conn.execute(
-            "SELECT card_id FROM sprint_metrics.sessions WHERE card_id = 'sess_r7_card'"
+            "SELECT card_id, role, session_start, session_end, model_seconds, tokens "
+            "FROM sprint_metrics.sessions WHERE card_id = 'sess_r7_card'"
         ).fetchall()
         assert len(rows) == 1
+        card_id, role, start, end, model_seconds, tokens = rows[0]
+        assert card_id == "sess_r7_card"
+        assert role == "developer"
+        assert model_seconds == 3600
+        assert tokens == 100000
     finally:
         conn.close()
 
 
 @requires_db
 def test_post_session_event_cardless_twice_holds_one_row():
-    """R7: a card-less session event POSTed to /events twice gets 200 both
-    times and the sessions table holds exactly one row with card_id NULL."""
+    """R7: a card-less session event, sent twice to /events, is held once.
+    Both responses are 200 with no error, and the sessions table holds exactly
+    one row with card_id NULL for that role and sprint."""
     import psycopg
 
     conn = psycopg.connect(SPRINT_METRICS_DB)
     init_db(conn)
-    conn.execute(
-        "DELETE FROM sprint_metrics.sessions WHERE card_id IS NULL AND role = 'qa_r7_cardless'"
-    )
+    conn.execute("DELETE FROM sprint_metrics.sessions WHERE card_id IS NULL AND role = 'qa_r7_cardless'")
     conn.commit()
 
     port = _start_service(conn, 0)
@@ -12090,11 +12096,15 @@ def test_post_session_event_cardless_twice_holds_one_row():
         assert "error" not in body2
 
         rows = conn.execute(
-            "SELECT card_id FROM sprint_metrics.sessions "
-            "WHERE role = 'qa_r7_cardless' AND sprint = '2024-02'"
+            "SELECT card_id, role, model_seconds, tokens "
+            "FROM sprint_metrics.sessions WHERE role = 'qa_r7_cardless' AND sprint = '2024-02'"
         ).fetchall()
         assert len(rows) == 1
-        assert rows[0][0] is None
+        card_id, role, model_seconds, tokens = rows[0]
+        assert card_id is None
+        assert role == "qa_r7_cardless"
+        assert model_seconds == 1800
+        assert tokens == 50000
     finally:
         conn.close()
 
