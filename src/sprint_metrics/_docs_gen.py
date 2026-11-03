@@ -133,8 +133,8 @@ def _generate_metrics_content() -> str:
             "in the sprint carries a kind."
         ),
         "model_time_split_refinement_minutes": (
-            "Return the sprint's model time spent in refinement, in whole "
-            "minutes — each story's refinement seconds converted to whole "
+            "Return the sprint's model time spent in planning, in whole "
+            "minutes — each story's planning seconds converted to whole "
             "minutes (the model_minutes display unit) and summed over the "
             "costed stories. None when no story in the sprint carries a "
             "model-time split."
