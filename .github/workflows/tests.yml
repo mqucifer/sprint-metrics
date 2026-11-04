@@ -187,40 +187,17 @@ jobs:
           PREVIOUS_BODY=$(tick 8081)
           echo "$RANGE_BODY"
           echo "OK: POST /sprints and POST /events returned 200, GET /range returned 200"
-          echo "$RANGE_BODY" | jq -e '.api_version == "16"' > /dev/null
-          echo "OK: api_version is 16"
-          # api_version is pinned above; every other field must match the earlier image.
-          # The comparison is derived from the previous response's key structure:
-          # every key the previous response carries must have the same value in the
-          # new response. New keys in the new response are accepted without a
-          # per-release edit of a deletion list.
           if echo "$RANGE_BODY" | grep -q escalation; then
             echo "ERROR: GET /range still carries an escalation measure"
             exit 1
           fi
-          if ! jq -e -n --argjson prev "$PREVIOUS_BODY" --argjson new "$RANGE_BODY" '
-            def project($ref):
-              if type == "object" then
-                with_entries(
-                  .key as $k
-                  | select($ref | has($k))
-                  | {key: $k, value: (.value | project($ref[$k]))}
-                )
-              elif type == "array" then
-                if ($ref | type) == "array" then
-                  [ range(0; $ref | length) as $i | .[$i] | project($ref[$i]) ]
-                else
-                  .
-                end
-              else
-                .
-              end;
-            ($new | del(.api_version) | del(.sprints[].working_time) | del(.sprints[].idle) | project($prev | del(.api_version) | del(.sprints[].working_time) | del(.sprints[].idle))) == ($prev | del(.api_version) | del(.sprints[].working_time) | del(.sprints[].idle))
-          ' > /dev/null; then
-            echo "ERROR: GET /range differs from the image before this change"
-            exit 1
-          fi
-          echo "OK: GET /range matches the image before this change field for field"
+          # Every answer the earlier image gave keeps its value, and none is added or
+          # removed, apart from what declared-changes.json declares: its changes are this
+          # release's alone, since the release empties them. The response's api_version
+          # is the one the declaration holds (mqucifer/crew#1019).
+          printf '%s' "$PREVIOUS_BODY" > /tmp/range-previous.json
+          printf '%s' "$RANGE_BODY" > /tmp/range-new.json
+          python3 .github/scripts/compare_range.py /tmp/range-previous.json /tmp/range-new.json declared-changes.json
           SPRINT_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/sprint?label=2024-01")
           if [ "$SPRINT_STATUS" != "410" ]; then
             echo "ERROR: GET /sprint returned $SPRINT_STATUS, expected 410"

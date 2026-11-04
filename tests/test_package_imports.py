@@ -80,7 +80,7 @@ def test_cli_formatters_and_loaders_are_gone():
     parser and sprints-file loader, and the thresholds-file loader are gone,
     while the names the service and the docs consume survive."""
     import sprint_metrics
-    from sprint_metrics import report, sprint_range, thresholds
+    from sprint_metrics import report, sprint_range, thresholds, version
 
     for name in ("format_performance_table", "format_markdown_report"):
         assert not hasattr(report, name)
@@ -93,7 +93,7 @@ def test_cli_formatters_and_loaders_are_gone():
         assert not hasattr(sprint_range, name)
     assert not hasattr(thresholds, "_load_thresholds")
     assert not hasattr(sprint_metrics, "format_performance_table")
-    assert report.API_VERSION == "16"
+    assert report.API_VERSION == version.API_VERSION
     assert report._METRIC_COLUMNS
     assert callable(sprint_range._parse_sprint_label)
     assert callable(sprint_range.format_sprint_range_json)

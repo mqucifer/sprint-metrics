@@ -1,225 +1,239 @@
 """Tests for the CI docker job's /range comparison in .github/workflows/tests.yml.
 
-The docker job is the project's field-for-field check that a release's image still
-answers /range the way the previous main's image did. The comparison is derived
-from the previous response's key structure: every key the previous response carries
-must have the same value in the new response, while new keys are accepted without
-a per-release edit of a deletion list. The job's api_version pin must track the
-version in force rather than a constant assumed to hold across the Goal.
+The docker job is the project's field-for-field check that this change's image still
+answers /range the way the previous main's image did. Every answer must keep its
+value, and nothing may be added or removed, apart from what `declared-changes.json`
+declares: each answer a change adds, changes or removes on purpose, by its JSONPath
+(RFC 9535). The release empties the declaration and moves api_version once, so a
+declared change is accepted for that release only, never for good
+(mqucifer/crew#1019). The comparison is the job's script,
+.github/scripts/compare_range.py, run here as the job runs it.
 """
 
-import re
+import json
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from sprint_metrics.report import API_VERSION
 
-WORKFLOW = Path(__file__).parent.parent / ".github" / "workflows" / "tests.yml"
+ROOT = Path(__file__).parent.parent
+WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
+SCRIPT = ROOT / ".github" / "scripts" / "compare_range.py"
+DECLARATION = ROOT / "declared-changes.json"
+
+WORKING_TIME = {
+    "response": "GET /range",
+    "path": "$.sprints[*].working_time",
+    "why": "working time counts session minutes (mqucifer/sprint-metrics#938)",
+}
 
 
 def _text() -> str:
     return WORKFLOW.read_text()
 
 
-def test_docker_job_range_filter_accounts_for_rework_key():
-    """The field-for-field /range comparison is derived from the previous
-    response's key structure, not a hand-edited deletion list: a new key
-    (like rework) is accepted without a per-release edit of the list."""
+def _run(tmp_path, prev, new, declared):
+    """Run the job's script on two /range bodies and a declaration, as the job does."""
+    files = []
+    for name, body in (("previous", prev), ("new", new), ("declared", declared)):
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps(body))
+        files.append(str(path))
+    return subprocess.run([sys.executable, str(SCRIPT), *files], capture_output=True, text=True)
+
+
+def _compare(tmp_path, prev, new, changes=(), api_version="9"):
+    return _run(tmp_path, prev, new, {"api_version": api_version, "changes": list(changes)})
+
+
+# --- the job runs the script on the declaration --------------------------------------
+
+
+def test_the_docker_job_compares_range_by_the_declaration():
     text = _text()
-    assert "RANGE_FILTER" not in text, (
-        "the docker job's /range comparison must not reference a hand-edited deletion list"
-    )
-    assert "def project" in text, (
-        "the docker job's /range comparison must derive the acceptable keys from the previous response"
-    )
+    assert "python3 .github/scripts/compare_range.py" in text
+    assert "declared-changes.json" in text
 
 
-def test_docker_job_range_filter_accounts_for_window_key():
-    """The field-for-field /range comparison handles top-level keys by
-    projecting the new response onto the previous response's key set,
-    so a new top-level key (like window) is accepted without a deletion entry."""
+def test_the_docker_job_keeps_no_answer_out_of_the_comparison_for_good():
+    """mqucifer/sprint-metrics#971 passed by deleting working_time from both sides, and
+    the deletion merged, so a later regression in working time wasn't caught."""
     text = _text()
-    assert "with_entries" in text, (
-        "the docker job's /range comparison must project object keys from the previous response"
-    )
-    assert "has($k)" in text, (
-        "the docker job's /range comparison must select only keys the previous response carries"
-    )
+    assert "del(" not in text
+    assert "working_time" not in text
+    assert 'api_version == "' not in text, "the job reads the version from the declaration"
 
 
-def test_docker_job_range_filter_accounts_for_window_verdicts():
-    """The field-for-field /range comparison is recursive: nested keys
-    (like window.verdicts) are handled by the same projection at every level,
-    so no per-key entry is needed for deeply nested additions."""
-    text = _text()
-    assert "project($ref[$k])" in text, (
-        "the docker job's /range comparison must recurse into nested objects"
-    )
+def test_the_declaration_is_the_response_api_version_in_force():
+    declared = json.loads(DECLARATION.read_text())
+    assert declared["api_version"] == API_VERSION
+    assert isinstance(declared["changes"], list)
 
 
-def test_docker_job_range_filter_accounts_for_working_time_key():
-    """The field-for-field /range comparison handles array elements
-    (like per-sprint working_time) by iterating the previous response's
-    array length, so new per-sprint keys need no deletion entry."""
-    text = _text()
-    assert "range(0; $ref | length)" in text, (
-        "the docker job's /range comparison must iterate array elements by the previous response's length"
-    )
+# --- an undeclared change fails, a declared one passes --------------------------------
 
 
-def test_docker_job_api_version_pin_matches_response_api_version():
-    """AC9: every api_version pin in the docker job equals the response
-    api_version in force (report.API_VERSION); the pin is not an assumed '4'."""
-    pins = re.findall(r'api_version == "(.*?)"', _text())
-    assert pins, "no api_version pin found in the docker job"
-    for pin in pins:
-        assert pin == API_VERSION, f"docker job pins api_version {pin!r}, but the response is {API_VERSION!r}"
+def test_identical_responses_pass(tmp_path):
+    body = {
+        "api_version": "9",
+        "throughput": 10,
+        "sprints": [
+            {"label": "2024-01", "cycle_time_days": 5.0, "throughput": 5},
+            {"label": "2024-02", "cycle_time_days": 4.0, "throughput": 5},
+        ],
+        "window": {"verdicts": [], "standouts": {}},
+    }
+    ran = _compare(tmp_path, {**body, "api_version": "8"}, body)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
 
 
-# --- Logic tests: mirror the jq project() comparison with Python equivalents ---
+def test_an_undeclared_changed_value_fails_naming_it(tmp_path):
+    prev = {"api_version": "9", "sprints": [{"label": "2024-01", "working_time": {"total": 72}}]}
+    new = {"api_version": "9", "sprints": [{"label": "2024-01", "working_time": {"total": 22}}]}
+    ran = _compare(tmp_path, prev, new)
+    assert ran.returncode == 1
+    assert "ERROR: GET /range differs from the image before this change" in ran.stdout
+    assert "$.sprints[0].working_time.total" in ran.stdout
+    assert '"$.sprints[*].working_time.total"' in ran.stdout, "it says what to declare"
 
 
-def _project(new, ref):
-    """Python mirror of the jq ``project($ref)`` function in the docker job.
-
-    Projects ``new`` onto the key structure of ``ref``:
-    - For objects, keeps only keys that ``ref`` carries, recursing into values.
-    - For arrays, iterates up to ``ref``'s length (missing elements become None,
-      matching jq's null for out-of-bounds index), recursing element-wise.
-    - For scalars, returns the value unchanged.
-    """
-    if isinstance(new, dict):
-        return {k: _project(v, ref[k]) for k, v in new.items() if k in ref}
-    elif isinstance(new, list):
-        if isinstance(ref, list):
-            return [_project(new[i], ref[i]) if i < len(new) else None
-                    for i in range(len(ref))]
-        return new
-    return new
+def test_a_declared_changed_value_passes(tmp_path):
+    prev = {"api_version": "9", "sprints": [{"label": "a", "working_time": {"total": 72}}] * 2}
+    new = {"api_version": "9", "sprints": [{"label": "a", "working_time": {"total": 22}}] * 2}
+    ran = _compare(tmp_path, prev, new, [WORKING_TIME])
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert "$.sprints[*].working_time" in ran.stdout, "it says what it accepted"
 
 
-def _range_comparison(new, prev):
-    """Mirror of the docker job's field-for-field /range comparison.
-
-    Returns True if the new response, projected onto the previous response's
-    key structure, equals the previous response (both with api_version removed).
-    """
-    new_stripped = {k: v for k, v in new.items() if k != "api_version"}
-    prev_stripped = {k: v for k, v in prev.items() if k != "api_version"}
-    return _project(new_stripped, prev_stripped) == prev_stripped
-
-
-def test_docker_job_comparison_accepts_new_top_level_key():
-    """AC1: a new top-level key in the new response (absent from the previous)
-    is accepted — the comparison passes."""
-    prev = {"api_version": "8", "throughput": 10, "cycle_time_days": 5.0}
-    new = {"api_version": "9", "throughput": 10, "cycle_time_days": 5.0, "window": {"verdicts": []}}
-    assert _range_comparison(new, prev) is True
+def test_a_declared_change_accepts_only_what_it_names(tmp_path):
+    prev = {"api_version": "9", "sprints": [{"working_time": 72, "idle": 10}]}
+    new = {"api_version": "9", "sprints": [{"working_time": 22, "idle": 60}]}
+    ran = _compare(tmp_path, prev, new, [WORKING_TIME])
+    assert ran.returncode == 1
+    found = ran.stdout.split("ERROR")[1]
+    assert "$.sprints[0].idle" in found
+    assert "working_time" not in found
 
 
-def test_docker_job_comparison_accepts_new_key_in_sprint_entry():
-    """AC1: a new key inside a sprints array element (absent from the previous)
-    is accepted — the comparison passes."""
-    prev = {"api_version": "8", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 5.0},
-    ]}
-    new = {"api_version": "9", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 5.0, "rework": {"sent_backs": 0}},
-    ]}
-    assert _range_comparison(new, prev) is True
+def test_a_change_declared_for_another_response_isn_t_this_one_s(tmp_path):
+    prev = {"api_version": "9", "sprints": [{"working_time": 72}]}
+    new = {"api_version": "9", "sprints": [{"working_time": 22}]}
+    ran = _compare(tmp_path, prev, new, [{**WORKING_TIME, "response": "GET /trend"}])
+    assert ran.returncode == 1
 
 
-def test_docker_job_comparison_accepts_new_key_in_prior_delta_object():
-    """AC1: a new key inside a prior or delta object (absent from the previous)
-    is accepted — the comparison passes."""
-    prev = {"api_version": "8", "sprints": [
-        {"label": "2024-01", "delta": {"cycle_time_days": 0.5}},
-    ]}
-    new = {"api_version": "9", "sprints": [
-        {"label": "2024-01", "delta": {"cycle_time_days": 0.5, "working_time_minutes": 120}},
-    ]}
-    assert _range_comparison(new, prev) is True
+def test_a_changed_top_level_value_fails(tmp_path):
+    prev, new = {"api_version": "9", "throughput": 10}, {"api_version": "9", "throughput": 12}
+    ran = _compare(tmp_path, prev, new)
+    assert ran.returncode == 1
+    assert "$.throughput" in ran.stdout
 
 
-def test_docker_job_comparison_fails_on_changed_value():
-    """AC2: a stable key whose value differs between the two responses causes
-    the comparison to fail."""
-    prev = {"api_version": "8", "throughput": 10, "cycle_time_days": 5.0}
-    new = {"api_version": "9", "throughput": 12, "cycle_time_days": 5.0}
-    assert _range_comparison(new, prev) is False
+def test_an_undeclared_added_answer_fails_and_a_declared_one_passes(tmp_path):
+    """An added answer changes what the responses offer, so the release must know of it
+    to move api_version: it's declared like any other change."""
+    prev = {"api_version": "9", "sprints": [{"label": "2024-01"}]}
+    new = {"api_version": "9", "sprints": [{"label": "2024-01", "rework": {"sent_backs": 0}}]}
+    ran = _compare(tmp_path, prev, new)
+    assert ran.returncode == 1
+    assert "added" in ran.stdout and "$.sprints[0].rework" in ran.stdout
+    rework = {"response": "GET /range", "path": "$.sprints[*].rework", "why": "new answer"}
+    assert _compare(tmp_path, prev, new, [rework]).returncode == 0
 
 
-def test_docker_job_comparison_fails_on_changed_nested_value():
-    """AC2: a stable key whose value differs at a nested level causes
-    the comparison to fail."""
-    prev = {"api_version": "8", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 5.0},
-    ]}
-    new = {"api_version": "9", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 6.0},
-    ]}
-    assert _range_comparison(new, prev) is False
+def test_an_undeclared_removed_answer_fails_and_a_declared_one_passes(tmp_path):
+    prev = {"api_version": "9", "sprints": [{"label": "2024-01", "throughput": 3}]}
+    new = {"api_version": "9", "sprints": [{"label": "2024-01"}]}
+    ran = _compare(tmp_path, prev, new)
+    assert ran.returncode == 1
+    assert "removed" in ran.stdout and "$.sprints[0].throughput" in ran.stdout
+    gone = {"response": "GET /range", "path": "$.sprints[*].throughput", "why": "retired"}
+    assert _compare(tmp_path, prev, new, [gone]).returncode == 0
 
 
-def test_docker_job_comparison_fails_on_removed_key():
-    """AC3: a key the previous response carries that the new response lacks
-    causes the comparison to fail."""
-    prev = {"api_version": "8", "throughput": 10, "cycle_time_days": 5.0}
-    new = {"api_version": "9", "throughput": 10}
-    assert _range_comparison(new, prev) is False
+def test_a_shorter_array_fails(tmp_path):
+    prev = {"api_version": "9", "sprints": [{"label": "2024-01"}, {"label": "2024-02"}]}
+    new = {"api_version": "9", "sprints": [{"label": "2024-01"}]}
+    ran = _compare(tmp_path, prev, new)
+    assert ran.returncode == 1
+    assert "$.sprints[1]" in ran.stdout
 
 
-def test_docker_job_comparison_fails_on_removed_nested_key():
-    """AC3: a key inside a sprints entry that the new response lacks
-    causes the comparison to fail."""
-    prev = {"api_version": "8", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 5.0, "throughput": 3},
-    ]}
-    new = {"api_version": "9", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 5.0},
-    ]}
-    assert _range_comparison(new, prev) is False
+def test_a_numbered_path_names_one_element(tmp_path):
+    prev = {"api_version": "9", "sprints": [{"working_time": 1}, {"working_time": 2}]}
+    new = {"api_version": "9", "sprints": [{"working_time": 5}, {"working_time": 6}]}
+    first = {**WORKING_TIME, "path": "$.sprints[0].working_time"}
+    ran = _compare(tmp_path, prev, new, [first])
+    assert ran.returncode == 1
+    found = ran.stdout.split("ERROR")[1]
+    assert "$.sprints[1].working_time" in found
+    assert "$.sprints[0].working_time" not in found
 
 
-def test_docker_job_comparison_fails_on_removed_array_element():
-    """AC3: the new response's sprints array is shorter than the previous,
-    so an element the previous carries is missing — the comparison fails."""
-    prev = {"api_version": "8", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 5.0},
-        {"label": "2024-02", "cycle_time_days": 4.0},
-    ]}
-    new = {"api_version": "9", "sprints": [
-        {"label": "2024-01", "cycle_time_days": 5.0},
-    ]}
-    assert _range_comparison(new, prev) is False
+def test_a_wildcard_reaches_every_sprint_keyed_by_its_label(tmp_path):
+    """/range keys its sprints by label, an object, and RFC 9535's [*] selects an
+    object's members as it does an array's elements. The labels aren't names a dot
+    can follow, so a difference names them in brackets."""
+    prev = {"api_version": "9", "sprints": {"2024-01": {"working_time": {"total": 72}, "idle": 1}}}
+    new = {"api_version": "9", "sprints": {"2024-01": {"working_time": {"total": 22}, "idle": 2}}}
+    ran = _compare(tmp_path, prev, new, [WORKING_TIME])
+    assert ran.returncode == 1
+    found = ran.stdout.split("ERROR")[1]
+    assert "$.sprints['2024-01'].idle" in found
+    assert "working_time" not in found
+    idle = {"response": "GET /range", "path": "$.sprints['2024-01'].idle", "why": "x"}
+    assert _compare(tmp_path, prev, new, [WORKING_TIME, idle]).returncode == 0
 
 
-def test_docker_job_comparison_ignores_api_version_difference():
-    """AC4: the api_version pin is separate from the comparison; the
-    comparison applies del(.api_version) to both sides, so two images
-    differing only in api_version do not fail the comparison."""
-    prev = {"api_version": "8", "throughput": 10}
-    new = {"api_version": "9", "throughput": 10}
-    assert _range_comparison(new, prev) is True
+# --- the api_version -------------------------------------------------------------------
 
 
-def test_docker_job_escalation_guard_fires_on_escalation_in_body():
-    """AC5: the escalation guard is a separate grep check that fails the job
-    when the new /range response still carries a retired escalation measure."""
-    import json
-    # The docker job does: if echo "$RANGE_BODY" | grep -q escalation; then exit 1
-    body_with_escalation = json.dumps(
-        {"api_version": "9", "sprints": [{"label": "2024-01", "escalation_rate_percent": 5.0}]}
-    )
-    body_without_escalation = json.dumps(
-        {"api_version": "9", "sprints": [{"label": "2024-01", "cycle_time_days": 5.0}]}
-    )
-    # Mirror of the grep check: "escalation" appears in the body → guard fires
-    assert "escalation" in body_with_escalation, (
-        "a body carrying a retired escalation measure must trigger the grep guard"
-    )
-    assert "escalation" not in body_without_escalation, (
-        "a body without any escalation measure must not trigger the grep guard"
-    )
+def test_the_api_version_is_left_out_of_the_comparison(tmp_path):
+    prev, new = {"api_version": "8", "throughput": 10}, {"api_version": "9", "throughput": 10}
+    ran = _compare(tmp_path, prev, new)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+
+
+def test_the_response_carries_the_declared_api_version(tmp_path):
+    body = {"api_version": "10", "throughput": 10}
+    ran = _compare(tmp_path, body, body, api_version="9")
+    assert ran.returncode == 1
+    assert 'api_version "10"' in ran.stdout and '"9"' in ran.stdout
+
+
+# --- a declaration it can't read fails, saying why ------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path", ["sprints[*].working_time", "$..working_time", "$.sprints[?@.x]", "$.sprints[0:2]", "$"]
+)
+def test_a_path_outside_the_subset_it_reads_fails(tmp_path, path):
+    body = {"api_version": "9", "sprints": []}
+    ran = _compare(tmp_path, body, body, [{**WORKING_TIME, "path": path}])
+    assert ran.returncode == 1
+    assert "declared-changes.json" in ran.stdout and path in ran.stdout
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [
+        {"api_version": "9", "changes": [{"response": "GET /range", "path": "$.sprints"}]},
+        {"api_version": "9", "changes": ["$.sprints"]},
+        {"api_version": "9", "changes": {}},
+        {"changes": []},
+    ],
+)
+def test_a_declaration_without_its_fields_fails(tmp_path, declared):
+    body = {"api_version": "9", "sprints": []}
+    ran = _run(tmp_path, body, body, declared)
+    assert ran.returncode == 1
+    assert "declared-changes.json" in ran.stdout
+
+
+# --- the retired escalation measures stay a separate check ------------------------------
 
 
 def test_docker_job_workflow_has_separate_escalation_check():
@@ -232,24 +246,16 @@ def test_docker_job_workflow_has_separate_escalation_check():
     assert "ERROR: GET /range still carries an escalation measure" in text, (
         "the escalation guard must print its error message"
     )
-    assert "ERROR: GET /range differs from the image before this change" in text, (
-        "the field-for-field comparison must print its error message"
+
+
+def test_docker_job_escalation_guard_fires_on_escalation_in_body():
+    """AC5: the escalation guard is a separate grep check that fails the job
+    when the new /range response still carries a retired escalation measure."""
+    body_with_escalation = json.dumps(
+        {"api_version": "9", "sprints": [{"label": "2024-01", "escalation_rate_percent": 5.0}]}
     )
-
-
-def test_docker_job_comparison_passes_on_identical_responses():
-    """The comparison passes when both responses are identical (modulo
-    api_version) — the baseline case the docker job observed in CI."""
-    body = {
-        "api_version": "9",
-        "throughput": 10,
-        "cycle_time_days": 5.0,
-        "sprints": [
-            {"label": "2024-01", "cycle_time_days": 5.0, "throughput": 5},
-            {"label": "2024-02", "cycle_time_days": 4.0, "throughput": 5},
-        ],
-        "window": {"verdicts": [], "standouts": {}},
-    }
-    prev = {**body, "api_version": "8"}
-    new = {**body, "api_version": "9"}
-    assert _range_comparison(new, prev) is True
+    body_without_escalation = json.dumps(
+        {"api_version": "9", "sprints": [{"label": "2024-01", "cycle_time_days": 5.0}]}
+    )
+    assert "escalation" in body_with_escalation
+    assert "escalation" not in body_without_escalation
