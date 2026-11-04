@@ -91,6 +91,8 @@ CI checks `CHANGELOG.md` for four invariants on every pull request:
 
 A section's content — the entries under its subheadings — is not checked by tests; entries are checked by review, not by CI.
 
+**The responses' `api_version` moves once per release** (mqucifer/crew#1019). A change that adds, changes or removes an answer in GET /range or GET /trend lists it in `declared-changes.json`, by the answer's JSONPath (RFC 9535) and why, and leaves `api_version` there as it is. CI's docker job compares this change's GET /range with the previous main's, answer for answer, and fails on any difference the file doesn't list. The release moves `api_version` up by one, in the file and in `src/sprint_metrics/version.py`, when the file lists anything, and empties the list, so a declared change is accepted for that release only.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for the version-to-version change history.

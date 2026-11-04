@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-API_VERSION = "16"
-
+from sprint_metrics.version import API_VERSION as API_VERSION
 
 _METRIC_COLUMNS: dict[str, str] = {
     "cycle_time_days": "Cycle time",
