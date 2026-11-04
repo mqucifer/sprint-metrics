@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- docs/metrics.md's Filed split section, the `/range` filed description in docs/service.md, and docs/service.md's `filer` event-intake bullet each state that the `other` bucket includes cards whose `filer` is absent (no known filer), matching the accepted behaviour (mqucifer/sprint-metrics#918)
+
 ### Removed
 
 ## [4.5.0] - 2026-11-03
