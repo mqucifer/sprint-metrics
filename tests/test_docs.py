@@ -743,7 +743,8 @@ def test_service_md_filed_event_states_api_version_stays_one():
     text = path.read_text()
     before = text.split("BEGIN:service")[0]
     anchor = before.index("A `filed` event")
-    filed_text = before[anchor : anchor + 2000]
+    section_end = before.index("A `session` event", anchor)
+    filed_text = before[anchor:section_end]
     assert 'stays "1"' in filed_text or "stays \"1\"" in filed_text, (
         "filed-event documentation does not state api_version stays '1'"
     )
