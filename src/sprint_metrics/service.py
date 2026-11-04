@@ -47,6 +47,14 @@ from sprint_metrics.rework import (
     extract_qa_returns,
 )
 from sprint_metrics.schema import EVENT_INTAKE_SCHEMA, TREND_SCHEMA
+from sprint_metrics.session_epics import (
+    _RANGE_SESSION_EPICS_DESCRIPTION,
+    _attach_range_session_epics,
+)
+from sprint_metrics.session_stories import (
+    _RANGE_SESSION_STORIES_DESCRIPTION,
+    _attach_range_session_stories,
+)
 from sprint_metrics.sprint_range import (
     _RANGE_WINDOW_DESCRIPTION,
     _attach_range_window,
@@ -59,28 +67,32 @@ from sprint_metrics.store import (
     init_db,
     insert_event,
     query_card_kinds,
+    query_cardless_sessions,
     query_dora_data,
     query_dora_rework_data,
     query_filed_events,
-    query_model_time_splits,
     query_range,
     query_returned_events,
+    query_session_story_data,
     query_sprint,
     query_sprint_span,
     query_started_count,
     query_working_time_events,
     resolve_sprint_range,
     sprint_has_events,
+    upsert_session,
     upsert_sprint,
 )
 from sprint_metrics.telemetry import get_logger, get_tracer, init_telemetry
 from sprint_metrics.time_splits import (
     _RANGE_COST_BY_KIND_DESCRIPTION,
     _RANGE_IDLE_DESCRIPTION,
+    _RANGE_MODEL_TIME_DESCRIPTION,
     _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
     _RANGE_WORKING_TIME_DESCRIPTION,
     _attach_range_cost_by_kind,
     _attach_range_idle,
+    _attach_range_model_time,
     _attach_range_model_time_split,
     _attach_range_working_time,
     cost_by_kind_total,
@@ -105,6 +117,7 @@ VALID_EVENT_TYPES = frozenset(
         "superseded",
         "returned",
         "filed",
+        "session",
     }
 )
 # Measures /trend once offered and now refuses with a 400 that says so.
@@ -297,25 +310,12 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     status, response_body = 400, {"error": "invalid JSON body"}
                     return
 
-                for field in REQUIRED_FIELDS:
-                    if field not in event:
-                        status, response_body = (
-                            400,
-                            {"error": f"missing required field: {field!r}"},
-                        )
-                        return
-
-                sprint_name = event.get("sprint")
-                if not isinstance(sprint_name, str) or not sprint_name:
-                    status, response_body = 400, {"error": "sprint must be a non-empty string"}
-                    return
-
-                event_type = event["type"]
+                event_type = event.get("type")
                 if event_type not in VALID_EVENT_TYPES:
                     _emit_log(
                         SeverityNumber.ERROR,
                         f"event rejected: unknown type {event_type}",
-                        {"card_id": event["card_id"], "event_type": event_type},
+                        {"card_id": event.get("card_id"), "event_type": event_type},
                     )
                     status, response_body = (
                         400,
@@ -323,45 +323,75 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     )
                     return
 
-                card = event["card"]
-                if not isinstance(card, dict) or "created" not in card:
-                    status, response_body = 400, {"error": "card.created is required"}
+                is_session = event_type == "session"
+
+                if is_session:
+                    for field in ("api_version", "type", "timestamp", "sprint"):
+                        if field not in event:
+                            status, response_body = (
+                                400,
+                                {"error": f"missing required field: {field!r}"},
+                            )
+                            return
+                else:
+                    for field in REQUIRED_FIELDS:
+                        if field not in event:
+                            status, response_body = (
+                                400,
+                                {"error": f"missing required field: {field!r}"},
+                            )
+                            return
+
+                sprint_name = event.get("sprint")
+                if not isinstance(sprint_name, str) or not sprint_name:
+                    status, response_body = 400, {"error": "sprint must be a non-empty string"}
                     return
 
-                card_created_at = card.get("created_at")
-                if card_created_at is not None and card_created_at != "":
-                    if not isinstance(card_created_at, str):
-                        status, response_body = (
-                            400,
-                            {"error": "card.created_at must be an ISO-8601 datetime string"},
-                        )
+                if is_session:
+                    error = _validate_session_event(event)
+                    if error:
+                        status, response_body = 400, {"error": error}
                         return
-                    try:
-                        datetime.fromisoformat(card_created_at)
-                    except ValueError:
-                        status, response_body = (
-                            400,
-                            {
-                                "error": f"card.created_at is not a valid ISO-8601 datetime: {card_created_at!r}"
-                            },
-                        )
+                else:
+                    card = event["card"]
+                    if not isinstance(card, dict) or "created" not in card:
+                        status, response_body = 400, {"error": "card.created is required"}
                         return
 
-                if event_type == "finished":
-                    error = _validate_cost_fields(card)
-                    if error:
-                        status, response_body = 400, {"error": error}
-                        return
-                    error = _validate_model_time_split(card)
-                    if error:
-                        status, response_body = 400, {"error": error}
-                        return
+                    card_created_at = card.get("created_at")
+                    if card_created_at is not None and card_created_at != "":
+                        if not isinstance(card_created_at, str):
+                            status, response_body = (
+                                400,
+                                {"error": "card.created_at must be an ISO-8601 datetime string"},
+                            )
+                            return
+                        try:
+                            datetime.fromisoformat(card_created_at)
+                        except ValueError:
+                            status, response_body = (
+                                400,
+                                {
+                                    "error": f"card.created_at is not a valid ISO-8601 datetime: {card_created_at!r}"
+                                },
+                            )
+                            return
 
-                if event_type == "superseded":
-                    error = _validate_superseded_event(event)
-                    if error:
-                        status, response_body = 400, {"error": error}
-                        return
+                    if event_type == "finished":
+                        error = _validate_cost_fields(card)
+                        if error:
+                            status, response_body = 400, {"error": error}
+                            return
+                        error = _validate_model_time_split(card)
+                        if error:
+                            status, response_body = 400, {"error": error}
+                            return
+
+                    if event_type == "superseded":
+                        error = _validate_superseded_event(event)
+                        if error:
+                            status, response_body = 400, {"error": error}
+                            return
 
                 if not self._ensure_db():
                     status, response_body = (
@@ -375,15 +405,31 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                     return
 
                 try:
-                    insert_event(conn_holder[0], event)
+                    if is_session:
+                        upsert_session(
+                            conn_holder[0],
+                            {
+                                "card": event.get("card_id"),
+                                "role": event["role"],
+                                "start": event["start"],
+                                "end": event["end"],
+                                "sprint": event["sprint"],
+                                "model_seconds": event.get("model_seconds"),
+                                "tokens": event.get("tokens"),
+                                "input_tokens": event.get("input_tokens"),
+                                "output_tokens": event.get("output_tokens"),
+                            },
+                        )
+                    else:
+                        insert_event(conn_holder[0], event)
                 except Exception as exc:
                     status, response_body = 500, {"error": f"database error: {exc}"}
                     return
 
                 _emit_log(
                     SeverityNumber.INFO,
-                    f"event accepted: card_id={event['card_id']} type={event_type}",
-                    {"card_id": event["card_id"], "event_type": event_type},
+                    f"event accepted: card_id={event.get('card_id')} type={event_type}",
+                    {"card_id": event.get("card_id"), "event_type": event_type},
                 )
                 status, response_body = 200, {}
             finally:
@@ -514,7 +560,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         body = format_sprint_range_json(sprints, labels)
                         result = json.loads(body)
                         _attach_range_window(result, labels, has_events)
-                        _attach_range_cost(result, sprints, labels, has_events)
+                        _attach_range_cost(result, conn_holder[0], labels, has_events)
                         _attach_range_rework(result, labels, rework)
                         _attach_range_filed(result, labels, filed)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
@@ -522,7 +568,10 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_working_time(result, conn_holder[0], labels, has_events)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
+                        _attach_range_model_time(result, conn_holder[0], labels, has_events)
                         _attach_range_idle(result, conn_holder[0], labels, has_events)
+                        _attach_range_session_stories(result, conn_holder[0], labels, has_events)
+                        _attach_range_session_epics(result, conn_holder[0], labels, has_events)
                         _attach_range_verdict(result, labels, has_events)
                         _attach_range_standouts(result, labels, has_events)
                         self._send_json(200, result)
@@ -662,7 +711,9 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 )
                                 value = cf[metric]
                             elif metric == "working_time_minutes":
-                                value = working_time_total(query_working_time_events(conn_holder[0], label))
+                                story_data = query_session_story_data(conn_holder[0], label)
+                                cardless = query_cardless_sessions(conn_holder[0], label)
+                                value = working_time_total(story_data=story_data, cardless_sessions=cardless)
                             elif metric in ("addition_working_time_minutes", "change_working_time_minutes"):
                                 kind = "addition" if metric == "addition_working_time_minutes" else "change"
                                 value = cost_by_kind_total(
@@ -675,17 +726,19 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                                 "model_time_split_delivery_minutes",
                             ):
                                 part = (
-                                    "refinement"
+                                    "planning"
                                     if metric == "model_time_split_refinement_minutes"
                                     else "delivery"
                                 )
-                                value = model_time_split_total(
-                                    query_model_time_splits(conn_holder[0], label), part
-                                )
+                                story_data = query_session_story_data(conn_holder[0], label)
+                                value = model_time_split_total(story_data, part)
                             elif metric == "idle_minutes":
+                                story_data = query_session_story_data(conn_holder[0], label)
+                                cardless = query_cardless_sessions(conn_holder[0], label)
                                 value = idle_minutes_total(
-                                    query_working_time_events(conn_holder[0], label),
-                                    query_sprint_span(conn_holder[0], label),
+                                    span=query_sprint_span(conn_holder[0], label),
+                                    story_data=story_data,
+                                    cardless_sessions=cardless,
                                 )
                             else:
                                 value = metric_value(metric, sprints[label])
@@ -783,7 +836,10 @@ _RANGE_ANSWER_DESCRIPTIONS = (
     _RANGE_WORKING_TIME_DESCRIPTION,
     _RANGE_COST_BY_KIND_DESCRIPTION,
     _RANGE_MODEL_TIME_SPLIT_DESCRIPTION,
+    _RANGE_MODEL_TIME_DESCRIPTION,
     _RANGE_IDLE_DESCRIPTION,
+    _RANGE_SESSION_STORIES_DESCRIPTION,
+    _RANGE_SESSION_EPICS_DESCRIPTION,
 )
 
 # The composed /range description: the base plus every answer's fragment.
@@ -799,8 +855,8 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
     (
         "POST",
         "/events",
-        "Accept a board event (started, blocked, unblocked, finished, escalated, "
-        "attempt_failed, superseded, returned, filed). The service validates the card's "
+        "Accept a board or session event (started, blocked, unblocked, finished, escalated, "
+        "attempt_failed, superseded, returned, filed, session). The service validates the card's "
         "created date and event type.",
     ),
     (
@@ -836,12 +892,12 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "JSON integer values in minutes (rounded); sprints with no events "
         "return JSON null. working_time_minutes returns the sprint's "
         "working-time total in whole minutes (null where the sprint has no "
-        "closed session window). addition_working_time_minutes and "
+        "session records). addition_working_time_minutes and "
         "change_working_time_minutes return the sprint's working time for "
         "stories of the given kind in whole minutes (null where the sprint "
         "carries no kind data). model_time_split_refinement_minutes and "
         "model_time_split_delivery_minutes return the sprint's model time "
-        "split into refinement and delivery, in whole minutes (null where "
+        "split into planning and delivery, in whole minutes (null where "
         "no story in the sprint carries a split). "
         "release_frequency returns the sprint's count of distinct epics "
         "released, in releases per sprint. dora_lead_time_days returns the "
@@ -853,9 +909,10 @@ SERVICE_ENDPOINTS: list[tuple[str, str, str]] = [
         "derivable DORA value (no events, or no epic link, or no epic "
         "release for the change-failure and recovery measures) returns "
         "JSON null. idle_minutes returns the sprint's idle time — the "
-        "time that passed with no session running against the sprint's "
-        "total registered duration — in whole minutes (null where the "
-        "sprint is not registered or carries no session timestamps). "
+        "registered sprint span minus the sprint's session minutes, from "
+        "the same session records that feed the working time — in whole "
+        "minutes, in the sprint's registered timezone (null where the "
+        "sprint has no session records or no registered definition). "
         "self_filed_share_percent returns the whole percent of the "
         "sprint's filed cards that the crew filed itself. Its unit is "
         "a percent of the sprint's filed cards: the crew-filed count "
@@ -966,4 +1023,56 @@ def _validate_superseded_event(event: dict) -> str | None:
         return f"invalid because: {event['because']!r} (must be 'sponsor' or 'story_problem')"
     if "replaced_by" in event and not isinstance(event["replaced_by"], list):
         return "replaced_by must be an array of integers"
+    return None
+
+
+def _validate_session_event(event: dict) -> str | None:
+    """Validate session-event-specific fields. Returns an error string or None."""
+    role = event.get("role")
+    if role is None:
+        return "missing required field: 'role'"
+    if not isinstance(role, str):
+        return "role must be a string"
+    start = event.get("start")
+    if start is None:
+        return "missing required field: 'start'"
+    if not isinstance(start, str):
+        return "start must be a string"
+    try:
+        datetime.fromisoformat(start)
+    except ValueError:
+        return f"start is not a valid ISO-8601 datetime: {start!r}"
+    end = event.get("end")
+    if end is None:
+        return "missing required field: 'end'"
+    if not isinstance(end, str):
+        return "end must be a string"
+    try:
+        datetime.fromisoformat(end)
+    except ValueError:
+        return f"end is not a valid ISO-8601 datetime: {end!r}"
+    model_seconds = event.get("model_seconds")
+    if model_seconds is not None:
+        if not isinstance(model_seconds, int) or isinstance(model_seconds, bool):
+            return "model_seconds must be an integer"
+        if model_seconds < 0:
+            return "model_seconds must be >= 0"
+    tokens = event.get("tokens")
+    if tokens is not None:
+        if not isinstance(tokens, int) or isinstance(tokens, bool):
+            return "tokens must be an integer"
+        if tokens < 0:
+            return "tokens must be >= 0"
+    input_tokens = event.get("input_tokens")
+    if input_tokens is not None:
+        if not isinstance(input_tokens, int) or isinstance(input_tokens, bool):
+            return "input_tokens must be an integer"
+        if input_tokens < 0:
+            return "input_tokens must be >= 0"
+    output_tokens = event.get("output_tokens")
+    if output_tokens is not None:
+        if not isinstance(output_tokens, int) or isinstance(output_tokens, bool):
+            return "output_tokens must be an integer"
+        if output_tokens < 0:
+            return "output_tokens must be >= 0"
     return None

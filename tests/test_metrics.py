@@ -138,8 +138,8 @@ def test_calculate_first_attempt_rate_mixed():
 
 
 def test_calculate_first_attempt_rate_empty():
-    """AC2: an empty list of cards returns 0."""
-    assert calculate_first_attempt_rate([]) == 0
+    """AC2: an empty list of cards returns None (no first-attempt data)."""
+    assert calculate_first_attempt_rate([]) is None
 
 
 def test_calculate_failure_breakdown_grouped():
@@ -374,11 +374,11 @@ def test_calculate_first_attempt_counts():
 
 
 def test_calculate_points_and_first_attempt_empty():
-    """AC4: empty list gives sum=0, numerator=0, denominator=0."""
+    """AC4: empty list gives sum=0, numerator=None, denominator=None (no first-attempt data)."""
     from sprint_metrics.metrics import calculate_first_attempt_counts, calculate_points_delivered
 
     assert calculate_points_delivered([]) == 0
-    assert calculate_first_attempt_counts([]) == (0, 0)
+    assert calculate_first_attempt_counts([]) == (None, None)
 
 
 def test_all_metrics_grew_by_four():

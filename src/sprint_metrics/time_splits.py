@@ -1,16 +1,18 @@
-"""The sprint's working-time answer: the minutes the crew's sessions ran, per step of a story's pipeline.
+"""The sprint's working-time answer: the minutes of the sprint's session records, per story, planning, and card-less.
 
-Working time is derived from the rows already stored, with no new intake fields:
-a session window runs from a story's 'started' row to its next terminal row
-('finished', 'attempt_failed', or 'returned'), and a story's working time is the
-sum of its windows. The 'attempt_failed' and 'returned' rows mark the step
-boundary (the step is the role sent on that row), so a rework session is
-labeled by the step it is reworking — the same step labels the rework answer
-uses. A blocked interval within a window is not working time: the crew's clock
-does not run while the story is blocked. A session not re-sent as 'started' is
-invisible to working time and shows as idle instead (the fidelity bound, named
-in docs/metrics.md). Windows are whole minutes; a sprint with no closed session
-window reads null, matching the minute-based metrics' null behaviour.
+Working time is read from the session records stored in the sprint's label:
+each story's delivery session minutes (from the story's start on), the
+planning sessions' minutes (before their story's start), and the card-less
+sessions' minutes (no story). The sprint's working-time total is the sum of
+those parts, in whole minutes, and the displayed parts sum exactly to the
+displayed sprint total. A session belongs to the sprint label it was sent
+with, with no clamping to the registered span. A sprint with no session
+records reads null (no data, not zero).
+
+The module also owns the idle-time answer (the registered span minus the
+sprint's session minutes, from the same session records that feed the
+working time, so the two agree) and the cost-by-kind answer, which still
+reads the board-event span windows.
 """
 
 from __future__ import annotations
@@ -21,12 +23,31 @@ from zoneinfo import ZoneInfo
 
 from sprint_metrics.store import (
     query_card_kinds,
-    query_model_time_splits,
     query_sprint_span,
     query_working_time_events,
 )
 
 _TERMINAL = ("finished", "attempt_failed", "returned")
+_STEP_BOUNDARY_PAIR_THRESHOLD = 0.5  # seconds
+
+
+def _is_step_boundary_pair(
+    events: list[tuple[str, datetime, str | None]], index: int
+) -> bool:
+    """True when the 'started' row at index is the same step boundary as its next terminal row.
+
+    A send-back's 'started' lands less than half a second before its
+    'attempt_failed' or 'returned' terminal row; that pair is the same step
+    boundary, not a new session window.
+    """
+    _event_type, event_time, _role = events[index]
+    for j in range(index + 1, len(events)):
+        next_type, next_time, _next_role = events[j]
+        if next_type in _TERMINAL:
+            return (next_time - event_time).total_seconds() < _STEP_BOUNDARY_PAIR_THRESHOLD
+        if next_type == "started":
+            return False
+    return False
 
 
 def _blocked_seconds(
@@ -52,74 +73,93 @@ def _blocked_seconds(
 
 
 def calculate_working_time(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    *,
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
 ) -> dict | None:
-    """The sprint's working-time answer: per-step session minutes and the sprint total.
+    """The sprint's working-time answer: session minutes per story, planning, card-less, and the sprint total.
 
-    ``events_by_card`` maps each card_id to its ordered
-    (event_type, event_time, failure_role) rows for the 'started', 'finished',
-    'attempt_failed', 'returned', 'blocked', and 'unblocked' rows, in event
-    order. A session window runs from a 'started' row to the story's next
-    terminal row ('finished', 'attempt_failed', or 'returned'); its minutes are
-    the span minus any blocked interval within it, rounded to whole minutes.
+    ``story_data`` maps each card to a dict with ``started_at`` (the card's
+    first 'started' event time or None) and ``sessions`` (a list of
+    (session_start, session_end, role, model_seconds, input_tokens,
+    output_tokens) tuples), the same shape ``calculate_session_stories`` uses.
+    ``cardless_sessions`` is a list of (session_start, session_end) tuples for
+    sessions sent with the sprint's label but no card.
 
-    The step a window belongs to is the role sent on its terminal row when that
-    row is an 'attempt_failed' or 'returned' row (the step boundary), or, for a
-    window closed by 'finished', the role of the most recent preceding boundary
-    — the step the rework session is reworking — or null when no such boundary
-    was sent. ``per_step`` carries one entry per session window, in story and
-    event order, so a sprint with two windows (an initial session and a rework
-    session) carries both minutes; ``total`` is their sum. ``None`` when the
-    sprint holds no closed session window, so a sprint whose cards carry only
-    date-level fields, or no events at all, reads as no data, not zero.
+    The answer carries:
+    - ``stories``: a dict mapping each card_id to its delivery session minutes
+      (whole minutes). A story with session records but no delivery sessions
+      (all planning) reads 0. A story with no session record does not appear.
+    - ``planning``: the total planning session minutes (whole minutes), 0 when
+      no planning sessions exist.
+    - ``cardless``: the total card-less session minutes (whole minutes), 0 when
+      no card-less sessions exist.
+    - ``total``: the sum of all stories' delivery minutes, planning, and
+      card-less, in whole minutes.
+
+    Returns ``None`` when the sprint holds no session records at all (neither
+    carded nor card-less) — no data, not zero. A session belongs to the sprint
+    label it was sent with, with no clamping to the registered span.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the working-time answer (the span-window calculation was replaced by
+    the session-record computation).
     """
-    per_step: list[dict] = []
-    total = 0
-    for events in events_by_card.values():
-        open_window: tuple[datetime, str | None] | None = None
-        last_boundary_role: str | None = None
-        blocked: list[datetime] = []
-        unblocked: list[datetime] = []
-        for event_type, event_time, role in events:
-            if event_type == "started":
-                open_window = (event_time, last_boundary_role)
-                blocked = []
-                unblocked = []
-            elif event_type == "blocked":
-                if open_window is not None:
-                    blocked.append(event_time)
-            elif event_type == "unblocked":
-                if open_window is not None:
-                    unblocked.append(event_time)
-            elif event_type in _TERMINAL:
-                if open_window is not None:
-                    window_start, preceding_role = open_window
-                    window_end = event_time
-                    step = preceding_role if event_type == "finished" else role
-                    seconds = (window_end - window_start).total_seconds()
-                    blocked_seconds = _blocked_seconds(blocked, unblocked, window_start, window_end)
-                    minutes = round((seconds - blocked_seconds) / 60)
-                    if minutes < 0:
-                        minutes = 0
-                    per_step.append({"step": step, "minutes": minutes})
-                    total += minutes
-                    open_window = None
-                if event_type in ("attempt_failed", "returned"):
-                    last_boundary_role = role
-    if not per_step:
+    from sprint_metrics.session_stories import calculate_session_planning, calculate_session_stories
+
+    if story_data is None:
+        story_data = {}
+    if cardless_sessions is None:
+        cardless_sessions = []
+
+    has_carded = any(data["sessions"] for data in story_data.values())
+    has_cardless = len(cardless_sessions) > 0
+    if not has_carded and not has_cardless:
         return None
-    return {"per_step": per_step, "total": total}
+
+    stories: dict[str, int] = {}
+    for card_id, data in story_data.items():
+        if not data["sessions"]:
+            continue
+        result = calculate_session_stories({card_id: data})[card_id]
+        if result is not None:
+            stories[card_id] = result["session_minutes"]
+
+    planning_answer = calculate_session_planning(story_data)
+    planning = planning_answer["session_minutes"] if planning_answer is not None else 0
+
+    cardless = 0
+    if cardless_sessions:
+        cardless = round(
+            sum((end - start).total_seconds() for start, end in cardless_sessions) / 60
+        )
+
+    total = sum(stories.values()) + planning + cardless
+    return {
+        "stories": stories,
+        "planning": planning,
+        "cardless": cardless,
+        "total": total,
+    }
 
 
 def working_time_total(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    *,
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
 ) -> int | None:
-    """The sprint's working-time total in whole minutes, or None when no closed session window is held.
+    """The sprint's working-time total in whole minutes, or None when no session records are held.
 
     The same total the /range working-time answer carries, answered on its own
     for /trend and the prior/delta figures.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the working-time total (the span-window calculation was replaced by
+    the session-record computation).
     """
-    answer = calculate_working_time(events_by_card)
+    answer = calculate_working_time(story_data=story_data, cardless_sessions=cardless_sessions)
     return answer["total"] if answer is not None else None
 
 
@@ -140,100 +180,79 @@ def _sprint_span_datetimes(
     return span_start, span_end
 
 
-def _in_span_session_seconds(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
-    span_start: datetime,
-    span_end: datetime,
-) -> float:
-    """Total seconds of session time inside the sprint span, per clamped window.
-
-    Each closed session window is clamped to the span — only the part inside the
-    registered span counts as session time — and a blocked card's blocked
-    interval within the clamped window is not counted. Summed across the
-    sprint's stories.
-    """
-    total = 0.0
-    for events in events_by_card.values():
-        open_window: datetime | None = None
-        blocked: list[datetime] = []
-        unblocked: list[datetime] = []
-        for event_type, event_time, _role in events:
-            if event_type == "started":
-                open_window = event_time
-                blocked = []
-                unblocked = []
-            elif event_type == "blocked":
-                if open_window is not None:
-                    blocked.append(event_time)
-            elif event_type == "unblocked":
-                if open_window is not None:
-                    unblocked.append(event_time)
-            elif event_type in _TERMINAL:
-                if open_window is not None:
-                    clamped_start = max(open_window, span_start)
-                    clamped_end = min(event_time, span_end)
-                    if clamped_end > clamped_start:
-                        blocked_seconds = _blocked_seconds(
-                            blocked, unblocked, clamped_start, clamped_end
-                        )
-                        window_seconds = (
-                            (clamped_end - clamped_start).total_seconds() - blocked_seconds
-                        )
-                        if window_seconds > 0:
-                            total += window_seconds
-                    open_window = None
-    return total
-
-
 def calculate_idle(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
-    span: tuple[date, date, str] | None,
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    span: tuple[date, date, str] | None = None,
+    *,
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
 ) -> dict | None:
-    """The sprint's idle-time answer: the idle time against the sprint's total registered duration, in whole minutes.
+    """The sprint's idle-time answer: the registered span minus the sprint's session minutes, in whole minutes.
 
-    ``events_by_card`` maps each card_id to its ordered
-    (event_type, event_time, failure_role) rows (the same shape the
-    working-time answer uses). ``span`` is the sprint's registered definition
-    (start_date, end_date, timezone), or None when the sprint has no registered
-    definition.
+    ``span`` is the sprint's registered definition (start_date, end_date,
+    timezone), or None when the sprint has no registered definition.
+    ``story_data`` maps each card to a dict with ``started_at`` and
+    ``sessions``, and ``cardless_sessions`` is a list of
+    (session_start, session_end) tuples — the sprint's session records, the
+    same shape the working-time answer uses. The idle time is the registered
+    span minus the same session minutes the working time uses (the
+    working-time total: the stories' session minutes from each story's start
+    on, the planning sessions' minutes, and the card-less sessions'
+    minutes), so the working time and the idle time agree from the same
+    session records.
 
-    The span runs from the start of the registered start date to the end of the
-    registered end date, in the sprint's registered timezone. The total
-    duration is that span in whole minutes (null where the sprint is not
-    registered). The in-span session time is each closed session window clamped
-    to the span (a blocked card's blocked interval within the clamped window not
-    counted), summed across the sprint's stories. The idle time is the span
-    minus the in-span session time, in whole minutes; it is null where the
-    sprint is not registered or where no session ran inside the span — the whole
-    span is not reported as idle when no session ran.
+    The span runs from the start of the registered start date to the end of
+    the registered end date, in the sprint's registered timezone; the total
+    duration is that span in whole minutes. A session belongs to the sprint
+    label it was sent with, with no clamping to the registered span: when the
+    sprint's session minutes exceed its registered span the idle time is
+    negative, and when they exactly fill the span it is zero.
+
+    The answer is null (no data, not zero) where the sprint has no registered
+    definition or holds no session records — the whole span is not reported
+    as idle.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the idle-time answer (the span-window calculation was replaced by
+    the session-record computation).
     """
     if span is None:
         return None
+    session_minutes = working_time_total(
+        story_data=story_data, cardless_sessions=cardless_sessions
+    )
+    if session_minutes is None:
+        return None
     start_date, end_date, timezone = span
     span_start, span_end = _sprint_span_datetimes(start_date, end_date, timezone)
-    span_seconds = (span_end - span_start).total_seconds()
-    sprint_duration_minutes = round(span_seconds / 60)
-    in_span_session_seconds = _in_span_session_seconds(events_by_card, span_start, span_end)
-    if in_span_session_seconds <= 0:
-        idle_minutes = None
-    else:
-        idle_minutes = round((span_seconds - in_span_session_seconds) / 60)
+    sprint_duration_minutes = round((span_end - span_start).total_seconds() / 60)
     return {
         "sprint_duration_minutes": sprint_duration_minutes,
-        "idle_minutes": idle_minutes,
+        "idle_minutes": sprint_duration_minutes - session_minutes,
     }
 
 
 def idle_minutes_total(
-    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]],
-    span: tuple[date, date, str] | None,
+    events_by_card: Mapping[str, list[tuple[str, datetime, str | None]]] | None = None,
+    span: tuple[date, date, str] | None = None,
+    *,
+    story_data: dict[str, dict] | None = None,
+    cardless_sessions: list[tuple[datetime, datetime]] | None = None,
 ) -> int | None:
-    """The sprint's idle time in whole minutes, or None when the sprint is not registered or no session ran inside the span.
+    """The sprint's idle time in whole minutes, or None when the sprint has no registered definition or no session records.
 
     The same idle minutes the /range idle answer carries, answered on its own
-    for /trend and the prior/delta figures.
+    for /trend and the prior/delta figures: the registered span minus the
+    sprint's session minutes, from the same session records that feed the
+    working time.
+
+    ``events_by_card`` is accepted for backward compatibility but no longer
+    feeds the idle-time total (the span-window calculation was replaced by
+    the session-record computation).
     """
-    answer = calculate_idle(events_by_card, span)
+    answer = calculate_idle(
+        span=span, story_data=story_data, cardless_sessions=cardless_sessions
+    )
     return answer["idle_minutes"] if answer is not None else None
 
 
@@ -245,8 +264,10 @@ def _card_total_minutes(
     open_window: datetime | None = None
     blocked: list[datetime] = []
     unblocked: list[datetime] = []
-    for event_type, event_time, _role in events:
+    for i, (event_type, event_time, _role) in enumerate(events):
         if event_type == "started":
+            if open_window is not None and _is_step_boundary_pair(events, i):
+                continue
             open_window = event_time
             blocked = []
             unblocked = []
@@ -317,40 +338,55 @@ def cost_by_kind_total(
     return answer.get(kind, 0)
 
 
-def calculate_model_time_split(
-    splits: Mapping[str, tuple[int | None, int | None]],
-) -> dict | None:
-    """The sprint's model time split into refinement and delivery, in whole minutes.
+def calculate_model_time_split(splits: dict[str, dict]) -> dict | None:
+    """The sprint's model time split into planning and delivery, in whole minutes.
 
-    ``splits`` maps each card_id to the (refinement, delivery) model seconds
-    its finished event's cost payload carried. Each story's two values are
-    converted to whole minutes (rounded, the model_minutes display unit) and
-    the sprint's split is the sum across the stories that carry a split, so a
-    story with a smaller refinement share pulls the sprint's refinement total
-    down against its delivery total. ``None`` when no story in the sprint
-    carries a split (the pre-Goal payloads, or no costed stories at all), so a
-    sprint without split data reads as no data, not zero.
+    ``splits`` has the same shape as for ``calculate_session_stories``:
+    a dict mapping each card to a dict with ``started_at`` and ``sessions``.
+    The planning part is the model seconds of sessions that start before the
+    story's 'started' event (or all sessions for a story with no 'started'
+    event); the delivery part is the model seconds of sessions that start at
+    or after the story's 'started' event. Each part is converted to whole
+    minutes (rounded). Returns ``None`` when no story in the sprint carries
+    session records (no data, not zero).
     """
     if not splits:
         return None
-    refinement = 0
-    delivery = 0
-    for refinement_seconds, delivery_seconds in splits.values():
-        if refinement_seconds is not None:
-            refinement += round(refinement_seconds / 60)
-        if delivery_seconds is not None:
-            delivery += round(delivery_seconds / 60)
-    return {"refinement": refinement, "delivery": delivery}
+    has_sessions = any(data["sessions"] for data in splits.values())
+    if not has_sessions:
+        return None
+    planning_seconds = 0
+    delivery_seconds = 0
+    for _card_id, data in splits.items():
+        started_at = data["started_at"]
+        sessions = data["sessions"]
+        if not sessions:
+            continue
+        if started_at is None:
+            for _s_start, _s_end, _role, model_sec, _in_tok, _out_tok in sessions:
+                if model_sec is not None:
+                    planning_seconds += model_sec
+        else:
+            for s_start, _s_end, _role, model_sec, _in_tok, _out_tok in sessions:
+                if model_sec is not None:
+                    if s_start < started_at:
+                        planning_seconds += model_sec
+                    else:
+                        delivery_seconds += model_sec
+    return {
+        "planning": round(planning_seconds / 60),
+        "delivery": round(delivery_seconds / 60),
+    }
 
 
 def model_time_split_total(
-    splits: Mapping[str, tuple[int | None, int | None]],
+    splits: dict[str, dict],
     part: str,
 ) -> int | None:
     """The sprint's model-time split total for the given part, in whole minutes.
 
-    Returns None when no story in the sprint carries a split (no data, not
-    zero). The ``part`` argument is 'refinement' or 'delivery'.
+    Returns None when no story in the sprint carries session records (no
+    data, not zero). The ``part`` argument is 'planning' or 'delivery'.
     """
     answer = calculate_model_time_split(splits)
     if answer is None:
@@ -358,29 +394,87 @@ def model_time_split_total(
     return answer.get(part, 0)
 
 
+def calculate_sprint_model_time(
+    story_data: dict[str, dict],
+    cardless_sessions: list[tuple],
+) -> dict | None:
+    """The sprint's total model time across all session records, in whole minutes
+    and whole token counts.
+
+    The total includes the stories' delivery sessions, the planning sessions,
+    and the card-less sessions. ``story_data`` has the same shape as for
+    ``calculate_session_stories``. ``cardless_sessions`` is a list of
+    (session_start, session_end, role, model_seconds, input_tokens,
+    output_tokens) for the sprint's card-less sessions.
+
+    Returns ``{"model_minutes": X, "input_tokens": Y, "output_tokens": Z}``
+    where X, Y, Z are the totals across all sessions. Returns None when the
+    sprint has no session records at all (no data, not zero).
+    """
+    # Check if there are any sessions at all.
+    has_card_sessions = any(data["sessions"] for data in story_data.values())
+    has_cardless = len(cardless_sessions) > 0
+    if not has_card_sessions and not has_cardless:
+        return None
+
+    total_model_seconds = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
+
+    for _card_id, data in story_data.items():
+        sessions = data["sessions"]
+        if not sessions:
+            continue
+        for _s_start, _s_end, _role, model_sec, in_tok, out_tok in sessions:
+            if model_sec is not None:
+                total_model_seconds += model_sec
+            if in_tok is not None:
+                total_input_tokens += in_tok
+            if out_tok is not None:
+                total_output_tokens += out_tok
+
+    for entry in cardless_sessions:
+        # cardless_sessions entries are (session_start, session_end, role, model_seconds, input_tokens, output_tokens)
+        if len(entry) >= 6:
+            _s_start, _s_end, _role, model_sec, in_tok, out_tok = entry[0], entry[1], entry[2], entry[3], entry[4], entry[5]
+            if model_sec is not None:
+                total_model_seconds += model_sec
+            if in_tok is not None:
+                total_input_tokens += in_tok
+            if out_tok is not None:
+                total_output_tokens += out_tok
+
+    return {
+        "model_minutes": round(total_model_seconds / 60),
+        "input_tokens": total_input_tokens,
+        "output_tokens": total_output_tokens,
+    }
+
+
 def _attach_range_working_time(
     result: dict, conn, labels: list[str], has_events: set[str]
 ) -> None:
     """Attach the working-time answer to each range entry, and its flat name to prior/delta.
 
-    A sprint with no events carries working_time null, matching the other
-    null metrics. A sprint with events but no closed session window (its cards
-    carry only date-level fields, or its sessions never closed) also carries
-    working_time null — no data, not zero. For every sprint after the first,
-    the flat working_time_minutes name appears in that entry's prior and delta
-    whenever those objects are present, null where the corresponding sprint
-    has no working-time data.
+    A sprint with no session records carries working_time null (no data, not
+    zero). A sprint with session records carries the answer — the stories'
+    delivery session minutes, the planning sessions' minutes, and the card-less
+    sessions' minutes, in whole minutes, with the displayed parts summing to
+    the sprint's total. For every sprint after the first, the flat
+    working_time_minutes name appears in that entry's prior and delta whenever
+    those objects are present, null where the corresponding sprint has no
+    working-time data.
     """
+    from sprint_metrics.store import query_cardless_sessions, query_session_story_data
+
     answers: dict[str, dict | None] = {}
     totals: dict[str, int | None] = {}
     for label in labels:
-        if label in has_events:
-            answer = calculate_working_time(query_working_time_events(conn, label))
-            answers[label] = answer
-            totals[label] = answer["total"] if answer is not None else None
-        else:
-            answers[label] = None
-            totals[label] = None
+        story_data = query_session_story_data(conn, label)
+        cardless = query_cardless_sessions(conn, label)
+        answer = calculate_working_time(story_data=story_data, cardless_sessions=cardless)
+        answers[label] = answer
+        totals[label] = answer["total"] if answer is not None else None
     for index, label in enumerate(labels):
         entry = result["sprints"][label]
         entry["working_time"] = answers[label]
@@ -455,24 +549,28 @@ def _attach_range_model_time_split(
 ) -> None:
     """Attach the model-time split answer to each range entry, and its flat names to prior/delta.
 
-    A sprint with no events carries model_time_split null. A sprint with
-    events whose costed stories carry the five-field cost payload but no split
-    (the pre-Goal payloads), or a sprint with no costed stories at all, also
-    carries model_time_split null (no data, not zero; no backfill). For every
-    sprint after the first, the flat names model_time_split_refinement_minutes
-    and model_time_split_delivery_minutes appear in that entry's prior and
-    delta whenever those objects are present, null where the corresponding
-    sprint has no split data.
+    The split is computed from the sprint's session records: the planning
+    part is the model minutes of sessions that ran before their story's start;
+    the delivery part is the model minutes of sessions from the story's start
+    on. A sprint with no session records carries model_time_split null (no
+    data, not zero). For every sprint after the first, the flat names
+    model_time_split_refinement_minutes (the planning part) and
+    model_time_split_delivery_minutes appear in that entry's prior and delta
+    whenever those objects are present, null where the corresponding sprint
+    has no split data.
     """
+    from sprint_metrics.store import query_session_story_data
+
     answers: dict[str, dict | None] = {}
     flat: dict[str, dict[str, int | None]] = {}
     for label in labels:
         if label in has_events:
-            answer = calculate_model_time_split(query_model_time_splits(conn, label))
+            story_data = query_session_story_data(conn, label)
+            answer = calculate_model_time_split(story_data)
             answers[label] = answer
             if answer is not None:
                 flat[label] = {
-                    "model_time_split_refinement_minutes": answer["refinement"],
+                    "model_time_split_refinement_minutes": answer["planning"],
                     "model_time_split_delivery_minutes": answer["delivery"],
                 }
             else:
@@ -507,33 +605,109 @@ def _attach_range_model_time_split(
                 entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
 
 
+def _attach_range_model_time(
+    result: dict, conn, labels: list[str], has_events: set[str]
+) -> None:
+    """Attach the sprint's model-time total answer to each range entry, and its flat names to prior/delta.
+
+    The sprint's model time is the total model minutes and tokens across all
+    session records (stories, planning, and card-less sessions). A sprint with
+    no session records carries model_time null (no data, not zero). For every
+    sprint after the first, the flat names model_time_minutes,
+    model_time_input_tokens, and model_time_output_tokens appear in that
+    entry's prior and delta whenever those objects are present, null where
+    the corresponding sprint has no model-time data.
+    """
+    from sprint_metrics.store import query_cardless_session_details, query_session_story_data
+
+    answers: dict[str, dict | None] = {}
+    flat: dict[str, dict[str, int | None]] = {}
+    for label in labels:
+        if label in has_events:
+            story_data = query_session_story_data(conn, label)
+            cardless = query_cardless_session_details(conn, label)
+            answer = calculate_sprint_model_time(story_data, cardless)
+            answers[label] = answer
+            if answer is not None:
+                flat[label] = {
+                    "model_time_minutes": answer["model_minutes"],
+                    "model_time_input_tokens": answer["input_tokens"],
+                    "model_time_output_tokens": answer["output_tokens"],
+                }
+            else:
+                flat[label] = {
+                    "model_time_minutes": None,
+                    "model_time_input_tokens": None,
+                    "model_time_output_tokens": None,
+                }
+        else:
+            answers[label] = None
+            flat[label] = {
+                "model_time_minutes": None,
+                "model_time_input_tokens": None,
+                "model_time_output_tokens": None,
+            }
+    for index, label in enumerate(labels):
+        entry = result["sprints"][label]
+        entry["model_time"] = answers[label]
+        if index == 0:
+            continue
+        prior_label = labels[index - 1]
+        if isinstance(entry.get("prior"), dict):
+            for name in (
+                "model_time_minutes",
+                "model_time_input_tokens",
+                "model_time_output_tokens",
+            ):
+                entry["prior"][name] = flat[prior_label][name]
+        if isinstance(entry.get("delta"), dict):
+            for name in (
+                "model_time_minutes",
+                "model_time_input_tokens",
+                "model_time_output_tokens",
+            ):
+                cur, pri = flat[label][name], flat[prior_label][name]
+                entry["delta"][name] = cur - pri if cur is not None and pri is not None else None
+
+
+_RANGE_MODEL_TIME_DESCRIPTION = (
+    "Each entry also carries a model_time answer: the sprint's total "
+    "model time across all session records (stories, planning, and "
+    "card-less sessions), in whole model minutes and whole token "
+    "counts. A sprint with no session records reads null (no data, "
+    "not zero). "
+)
+
+
 def _attach_range_idle(
     result: dict, conn, labels: list[str], has_events: set[str]
 ) -> None:
     """Attach the per-sprint idle-time answer to the range response, and its flat name to prior/delta.
 
-    Each sprint's entry carries its idle answer — the idle time (the time that
-    passed with no session running) against the sprint's total registered
-    duration, in whole minutes. A sprint with no events carries idle null,
-    matching the other null metrics; a sprint with events but no registered
-    definition (or no session ran inside the span) carries its idle time as
-    null (the whole span is not reported as idle when no session ran). The flat
-    ``idle_minutes`` name appears in each later entry's prior and delta, null
-    where a sprint has no data.
+    Each sprint's entry carries its idle answer — the registered sprint span
+    minus the sprint's session minutes, from the same session records that
+    feed the working time, in whole minutes, in the sprint's registered
+    timezone. A sprint with no session records, or with no registered
+    definition, carries idle null (no data, not zero) — the whole span is not
+    reported as idle. For every sprint after the first, the flat
+    ``idle_minutes`` name appears in that entry's prior and delta whenever
+    those objects are present, null where the corresponding sprint has no
+    idle data.
     """
+    from sprint_metrics.store import query_cardless_sessions, query_session_story_data
+
     answers: dict[str, dict | None] = {}
     totals: dict[str, int | None] = {}
     for label in labels:
-        if label in has_events:
-            answer = calculate_idle(
-                query_working_time_events(conn, label),
-                query_sprint_span(conn, label),
-            )
-            answers[label] = answer
-            totals[label] = answer["idle_minutes"] if answer is not None else None
-        else:
-            answers[label] = None
-            totals[label] = None
+        story_data = query_session_story_data(conn, label)
+        cardless = query_cardless_sessions(conn, label)
+        answer = calculate_idle(
+            span=query_sprint_span(conn, label),
+            story_data=story_data,
+            cardless_sessions=cardless,
+        )
+        answers[label] = answer
+        totals[label] = answer["idle_minutes"] if answer is not None else None
     for index, label in enumerate(labels):
         entry = result["sprints"][label]
         entry["idle"] = answers[label]
@@ -553,12 +727,15 @@ def _attach_range_idle(
 
 
 _RANGE_WORKING_TIME_DESCRIPTION = (
-    "Each entry also carries a working_time answer: the minutes "
-    "the crew's sessions ran, per step of a story's pipeline "
-    "(a returned or attempt_failed row marks the step boundary; "
-    "a rework session is labeled by the step it is reworking), "
-    "plus the sprint's working-time total; a sprint with no "
-    "events (or no closed session window) reads null. "
+    "Each entry also carries a working_time answer: the sprint's "
+    "working time — the minutes of the sprint's session records, "
+    "in whole minutes. The stories' session minutes (from each "
+    "story's start on), the planning sessions' minutes (before "
+    "their story's start), and the card-less sessions' minutes "
+    "(no story) sum to the sprint's total. A session belongs "
+    "to the sprint label it was sent with, with no clamping "
+    "to the registered span. A sprint with no session records "
+    "reads null (no data, not zero). "
 )
 
 _RANGE_COST_BY_KIND_DESCRIPTION = (
@@ -570,19 +747,22 @@ _RANGE_COST_BY_KIND_DESCRIPTION = (
 
 _RANGE_MODEL_TIME_SPLIT_DESCRIPTION = (
     "Each entry also carries a model_time_split answer: the "
-    "sprint's model time split into refinement and delivery, in "
-    "whole minutes (each story's split converted to whole minutes "
-    "and summed over the costed stories); a sprint whose stories "
-    "carry no model-time split (or no costed stories at all) "
-    "reads null (no data, not zero). "
+    "sprint's model time split into planning and delivery, in "
+    "whole model minutes, from the session records. The planning "
+    "part is the model minutes of sessions that ran before their "
+    "story's start; the delivery part is the model minutes of "
+    "sessions from the story's start on. A sprint with no "
+    "carded session records reads null (no data, not zero). "
 )
 
 _RANGE_IDLE_DESCRIPTION = (
     "Each entry also carries an idle answer: the sprint's idle "
-    "time — the time that passed with no session running — "
-    "against the sprint's total registered duration, in whole "
-    "minutes (a session window clamped to the registered span; "
-    "a rework session never re-sent as started reads as idle); "
-    "a sprint with no events or no registered definition reads "
-    "null."
+    "time — the registered sprint span minus the sprint's session "
+    "minutes, from the same session records that feed the working "
+    "time, in whole minutes, in the sprint's registered timezone "
+    "(a session belongs to the sprint label it was sent with, with "
+    "no clamping to the registered span; the span-window "
+    "calculation no longer feeds the idle answer); a sprint with "
+    "no session records, or with no registered definition, reads "
+    "null (no data, not zero)."
 )

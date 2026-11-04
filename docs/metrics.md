@@ -19,7 +19,7 @@ BEGIN:metrics
 | First-attempt denominator | `first_attempt_denominator` | Return the total count of completed cards, as a whole count. |
 | First-attempt numerator | `first_attempt_numerator` | Return the count of completed cards whose attempts equals 1, as a whole count. |
 | First attempt | `first_attempt_rate_percent` | Return the percentage of completed cards that succeeded on the first attempt, as a whole percent. |
-| Idle time | `idle_minutes` | Return the sprint's idle time — the time that passed with no session running against the sprint's total registered duration — in whole minutes (the registered span minus the in-span session time, in the sprint's registered timezone; a session window clamped to the span, a rework session never re-sent as 'started' reads as idle). None where the sprint is not registered or no session ran inside the span. |
+| Idle time | `idle_minutes` | Return the sprint's idle time — the registered sprint span minus the sprint's session minutes, from the same session records that feed the working time — in whole minutes, in the sprint's registered timezone (a session belongs to the sprint label it was sent with, with no clamping to the registered span). None where the sprint has no session records or no registered definition. |
 | Input tokens (middle) | `input_tokens_middle` | Return the median input tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Input tokens (total) | `input_tokens_total` | Return the total input tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Lead time | `lead_time_days` | Return the sprint's average cycle time and lead time, in whole days. |
@@ -28,7 +28,7 @@ BEGIN:metrics
 | Model minutes (middle) | `model_minutes_middle` | Return the median whole model minutes across costed stories, or None when no story carries cost. |
 | Model minutes (total) | `model_minutes_total` | Return the total whole model minutes across costed stories, or None when no story carries cost. |
 | Model time split (delivery) | `model_time_split_delivery_minutes` | Return the sprint's model time spent in delivery, in whole minutes — each story's delivery seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
-| Model time split (refinement) | `model_time_split_refinement_minutes` | Return the sprint's model time spent in refinement, in whole minutes — each story's refinement seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
+| Model time split (planning) | `model_time_split_refinement_minutes` | Return the sprint's model time spent in planning, in whole minutes — each story's planning seconds converted to whole minutes (the model_minutes display unit) and summed over the costed stories. None when no story in the sprint carries a model-time split. |
 | Output tokens (middle) | `output_tokens_middle` | Return the median output tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Output tokens (total) | `output_tokens_total` | Return the total output tokens across costed stories, as a whole count, or None when no story carries cost. |
 | Points delivered | `points_delivered` | Return the sum of points values on completed cards, in whole points. |
@@ -41,7 +41,7 @@ BEGIN:metrics
 | Superseded points | `superseded_points` | Return the sum of the points value on superseded cards, in whole points (0 when a superseded card carries no points value). Excluded from throughput and in-flight calculations. |
 | Throughput | `throughput` | Return the count of completed cards in the sprint, as a whole count. |
 | WIP violations | `wip_violations` | Return the count of states whose WIP limit was breached this sprint, as a whole count. |
-| Working time | `working_time_minutes` | Return the sprint's working-time total, in whole minutes — the sum of the crew's session windows (from a story's started row to its returned/attempt_failed/finished row, a blocked card's blocked interval not counted), per step of the story's pipeline. None when no card carries a closed session window. |
+| Working time | `working_time_minutes` | Return the sprint's working-time total, in whole minutes — the minutes of the sprint's session records: the stories' session minutes (from each story's start on) plus the planning sessions' minutes plus the card-less sessions' minutes, with the displayed parts summing to the sprint's total. A session belongs to the sprint label it was sent with, with no clamping to the registered span. None when the sprint has no session records. |
 END:metrics
 
 ## Computation details
@@ -96,35 +96,29 @@ timestamp, expressed in whole minutes and rounded to the nearest integer.
 ### Working time per pipeline step
 
 The `working_time` answer on each sprint's `/range` entry carries the
-minutes the crew's sessions ran, per step of a story's pipeline. A session
-window runs from a story's `started` row to the story's next terminal row
-(`finished`, `attempt_failed`, or `returned`); the story's working time is
-the sum of its windows, and the sprint's is the sum across its stories. The
-step a window belongs to is the role sent on its terminal row when that row
-is an `attempt_failed` or `returned` row (the row that marks the step
-boundary), or, for a window closed by `finished`, the step it is reworking.
-`working_time.per_step` carries one value per session window, and
-`working_time.total` is their sum in whole minutes.
+minutes of the sprint's session records, in whole minutes. The sprint's
+working time is the sum of its stories' session minutes (from each story's
+`started` event on), its planning sessions' minutes (before their story's
+start), and its card-less sessions' minutes (no story). The displayed story
+parts, the planning part, and the card-less part sum exactly to the
+displayed sprint total (`working_time.total`).
 
-Working time is the minutes the crew's sessions ran, not the span from the
-story's creation to its finish: it is measured session by session, so the
-calendar gap between one session and the next — and any time a card sat
-unworked — never counts. A rework session that the crew never re-sent as
-`started` is invisible to working time and shows as idle time instead; this
-is the fidelity bound, set by the granularity of the events the crew sends.
-A blocked card's blocked interval is not working time: while the story is
-blocked, the crew's clock does not run, so a session's minutes are its span
-minus the minutes it was blocked.
+A session belongs to the sprint label it was sent with, with no clamping to
+the sprint's registered span: a session sent with sprint "2024-03" counts in
+"2024-03" even if its timestamps fall outside the registered span.
 
-A sprint whose cards carry no session timestamps (date-only fields) or whose
-sessions never closed reports `working_time` null, not zero, matching the
-null behaviour of the other minute-based metrics.
+A sprint with no session records (no carded sessions and no card-less
+sessions) reads `working_time` null — no data, not zero. The span-window
+calculation (from board-event windows) no longer feeds the working-time
+answer.
 
 ### Idle time against the sprint's duration
 
 The `idle` answer on each sprint's `/range` entry carries the idle time — the
-time that passed with no session running — against the sprint's total
-registered duration, in whole minutes.
+registered sprint span minus the sprint's session minutes, from the same
+session records that feed the working time — in whole minutes, so the working
+time and the idle time agree from the same session records: the working time
+plus the idle time is the sprint's registered duration.
 
 The total duration (`idle.sprint_duration_minutes`) is the sprint's registered
 span, from the start of the registered start date to the end of the registered
@@ -132,86 +126,60 @@ end date, taken in the sprint's registered timezone: the span is the real
 elapsed time in that zone, so a day the calendar does not turn twenty-four
 hours (a DST transition) reads as the minutes that actually elapsed.
 
-The idle time (`idle.idle_minutes`) is the registered span minus the in-span
-session time, in whole minutes. A session window is clamped to the span — only
-the part of a window inside the registered span counts as session time, so a
-window that runs past the end date (or starts before the start date) counts
-only its in-span part. A blocked card's blocked interval within a clamped
-window is not session time, the way it is not working time.
+The idle time (`idle.idle_minutes`) is the registered span minus the sprint's
+session minutes — the working-time total: the stories' session minutes (from
+each story's start on), the planning sessions' minutes (before their story's
+start), and the card-less sessions' minutes (no story). A session belongs to
+the sprint label it was sent with, with no clamping to the registered span: a
+session that runs past the registered end date is counted in full, not cut at
+the span. When the sprint's session minutes exceed its registered span the
+idle time is negative, and when they exactly fill the span it is zero.
 
-Because a session window opens only on a `started` row, a rework session the
-crew never re-sent as `started` contributes no session time and reads as idle —
-the working-time fidelity bound, set by the granularity of the events the crew
-sends.
-
-A sprint with no events, or with no registered definition, reads `idle` null,
-matching the null behaviour of the other minute-based metrics. Where the sprint
-is registered but no session ran inside the span, `idle.sprint_duration_minutes`
-carries the span and `idle.idle_minutes` is null — the whole span is not
-reported as idle when no session ran. The flat `idle_minutes` name also appears
-in each later sprint's `prior` and `delta`, null where a sprint has no data.
+A sprint with no session records, or with no registered definition, reads
+`idle` null — no data, not zero — and the whole span is not reported as
+idle. The flat `idle_minutes` name also appears in each later sprint's
+`prior` and `delta`, null where the corresponding sprint has no idle data.
 
 ### Model cost
 
-The crew's event-sending automation attaches a cost payload to each
-`finished` event it sends. The payload carries five fields, each a
-non-negative integer:
+The cost answer is computed from the stories' session records (delivery
+sessions only): sessions that start at or after the story's `started`
+board event. Each story's numbers are its model minutes in whole model
+minutes and its input and output tokens as whole counts. A story's
+numbers appear whether or not the story finished.
 
-- `model_seconds` — total model time across every role's calls for this story
-- `input_tokens` — total input tokens consumed
-- `cached_input_tokens` — input tokens served from cache
-- `output_tokens` — total output tokens produced
-- `reasoning_output_tokens` — output tokens spent on reasoning
-
-All five fields are sent together or not at all; a partial payload is
-rejected at intake.
-
-The cost payload may also carry an optional `model_time_split` sub-object
-that splits the story's model time between refinement and delivery. Its two
-fields are each a non-negative integer (model seconds):
-
-- `refinement` — model seconds spent in refinement
-- `delivery` — model seconds spent in delivery
-
-The two fields are sent together or not at all; a partial sub-object is
-rejected at intake. The sub-object is independent of the five cost fields:
-a finished event may carry the split without the five fields, or the five
-fields without the split.
-
-The report's display unit for model cost is whole minutes. The crew sends
-model seconds on the event; the report shows `round(model_seconds / 60)`
-as `model_minutes`.
-
-A story's cost is the summed total across every role's model calls for that
-story. The sprint's cost summary reports two aggregates per measure
+The cost's total equals the sum of the `story_costs` entries. The
+sprint's cost summary reports two aggregates per measure
 (`model_minutes`, `input_tokens`, `output_tokens`):
 
-- **middle** — the median of the per-story values across all costed stories
-- **total** — the sum across the costed stories
+- **middle** — the median of the per-story values across all stories
+  that carry delivery session data
+- **total** — the sum across the stories that carry delivery session
+  data
 
-The two percents, `cached_input_percent` and `reasoning_output_percent`,
-are computed from the sprint's combined token totals, not per story:
-`cached_input_percent` is the sprint's cached-input share of all input
-tokens, and `reasoning_output_percent` is the sprint's reasoning share of
-all output tokens. Both percents are identical on every story in the
-`story_costs` list.
+A sprint's model minutes and tokens include the planning and card-less
+sessions in the sprint's total (the `model_time` answer). A sprint with
+no delivery session records reads null for cost and an empty
+`story_costs` list (no data, not zero).
 
-### Model time split (refinement against delivery)
+The finished-event cost payload (`model_seconds` and friends) is still
+accepted at intake but no longer feeds any answer. The `model_seconds`
+field on the event is the model time in seconds; the cost answer
+converts it to whole model minutes as its display unit.
+
+### Model time split (planning against delivery)
 
 `model_time_split_refinement_minutes` and
-`model_time_split_delivery_minutes` split the sprint's model time between
-refinement and delivery. The unit is whole minutes, the model_minutes
-display unit: the crew sends model seconds on each story's finished event
-(`model_time_split`'s `refinement` and `delivery` fields), and each story's
-two values are converted to whole minutes (rounded) before the sprint's
-totals sum them across the costed stories. The pair lets a reader see,
-sprint by sprint, how much model time went to refinement and how much to
-delivery.
+`model_time_split_delivery_minutes` split the sprint's model time
+between planning and delivery, computed from the session records. The
+unit is whole model minutes: the planning part is the model minutes of
+sessions that ran before their story's start; the delivery part is the
+model minutes of sessions from the story's start on. The pair lets a
+reader see, sprint by sprint, how much model time went to planning and
+how much to delivery.
 
-A sprint whose stories carry no model-time split — the pre-Goal payloads
-that carry the five-field cost but no split, or a sprint with no costed
-stories at all — reports both measures as null, not zero: no data, matching
-the null behaviour of the other minute-based metrics.
+A sprint with no carded session records reads null (no data, not
+zero).
 
 ### Rework (send-backs to refinement and review/QA returns)
 
@@ -299,6 +267,75 @@ answers its `filed` split, because the filed answer is computed directly from
 the filed rows, independent of the delivery-event gate. In `/trend`, delivery
 measures read null for such a sprint, while `self_filed_share_percent` keeps
 its value.
+
+### Per-story session time
+
+The `session_stories` answer on each sprint's `/range` entry reports, for
+each story whose sessions ran in the sprint: its session minutes in total
+(`session_minutes`, whole minutes), its minutes by role (`minutes_by_role`,
+roles named with the crew's role strings), its model minutes (`model_minutes`,
+whole model minutes), and its tokens (`input_tokens` and `output_tokens`,
+whole counts of input and output tokens).
+
+A story's numbers appear whether or not the story finished: the answer reads
+the story's session records, not its delivery state. A story that started but
+never finished still carries its session numbers beside its unfinished
+delivery measures.
+
+A story with no session record reads null (unknown), never zero. This
+includes the pre-session sprints — sprints that predate the crew's session
+recording — where every story's session numbers read null.
+
+A session counts in the sprint label it was sent with, unclamped to the
+sprint's registered span. A session whose start precedes the sprint's
+registered start date and whose end follows its registered end date counts
+in full in the sprint it was sent with; it does not split across sprints.
+
+The planning/delivery boundary: a story's start is its first `started` board
+event as stored on the card. Sessions that start before that moment are the
+sprint's planning — their minutes and model minutes, shown as a named part
+of the sprint's numbers (`session_planning`, with `session_minutes` and
+`model_minutes`) against the delivery (the stories' sessions from their
+starts on). From the story's start, a session's time is that story's. A
+story with session records but no `started` board event has no established
+start, and its sessions read as planning until one is stored: its per-story
+numbers read a true zero (sessions ran; all of them are planning), distinct
+from the null of a story with no session record. A card-less session is
+never planning-or-delivery-of-a-story: it counts in the sprint's numbers
+only. A sprint with no carded session records reads `session_planning` null.
+
+### Per-epic session time
+
+The `session_epics` answer on each sprint's `/range` entry reports, for each
+epic whose stories had sessions in the sprint: its in-sprint session minutes
+in total (`session_minutes`, whole minutes), its minutes by role
+(`minutes_by_role`, roles named with the crew's role strings), its model
+minutes (`model_minutes`, whole model minutes), and its tokens
+(`input_tokens` and `output_tokens`, whole counts of input and output
+tokens), summed over that sprint's stories of the epic.
+
+The measures carry the same names, roles and units as the per-story session
+answer. An epic appears only when one of its stories has board rows in the
+sprint. An epic whose stories carried no session record in the sprint reads
+unknown (null) for its in-sprint total, never zero: `session_minutes`,
+`minutes_by_role`, `model_minutes`, `input_tokens` and `output_tokens` are
+all null, and the entry lists the unknown stories beside the total — their
+count in `unknown_story_count` and their identifiers in `unknown_stories`.
+Where only some of the epic's stories have session records, the in-sprint
+total covers only the stories with records, and the entry lists the unknown
+stories beside the total. A story whose board rows carry no epic link
+contributes to no epic's total; a card-less session belongs to no epic.
+
+The `session_epics_to_date` answer on each sprint's `/range` entry carries
+the same measures (session minutes in whole minutes, in total and by role,
+model minutes, tokens) accumulated across every sprint to date, bridging
+gap sprints and not read as zero. An epic whose stories have no session
+record in any sprint up to and including the current one reads unknown
+(null) for its to-date total, never zero; the entry lists the unknown
+stories beside the total. A gap sprint with no sessions for the epic
+carries the prior to-date total forward. A story whose board rows carry no
+epic link contributes to no epic's to-date total; a card-less session
+belongs to no epic.
 
 ## Boundary conditions
 

@@ -168,15 +168,16 @@ ALL_METRICS: frozenset[str] = frozenset(
 )
 
 
-def calculate_first_attempt_rate(cards: Iterable[Card | Mapping[str, object]]) -> int:
+def calculate_first_attempt_rate(cards: Iterable[Card | Mapping[str, object]]) -> int | None:
     """Return the percentage of completed cards that succeeded on the first attempt, as a whole percent.
 
     A card succeeded on its first attempt when its ``attempts`` field is 1.
-    Cards still in flight are ignored. When no cards are completed the rate is 0.
+    Cards still in flight are ignored. ``None`` when no cards are completed —
+    a sprint with no finished or superseded rows carries no first-attempt data.
     """
     completed = [card for card in _as_cards(cards) if card.is_completed]
     if not completed:
-        return 0
+        return None
     first_attempt = sum(1 for card in completed if card.attempts == 1)
     return round(100 * first_attempt / len(completed))
 
@@ -308,14 +309,17 @@ def calculate_points_delivered(cards: Iterable[Card | Mapping[str, object]]) -> 
 
 def calculate_first_attempt_counts(
     cards: Iterable[Card | Mapping[str, object]],
-) -> tuple[int, int]:
+) -> tuple[int | None, int | None]:
     """Return the numerator and denominator of the first-attempt rate.
 
     The numerator is the count of completed cards whose ``attempts`` equals 1.
-    The denominator is the total count of completed cards. An empty list
-    returns ``(0, 0)``.
+    The denominator is the total count of completed cards. ``(None, None)``
+    when no cards are completed — a sprint with no finished or superseded rows
+    carries no first-attempt data.
     """
     completed = [card for card in _as_cards(cards) if card.is_completed]
+    if not completed:
+        return (None, None)
     numerator = sum(1 for card in completed if card.attempts == 1)
     return (numerator, len(completed))
 
@@ -500,37 +504,31 @@ def calculate_reasoning_output_percent(
     return round(100 * total_reasoning / total_output) if total_output > 0 else 0
 
 
-def _compute_cost_summary(cards) -> tuple[list[dict], dict | None]:
+def _compute_cost_summary(
+    session_costs: dict[str, tuple[int, int, int]],
+) -> tuple[list[dict], dict | None]:
     """Compute the per-story cost list and the sprint's cost middle and total.
 
-    A card carries cost data when its model_seconds is not None; the per-story
-    cost is the total already stored on the card (the sum across roles). The two
-    percents on every story_costs item are the sprint's combined shares, not the
-    story's own. ``cost`` is the median (middle) and sum (total) of the three
-    measures over the costed stories. Returns ``([], None)`` when no card carries
-    cost data.
+    ``session_costs`` maps each card_id to the (model_seconds, input_tokens,
+    output_tokens) totals of that story's delivery sessions (sessions that
+    start at or after the story's 'started' event). The per-story cost is
+    those totals converted to whole model minutes and whole token counts.
+    ``cost`` is the median (middle) and sum (total) of the three measures
+    over the stories that carry session data. Returns ``([], None)`` when
+    no story carries delivery session data.
     """
-    costed = [card for card in cards if card.model_seconds is not None]
-    if not costed:
+    if not session_costs:
         return [], None
-    total_input = sum(card.input_tokens for card in costed)
-    total_cached = sum(card.cached_input_tokens for card in costed)
-    total_output = sum(card.output_tokens for card in costed)
-    total_reasoning = sum(card.reasoning_output_tokens for card in costed)
-    cached_input_percent = round(100 * total_cached / total_input) if total_input > 0 else 0
-    reasoning_output_percent = (
-        round(100 * total_reasoning / total_output) if total_output > 0 else 0
-    )
     story_costs = [
         {
-            "card_id": card.card_id,
-            "model_minutes": round(card.model_seconds / 60),
-            "input_tokens": card.input_tokens,
-            "cached_input_percent": cached_input_percent,
-            "output_tokens": card.output_tokens,
-            "reasoning_output_percent": reasoning_output_percent,
+            "card_id": card_id,
+            "model_minutes": round(model_seconds / 60),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
         }
-        for card in costed
+        for card_id, (model_seconds, input_tokens, output_tokens) in sorted(
+            session_costs.items()
+        )
     ]
     per_story_minutes = [item["model_minutes"] for item in story_costs]
     per_story_input = [item["input_tokens"] for item in story_costs]
@@ -574,21 +572,57 @@ def _cost_flat(cost: dict | None) -> dict[str, int | None]:
     }
 
 
+def _delivery_session_totals(story_data: dict[str, dict]) -> dict[str, tuple[int, int, int]]:
+    """Compute per-story delivery session totals from story_data.
+
+    Returns a mapping from card_id to (model_seconds, input_tokens, output_tokens)
+    for the story's delivery sessions (sessions that start at or after the story's
+    'started' event). Stories with no delivery sessions are excluded.
+    """
+    result: dict[str, tuple[int, int, int]] = {}
+    for card_id, data in story_data.items():
+        started_at = data["started_at"]
+        sessions = data["sessions"]
+        if not sessions or started_at is None:
+            continue
+        delivery = [
+            (s_start, s_end, role, model_sec, in_tok, out_tok)
+            for s_start, s_end, role, model_sec, in_tok, out_tok in sessions
+            if s_start >= started_at
+        ]
+        if not delivery:
+            continue
+        total_model = 0
+        total_input = 0
+        total_output = 0
+        for _s_start, _s_end, _role, model_sec, in_tok, out_tok in delivery:
+            if model_sec is not None:
+                total_model += model_sec
+            if in_tok is not None:
+                total_input += in_tok
+            if out_tok is not None:
+                total_output += out_tok
+        result[card_id] = (total_model, total_input, total_output)
+    return result
+
+
 def _attach_range_cost(
     result: dict,
-    sprints: dict[str, list],
+    conn,
     labels: list[str],
     has_events: set[str],
 ) -> None:
     """Attach cost to each range entry: ``story_costs`` and ``cost`` on the entry, and
     the six flat cost names on its prior and delta.
 
-    An entry for a sprint with no events has its own values nulled (story_costs [],
-    cost None) but keeps its prior and delta, since every range entry carries the
-    prior-sprint delta (docs/service.md). The flat names in prior and delta are null where the
-    corresponding sprint has no costed stories, so a cost delta is never computed
-    against a missing cost.
+    The cost is computed from the stories' session records (delivery sessions
+    only). An entry for a sprint with no events has its own values nulled
+    (story_costs [], cost None) but keeps its prior and delta. The flat names
+    in prior and delta are null where the corresponding sprint has no costed
+    stories, so a cost delta is never computed against a missing cost.
     """
+    from sprint_metrics.store import query_session_story_data
+
     for i, label in enumerate(labels):
         if label not in has_events:
             entry = result["sprints"][label]
@@ -598,15 +632,19 @@ def _attach_range_cost(
             entry["story_costs"] = []
             entry["cost"] = None
             continue
+        story_data = query_session_story_data(conn, label)
+        session_costs = _delivery_session_totals(story_data)
+        story_costs, cost = _compute_cost_summary(session_costs)
         entry = result["sprints"][label]
-        story_costs, cost = _compute_cost_summary(sprints[label])
         entry["story_costs"] = story_costs
         entry["cost"] = cost
         if i > 0 and labels[i - 1] not in has_events:
             entry["prior"] = None
             entry["delta"] = None
         elif i > 0:
-            prior_cost = _compute_cost_summary(sprints[labels[i - 1]])[1]
+            prior_story_data = query_session_story_data(conn, labels[i - 1])
+            prior_session_costs = _delivery_session_totals(prior_story_data)
+            prior_cost = _compute_cost_summary(prior_session_costs)[1]
             prior_flat = _cost_flat(prior_cost)
             current_flat = _cost_flat(cost)
             for name in _COST_FLAT_NAMES:
@@ -617,12 +655,18 @@ def _attach_range_cost(
 
 _RANGE_COST_DESCRIPTION = (
     "Each entry also carries a cost answer: the per-story cost list "
-    "(story_costs, each costed story's model minutes, input and output tokens, "
-    "and the sprint's combined cached-input and reasoning-output percents) and "
+    "(story_costs, each story's model minutes in whole model minutes and "
+    "its input and output tokens as whole counts, from that story's "
+    "delivery session records — sessions from the story's start on) and "
     "the sprint's cost middle and total (the median and sum of the three "
-    "measures across costed stories). The six flat cost names "
+    "measures across stories that carry delivery session data). "
+    "The cost's total equals the sum of the story_costs entries. "
+    "A story's numbers appear whether or not the story finished. "
+    "The six flat cost names "
     "(model_minutes_middle, model_minutes_total, input_tokens_middle, "
     "input_tokens_total, output_tokens_middle, output_tokens_total) appear on "
-    "each entry's prior and delta. A sprint with no costed stories reads null "
-    "for cost, not zero."
+    "each entry's prior and delta. A sprint with no delivery session records "
+    "reads null for cost and an empty story_costs list (no data, not zero). "
+    "The finished-event cost payload (model_seconds and friends) is still "
+    "accepted at intake but no longer feeds any answer."
 )

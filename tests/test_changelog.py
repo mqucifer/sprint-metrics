@@ -55,6 +55,17 @@ def _unreleased_body_span(content: str) -> tuple[int, int]:
     return first.end(), end
 
 
+def _subheading_bodies(content: str, subheading: str) -> list[str]:
+    """Return the body text of every section that has the given subheading line."""
+    bodies = []
+    for m in re.finditer(rf"^{re.escape(subheading)}\s*$", content, re.MULTILINE):
+        start = m.end()
+        next_h = re.search(r"^### |^## \[", content[start:], re.MULTILINE)
+        end = start + next_h.start() if next_h else len(content)
+        bodies.append(content[start:end])
+    return bodies
+
+
 def check_pyproject_version(changelog_text: str, pyproject_version: str) -> list[str]:
     """Rule 1: the version in pyproject.toml equals the newest released section's version."""
     violations = []
@@ -299,4 +310,65 @@ def test_rule_released_headings_dated():
     violations = check_released_headings_dated(mutated)
     assert violations, "expected a violation for non-ISO date"
     assert "1.3.3" in violations[0], f"message must name the offending heading: {violations[0]}"
+
+
+def test_unreleased_added_names_session_event():
+    """The changelog names the intake accepting a 'session' event,
+    in whichever section the entry currently sits in."""
+    content = CHANGELOG.read_text()
+    added = _subheading_bodies(content, "### Added")
+    assert any(
+        "session" in body and "intake" in body and "accepts" in body for body in added
+    )
+
+
+def test_unreleased_added_names_session_epics():
+    """AC6: CHANGELOG.md records that /range now answers each epic's
+    in-sprint session time, in whichever section the entry currently sits in."""
+    content = CHANGELOG.read_text()
+    added = _subheading_bodies(content, "### Added")
+    added_section = "\n".join(added)
+    assert "session_epics" in added_section
+    assert "epic" in added_section
+    assert "in-sprint session minutes" in added_section
+
+
+def test_unreleased_changed_names_api_version_move():
+    """The changelog names the response api_version move,
+    in whichever section the entry currently sits in."""
+    content = CHANGELOG.read_text()
+    changed = _subheading_bodies(content, "### Changed")
+    assert any('"11"' in body for body in changed)
+    assert any('"12"' in body for body in changed)
+    assert any("api_version" in body for body in changed)
+
+
+def test_unreleased_changed_says_how_much_past_numbers_move():
+    """The changelog's Changed entry says by how much past numbers move:
+    working time, idle time, cost and model-time-split now read from session
+    records; Sprint 38's working time moves from 72 to about 22; cost and
+    model-time move from no data to real values; sprints with no session record
+    read null; a story with no session record reads unknown, never zero;
+    flat prior/delta names keep their shape under the new api_version."""
+    content = CHANGELOG.read_text()
+    changed = _subheading_bodies(content, "### Changed")
+    changed_section = "\n".join(changed)
+    # The answers now read from session records instead of span windows / cost payload
+    assert "session records" in changed_section
+    assert "span" in changed_section
+    # Sprint 38's worked example: 72 to about 22
+    assert "Sprint 38" in changed_section
+    assert "72" in changed_section
+    assert "22" in changed_section
+    # Cost and model-time move from no data to real values
+    assert "no data" in changed_section
+    assert "real values" in changed_section
+    # Sprints with no session record read null (unknown)
+    assert "null" in changed_section
+    assert "unknown" in changed_section
+    # A story with no session record reads unknown, never zero
+    assert "never zero" in changed_section
+    # Flat prior/delta names keep their shape under the new api_version
+    assert "prior" in changed_section
+    assert "api_version" in changed_section
 

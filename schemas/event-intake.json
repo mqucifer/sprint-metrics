@@ -27,7 +27,8 @@
         "attempt_failed",
         "superseded",
         "returned",
-        "filed"
+        "filed",
+        "session"
       ]
     },
     "timestamp": {
@@ -145,6 +146,33 @@
     },
     "project": {
       "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "model_seconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "input_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output_tokens": {
+      "type": "integer",
+      "minimum": 0
     }
   }
 }

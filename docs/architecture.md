@@ -1,33 +1,35 @@
 # Architecture
 
-The system as built (2026-10-28, last release 4.2.0): Goal
-mqucifer/sprint-metrics#750's target diagram, corrected to what the code
+The system as built (2026-11-01, last release 4.4.1): Goal
+mqucifer/sprint-metrics#891's target diagram, corrected to what the code
 shows. This file is the repository's diagram of record: each Goal's target
 diagram is drawn from it, and becomes it once the Goal is done (ADR 0036).
 Update it when the code changes.
 
 ```mermaid
 C4Component
-    title sprint-metrics, as the repository has it, after Goal 750 of mqucifer/sprint-metrics
+    title sprint-metrics, as the repository has it, with the new parts of Goal 891 of mqucifer/sprint-metrics
     Boundary(pkg, "sprint_metrics package") {
-        Component(svc, "service.py", "Stateful HTTP service and entry point: event intake (superset: 'returned' type, epic/goal/kind links, cost split), sprint registration, /range and /trend queries, /health, and the JSON schemas served at /schema/event and /schema/trend.")
+        Component(svc, "service.py", "Stateful HTTP service and entry point: event intake (gains the 9th accepted event type 'filed', carrying the per-card filing facts: who filed it, what opened it, and, for cards filed in another repository, the project the card counts for; the intake api_version stays '1'), sprint registration, /range and /trend queries, /health, and the JSON schemas served at /schema/event and /schema/trend.")
         Component(card, "card.py", "Card dataclass and card parsing.")
-        Component(metrics, "metrics.py", "Pure per-sprint metric calculations: cycle/lead time, throughput, WIP, blocked aging, first-attempt, failure breakdown, cost measures.")
-        Component(win, "verdict.py (new, #802)", "Window verdict across the range: better/worse/flat per measure (first vs last data-bearing sprint, against each measure's better direction) plus standouts: biggest improvement, worst dip, turn sprints. Owns the measure registry with each measure's better direction.")
-        Component(rwk, "rework.py (new, #803)", "Rework at every step: stories sent back to refinement via 'returned' events — out of those started, from which step, why — alongside the review/QA returns already shipped; per sprint and across sprints.")
-        Component(dst, "dora.py (new, #804)", "DORA's four measures per sprint: release frequency, lead time for changes, change failure, mean time to recovery — derived from epic/goal links and the stored story events (epic release = last story's finished event).")
-        Component(tim, "time_splits.py (new, #805)", "Working time per session window, idle time against the registered sprint span, cost by story kind, model-time split refinement vs delivery.")
+        Component(metrics, "metrics.py", "Pure per-sprint metric calculations: cycle/lead time, throughput, WIP, blocked aging, first-attempt, failure breakdown, cost measures; ALL_METRICS gains the self-filed share measure.")
+        Component(fld, "filed.py (new, #891)", "The per-sprint filed-split answer: how much of the sprint's filed work the crew gave itself — the total the crew filed, of which found by a role, from its own process, and split from already-filed work, beside what the Sponsor, the operator and anyone else filed; cards that can't be told apart reported as unknown, never guessed; null where the sprint holds no filing facts. Pure calculation, its /range attachment, its description fragment, and the self-filed share measure for /trend.")
+        Component(win, "verdict.py", "Window verdict across the range: better/worse/flat per measure (up/down/flat for a measure with no better direction) plus standouts. Owns the measure registry, which gains the self-filed share with no better direction — the Goal reports the split, with no quality verdict and no standouts.")
+        Component(rwk, "rework.py", "The per-sprint rework answer (sent backs, review/QA returns, by step) and its /range attachment.")
+        Component(dst, "dora.py", "DORA's four measures per sprint and its /range attachment.")
+        Component(tim, "time_splits.py", "Working time per session window, idle time against the registered sprint span, cost by story kind, model-time split refinement vs delivery; their /range attachments.")
         Component(thresholds, "thresholds.py", "Built-in default thresholds and flag calculation.")
-        Component(report, "report.py", "API_VERSION and metric display names.")
+        Component(report, "report.py", "API_VERSION (moves from '9' to '10' with the filed section and the new /trend measure) and metric display names.")
         Component(sr, "sprint_range.py", "Sprint-label parsing and the per-sprint range JSON; the top-level window object of the /range response.")
-        Component(schema, "schema.py", "JSON Schema documents: event intake gains 'returned', goal, kind and the cost split; sprint-range and trend schemas gain the new measures.")
-        Component(store, "store.py", "Postgres persistence: board_events (new goal and kind columns; epic stored on every row that carries it; 'returned' in the type CHECK) and sprints; the per-sprint roster (stories completed, epics released, Goals achieved) and its /range attachment; query functions for session windows, started counts, returned rows, epic/goal/kind, DORA and roster data.")
+        Component(schema, "schema.py", "JSON Schema documents: the event intake gains the 'filed' type and its filing facts (filer, opener, project); the sprint-range schema gains the per-sprint filed section; the trend schema is unchanged, its metric staying a free string.")
+        Component(store, "store.py", "Postgres persistence: board_events (new nullable filing-fact columns on 'filed' rows; 'filed' in the type CHECK) and sprints; the per-sprint roster and its /range attachment; a query for the sprint's stored filing facts, alongside the session-window, started-count, returned-row, epic/goal/kind, DORA and roster queries; the sprint's delivery-event gate excludes 'filed' rows.")
         Component(otel, "telemetry.py", "OpenTelemetry setup: tracer, logger, OTLP exporter.")
-        Component(docgen, "_docs_gen.py", "Dev tool: regenerates the marked docs/ sections and the schemas/ files from the code, now including the new measures.")
+        Component(docgen, "_docs_gen.py", "Dev tool: regenerates the marked docs/ sections and the schemas/ files from the code, now including the filed answer.")
     }
-    ContainerDb(db, "Postgres", "sprint_metrics schema: board_events and sprints; new columns goal and kind; 'returned' rows; epic/goal/kind on every row that carries them.")
+    ContainerDb(db, "Postgres", "sprint_metrics schema: board_events and sprints; the filing facts as new nullable columns on the card's 'filed' event row.")
 
     Rel(svc, metrics, "computes per-sprint metrics from reconstructed cards")
+    Rel(svc, fld, "per-sprint filed-split answers (its /range section) and the self-filed share for /trend")
     Rel(svc, win, "the window verdict and standouts over the range's per-sprint values")
     Rel(svc, rwk, "per-sprint rework answers")
     Rel(svc, dst, "per-sprint DORA answers")
@@ -35,7 +37,7 @@ C4Component
     Rel(svc, report, "API_VERSION")
     Rel(svc, sr, "range parsing and range JSON")
     Rel(svc, schema, "event-intake and trend schemas")
-    Rel(svc, store, "upserts events, answers queries")
+    Rel(svc, store, "upserts events (gains the 'filed' facts), answers queries (gains the stored filing facts)")
     Rel(svc, otel, "tracer and logger per request")
     Rel(sr, thresholds, "flags against the defaults")
     Rel(dst, store, "epic and goal links per story")
@@ -47,83 +49,58 @@ C4Component
     Rel(docgen, report, "reads _METRIC_COLUMNS")
     Rel(docgen, thresholds, "reads DEFAULT_THRESHOLDS")
     Rel(docgen, schema, "reads the schema documents")
-    Rel(docgen, svc, "reads SERVICE_ENDPOINTS, the /range base and the per-answer description fragments")
-UpdateElementStyle(win, $borderColor="green")
-UpdateElementStyle(rwk, $borderColor="green")
-UpdateElementStyle(dst, $borderColor="green")
-UpdateElementStyle(tim, $borderColor="green")
+    Rel(docgen, svc, "reads SERVICE_ENDPOINTS, the /range base and the per-answer description fragments, now including the filed answer's fragment")
+    UpdateElementStyle(fld, $borderColor="green")
 ```
 
 ## Where the build differs from the target
 
-- **The roster lives in `store.py`, not `dora.py`.** The target places
-  "roster per sprint: stories completed, epics released, Goals achieved"
-  inside `dora.py`. In the build `dora.py` owns only DORA's four measures
-  (pure functions plus its /range attachment), and the roster is the
-  `query_roster_data` SQL in `store.py`, with its /range attachment
-  (`_attach_range_roster`) and description fragment there too — because all
-  SQL lives in `store.py`. The diagram above moves the roster to `store.py`
-  and draws `dora.py` as the four DORA measures.
-- **`rework.py` has no store relation.** The target's
-  `Rel(rwk, store, "returned rows and started counts")` is not in the build:
-  `rework.py` is pure, and `service.py` itself pulls the returned rows
-  (`query_returned_events`) and started counts (`query_started_count`) from
-  `store.py` and hands them to `calculate_rework`. The diagram drops the
-  edge; the two store calls ride `service.py`'s store relation.
-- **The response `api_version` is "9", not "5".** The target says
-  `report.py` moves 4 to 5 with the first release that changes a response.
-  The build bumped the value once per response change: the per-sprint roster
-  shipped as "5" (release 4.1.0), and the later /range additions — the DORA
-  block with its four measures, the window verdicts and standouts, the
-  working-time, cost-by-kind, model-time-split and idle answers — took it
-  to "9" (release 4.2.0). Event intake keeps `api_version` "1"
-  throughout, as the target has it.
-- **The service serves the JSON schemas too.** The target's service
-  description names /range, /trend and /health; the build also answers GET
-  /schema/event and GET /schema/trend with the published JSON Schema
-  documents, and the diagram names them.
-- **`_docs_gen.py` reaches the /range answer text through `service.py`, not
-  the answer modules.** The target's `Rel(docgen, win)`, `Rel(docgen, rwk)`,
-  `Rel(docgen, dst)` and `Rel(docgen, tim)` ("reads the measure registry",
-  "reads the rework docstrings", "reads the DORA docstrings", "reads the
-  time-split docstrings") are not in the build: `_docs_gen.py` imports
-  none of `verdict.py`, `rework.py`, `dora.py` or `time_splits.py`, and
-  reads the calculate_* docstrings only in `metrics.py`. The per-answer
-  description fragments are composed in `service.py`
-  (`_RANGE_BASE_DESCRIPTION`, `_RANGE_ANSWER_DESCRIPTIONS`), and it is that
-  composed text plus `SERVICE_ENDPOINTS` the docs tool imports. The diagram
-  keeps the four answer-module fragments out of the docs tool's edges and
-  labels its `service.py` edge accordingly.
-- **`schema.py` reads the measure registry.** The target omits the edge, but
-  `schema.py` imports `MEASURE_REGISTRY` from `verdict.py` to name the
-  window's `verdicts` entries in the sprint-range schema. The diagram draws
-  it.
+- **`metrics.py`'s `metric_value` does not gain the self-filed share
+  measure.** The target says `metrics.py` gains "the self-filed share
+  measure" in `ALL_METRICS` and `metric_value`. In the build only
+  `ALL_METRICS` (the set of accepted metric names) gains
+  `self_filed_share_percent`; `metric_value` has no branch for it. The
+  `/trend` value is computed in `service.py`'s trend handler, which calls
+  `store.py`'s `query_filed_events` and `filed.py`'s
+  `calculate_filed_split` and takes the split's percent — bypassing
+  `metric_value`. That is the `Rel(svc, fld)` edge, which the diagram
+  draws.
+- **The trend schema document is unchanged.** The target says "the trend
+  schema gains the self-filed share measure." The build's
+  `TREND_SCHEMA` does not enumerate measure names (`metric` is a free
+  string), so the measure enters through `ALL_METRICS` (the accepted
+  metric names) and the `/trend` endpoint description in `SERVICE_ENDPOINTS`
+  in `service.py`, not the schema document. The event-intake document
+  gains the `'filed'` type and its filing facts, and the sprint-range
+  document gains the per-sprint filed section, as the target has them.
 
-Everything else in the target matches the build: the event intake accepts
-the superset ('returned' alongside the existing types, optional top-level
-`epic` and `goal`, optional `card.kind`, the finished event's cost payload
-with its `model_time_split` sub-object); `verdict.py` owns the measure
-registry (each scalar measure's better direction, unit and precision) and
-judges the first data-bearing sprint against the last, skipping gap sprints,
-with standouts (biggest improvement, worst dip), turns and the `too_short`
-marker; `rework.py` owns the rework answer (sent backs, QA returns, by
-step); `dora.py` derives all four DORA measures from epic/goal links and
-the stored story events, an epic releasing in the sprint where its last
-story's finished event is; `time_splits.py` owns the working-time, idle
-(against the registered sprint span), cost-by-kind and model-time-split
-calculations and, with the other answer modules, every /range attachment
-and description fragment — `service.py` composes the response and holds no
-per-answer attachment logic, so the two attachments the 749 record named as
-left in `service.py` (model-time-split and idle) now sit in `time_splits.py`;
-`store.py`'s DDL carries the new `goal` and `kind` columns, `'returned'` in
-the type CHECK and epic/goal/kind on every row that carries them, with the
-query functions for session windows, started counts, returned rows, card
-kinds, model splits, sprint spans, DORA and roster data; `schema.py`'s
-event-intake schema names 'returned', goal, kind and the cost split and its
-sprint-range schema carries the new measures, the roster and the top-level
-window (verdicts, biggest_improvement, worst_dip, turns, too_short);
-`sprint_range.py` attaches the top-level window object; `report.py`,
+Everything else in the target matches the build: `service.py`'s
+`VALID_EVENT_TYPES` carries nine types including `'filed'`, the intake
+accepts the filing facts (`filer`, `opener`, `project`) as optional top-level
+string fields and keeps `api_version` "1"; `filed.py` computes the split
+(the buckets partition the sprint: `crew_total` = found + from_process +
+split + unknown, and the filer buckets sum to the sprint's total cards),
+reports unknown cards as unknown rather than guessing, and returns null
+where the sprint holds no filing facts — null meaning "no facts", distinct
+from the zero crew counts of a sprint whose facts show the crew filed
+nothing; the filed answer is computed from the sprint's filed rows,
+independent of the delivery-event gate: `store.py`'s `sprint_has_events`
+excludes `'filed'` rows, so a sprint whose only stored rows are `'filed'`
+reads null for every delivery measure and appears in the window's
+`no_data`, while still answering its filed split; `verdict.py`'s registry
+entry for `self_filed_share_percent` carries no better direction (a percent
+measure, whole precision), so its window entry holds movement (up, down or
+flat) and the measure is excluded from the standouts; `report.py`'s
+`API_VERSION` is "10" and `_METRIC_COLUMNS` gains the display name;
+`schema.py`'s event-intake schema names `'filed'` in the type enum and the
+three fact fields, and its sprint-range schema carries the per-sprint filed
+section with the crew buckets, the total cards and the self-filed share
+with its numerator and denominator; `store.py`'s DDL carries the new
+nullable `filer`, `opener` and `project` columns (stored only on `'filed'`
+rows, with the existing fill-NULL resend semantics), `'filed'` in the type
+CHECK, and `query_filed_events` alongside the session-window, started-count,
+returned-row, epic/goal/kind, DORA and roster queries; `sprint_range.py`,
 `thresholds.py`, `telemetry.py` (tracer, logger, OTLP exporter) and the
-docs tool's other reads (`metrics.py`'s docstrings and `ALL_METRICS`,
-`report.py`'s `_METRIC_COLUMNS`, `thresholds.py`'s
-`DEFAULT_THRESHOLDS`, the schema documents) are as the target draws them.
+docs tool are as the target draws them, the docs tool reaching the filed
+answer's description fragment through `service.py`'s
+`_RANGE_ANSWER_DESCRIPTIONS`, as it reaches every other answer's fragment.
