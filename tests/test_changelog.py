@@ -7,10 +7,15 @@ from pathlib import Path
 
 CHANGELOG = Path(__file__).parent.parent / "CHANGELOG.md"
 PYPROJECT = Path(__file__).parent.parent / "pyproject.toml"
+CHANGES = Path(__file__).parent.parent / "changes"
 
 _HEADING_RE = re.compile(r"^## \[([^\]]+)\](.*)$", re.MULTILINE)
 _DATE_RE = re.compile(r" - (\d{4}-\d{2}-\d{2})$")
-_SUBHEADINGS = ["### Added", "### Changed", "### Fixed", "### Removed"]
+# towncrier's fragments, in Keep a Changelog's sections (mqucifer/crew#1010).
+_KINDS = ["added", "changed", "deprecated", "removed", "fixed", "security"]
+_FRAGMENT_RE = re.compile(rf"^(\+[^./]+|\d+)\.({'|'.join(_KINDS)})(\.\d+)?\.md$")
+_NOT_FRAGMENTS = {"README.md", ".gitkeep"}
+_START = "<!-- towncrier release notes start -->"
 
 
 def _parse_released_sections(content: str) -> list[dict]:
@@ -130,43 +135,29 @@ def check_released_order_and_dates(changelog_text: str, check_day: date | None =
     return violations
 
 
-def check_unreleased_first_and_subheadings(changelog_text: str) -> list[str]:
-    """Rule 3: '## [Unreleased]' is the first section, with Added, Changed, Fixed,
-    Removed subheadings in that order."""
+def check_fragments_and_start_line(changelog_text: str, fragment_names: list[str]) -> list[str]:
+    """Rule 3: changes waiting for a release are towncrier fragments in changes/, each
+    named <issue>.<kind>.md with <kind> a Keep a Changelog section, and CHANGELOG.md has
+    towncrier's start line above every released section, where a release writes its own."""
     violations = []
-    headings = list(_HEADING_RE.finditer(changelog_text))
-    if not headings:
-        violations.append("No '## [...]' headings found in CHANGELOG.md")
+    for name in fragment_names:
+        if name in _NOT_FRAGMENTS:
+            continue
+        if not _FRAGMENT_RE.match(name):
+            violations.append(
+                f"changes/{name} is not a fragment: name it <issue>.<kind>.md, <kind> one of "
+                f"{', '.join(_KINDS)}"
+            )
+    start = changelog_text.find(_START)
+    if start == -1:
+        violations.append(f"CHANGELOG.md has no towncrier start line {_START!r}")
         return violations
-
-    first = headings[0]
-    if first.group(1) != "Unreleased":
+    released = _parse_released_sections(changelog_text)
+    if released and changelog_text.index(released[0]["heading"]) < start:
         violations.append(
-            f"First section is {first.group(0)!r}, but '## [Unreleased]' must be the first section"
+            f"Released section {released[0]['heading']!r} is above the towncrier start line "
+            f"{_START!r}: a release writes its section below it"
         )
-        return violations
-
-    end = headings[1].start() if len(headings) > 1 else len(changelog_text)
-    body = changelog_text[first.end() : end]
-
-    positions = []
-    for heading in _SUBHEADINGS:
-        pos = body.find(heading)
-        if pos == -1:
-            violations.append(f"[Unreleased] section is missing {heading!r}")
-        else:
-            positions.append(pos)
-
-    if len(positions) == len(_SUBHEADINGS) and positions != sorted(positions):
-        for i in range(len(positions) - 1):
-            if positions[i] > positions[i + 1]:
-                violations.append(
-                    f"[Unreleased] subheadings are not in order: "
-                    f"{_SUBHEADINGS[i + 1]!r} appears before "
-                    f"{_SUBHEADINGS[i]!r}"
-                )
-                break
-
     return violations
 
 
@@ -245,51 +236,45 @@ def test_rule_released_sections_newest_first_and_dates_ordered():
     assert "2099-01-01" in msg, f"message must name the offending date: {msg}"
 
 
-def test_rule_unreleased_first_with_subheadings_in_order():
-    """AC4: [Unreleased] is the first section with Added, Changed, Fixed,
-    Removed subheadings in that order."""
+def test_rule_fragments_and_start_line():
+    """Rule 3: what waits is towncrier fragments in changes/, and CHANGELOG.md has
+    towncrier's start line above every released section (mqucifer/crew#1010)."""
     content = CHANGELOG.read_text()
+    names = sorted(p.name for p in CHANGES.iterdir())
 
-    # The real changelog passes
-    assert check_unreleased_first_and_subheadings(content) == []
+    # The real changelog and fragments pass
+    assert check_fragments_and_start_line(content, names) == []
+    assert "README.md" in names
 
-    # Mutation: a released section before [Unreleased]
-    mutated = content.replace(
-        "## [Unreleased]",
-        "## [1.3.3] - 2026-10-19\n\n### Added\n\n### Changed\n\n### Fixed\n"
-        "\n### Removed\n\n## [Unreleased]",
-        1,
+    # Each kind, with an issue, with none, and with a counter, is a fragment
+    good = [f"944.{kind}.md" for kind in _KINDS] + ["+docs.fixed.md", "944.fixed.2.md"]
+    assert check_fragments_and_start_line(content, good) == []
+
+    # Mutation: a file in changes/ that isn't a fragment
+    violations = check_fragments_and_start_line(content, ["944.improved.md"])
+    assert violations, "expected a violation for a kind Keep a Changelog doesn't have"
+    assert "944.improved.md" in violations[0], f"message must name the file: {violations[0]}"
+
+    # Mutation: no start line
+    violations = check_fragments_and_start_line(content.replace(_START, "", 1), names)
+    assert violations and _START in violations[0], f"must name the start line: {violations}"
+
+    # Mutation: a released section above the start line
+    newest = _parse_released_sections(content)[0]["heading"]
+    mutated = content.replace(_START, "", 1).replace(newest, f"{newest}\n\n{_START}", 1)
+    violations = check_fragments_and_start_line(mutated, names)
+    assert violations and newest in violations[0], f"must name the section: {violations}"
+
+
+def test_rule_leaves_unreleased_entries_from_before_fragments_alone():
+    """An entry a branch wrote under [Unreleased] before the switch is collected by the
+    next release, so it breaks no rule meanwhile."""
+    content = CHANGELOG.read_text().replace(
+        _START, f"{_START}\n\n## [Unreleased]\n\n### Fixed\n\n- An old-way fix\n", 1
     )
-    violations = check_unreleased_first_and_subheadings(mutated)
-    assert violations, "expected a violation when [Unreleased] is not first"
-    assert "Unreleased" in violations[0], (
-        f"message must name the offending heading: {violations[0]}"
-    )
-
-    # Mutation: a missing subheading in [Unreleased]
-    start, end = _unreleased_body_span(content)
-    body = content[start:end]
-    mutated = content[:start] + body.replace("### Removed\n", "", 1) + content[end:]
-    violations = check_unreleased_first_and_subheadings(mutated)
-    missing = [v for v in violations if "missing" in v]
-    assert missing, f"expected a missing-subheading violation: {violations}"
-    assert "### Removed" in missing[0], f"message must name the missing subheading: {missing[0]}"
-
-    # Mutation: subheadings out of order in [Unreleased]
-    start, end = _unreleased_body_span(content)
-    body = content[start:end]
-    # Swap the two headings themselves, so the mutation holds whatever entries
-    # the sections carry.
-    swapped = (
-        body.replace("### Changed\n", "\0", 1)
-        .replace("### Fixed\n", "### Changed\n", 1)
-        .replace("\0", "### Fixed\n", 1)
-    )
-    mutated = content[:start] + swapped + content[end:]
-    violations = check_unreleased_first_and_subheadings(mutated)
-    order = [v for v in violations if "not in order" in v]
-    assert order, f"expected an order violation: {violations}"
-    assert "### Fixed" in order[0], f"message must name the out-of-order subheading: {order[0]}"
+    assert check_fragments_and_start_line(content, []) == []
+    with open(PYPROJECT, "rb") as f:
+        assert check_pyproject_version(content, tomllib.load(f)["project"]["version"]) == []
 
 
 def test_rule_released_headings_dated():

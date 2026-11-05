@@ -1,14 +1,9 @@
 # Changelog
 
-## [Unreleased]
+What's merged and not yet released waits as fragments in [`changes/`](changes/): a release
+builds its section here from them (towncrier, Keep a Changelog).
 
-### Added
-
-### Changed
-
-### Fixed
-
-### Removed
+<!-- towncrier release notes start -->
 
 ## [4.5.1] - 2026-11-03
 
