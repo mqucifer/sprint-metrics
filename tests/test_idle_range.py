@@ -10,15 +10,15 @@ sprint with no session records, or with no registered definition, reads null
 from __future__ import annotations
 
 import psycopg
-from test_service import (
+from service_helpers import (
     SPRINT_METRICS_DB,
     _get_json,
     _make_event,
     _post_events,
-    _start_service,
     requires_db,
 )
 
+from sprint_metrics.service import _start_service
 from sprint_metrics.store import init_db
 
 

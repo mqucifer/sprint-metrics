@@ -11,6 +11,22 @@ from sprint_metrics.thresholds import DEFAULT_THRESHOLDS
 DOCS_DIR = Path(__file__).parent.parent / "docs"
 README = Path(__file__).parent.parent / "README.md"
 
+# docs/service.md is the index: its intro, its Endpoints prose and the generated
+# endpoint table. Each area's hand-written reference is a page of its own here,
+# so a change to one area edits one page.
+SERVICE_PAGES_DIR = DOCS_DIR / "service"
+SERVICE_PAGES = [
+    "running.md",
+    "sprints.md",
+    "events.md",
+    "range.md",
+    "trend.md",
+    "api-version.md",
+    "errors.md",
+    "telemetry.md",
+]
+PROJECT_YAML = Path(__file__).parent.parent / ".crew" / "project.yaml"
+
 ALL_DOCS = [
     "metrics.md",
     "thresholds.md",
@@ -31,6 +47,11 @@ MARKER_IDS: dict[str, list[str]] = {
 }
 
 DRIFT_FILES = [(f, m) for f in ALL_DOCS for m in MARKER_IDS[f]]
+
+
+def _service_page(name: str) -> str:
+    """The text of one of docs/service/'s hand-written area pages."""
+    return (SERVICE_PAGES_DIR / name).read_text()
 
 
 def _extract_marked_section(text: str, marker_id: str) -> str:
@@ -347,15 +368,16 @@ def test_readme_unchanged_by_docs_gen():
 
 
 def test_service_md_has_handwritten_intro():
-    """AC1: docs/service.md's hand-written content before BEGIN:service states
-    SPRINT_METRICS_DB, shows a docker run command publishing port 8080, and
-    names POST /events and GET /range."""
+    """AC1: docs/service/running.md states SPRINT_METRICS_DB and shows a docker run
+    command publishing port 8080, and docs/service.md's hand-written content
+    before BEGIN:service names POST /events and GET /range."""
     path = DOCS_DIR / "service.md"
     text = path.read_text()
     before = text.split("BEGIN:service")[0]
-    assert "SPRINT_METRICS_DB" in before, "hand-written content does not mention SPRINT_METRICS_DB"
-    assert "docker run" in before, "hand-written content does not show a docker run command"
-    assert "8080" in before, "docker run command does not publish port 8080"
+    running = _service_page("running.md")
+    assert "SPRINT_METRICS_DB" in running, "running.md does not mention SPRINT_METRICS_DB"
+    assert "docker run" in running, "running.md does not show a docker run command"
+    assert "8080" in running, "docker run command does not publish port 8080"
     assert "POST /events" in before, "hand-written content does not name POST /events"
     assert "GET /range" in before, "hand-written content does not name GET /range"
 
@@ -390,7 +412,7 @@ def test_service_md_generated_section_contains_all_endpoints():
 
 def test_service_md_prose_lists_endpoints_and_documents_metrics_410():
     """#764 AC4: the Endpoints prose names exactly the six endpoints, and the
-    error-response section documents the 410 answer for GET /metrics."""
+    error-response page (docs/service/errors.md) documents the 410 answer for GET /metrics."""
     text = (DOCS_DIR / "service.md").read_text()
     before = text.split("BEGIN:service")[0]
     prose = before[before.index("## Endpoints") :].split("\n\n")[1]
@@ -405,7 +427,7 @@ def test_service_md_prose_lists_endpoints_and_documents_metrics_410():
         assert endpoint in prose
     assert "/metrics" not in prose
     assert "Prometheus" not in prose
-    errors = before[before.index("### Error responses") :]
+    errors = _service_page("errors.md")
     assert "GET /metrics returns HTTP 410" in errors
 
 
@@ -437,12 +459,38 @@ def test_drift_check_service_md_detects_manual_edit(tmp_path):
         _check_no_drift(doc_path, "service", "docs/service.md")
 
 
+def test_service_pages_are_linked_and_carry_no_generated_section():
+    """#996: docs/service/ holds exactly the service's area pages; each is
+    non-empty, opens with a level-1 heading, carries no generated section (so
+    _docs_gen never rewrites it), and is linked from docs/service.md's index."""
+    on_disk = sorted(p.name for p in SERVICE_PAGES_DIR.glob("*.md"))
+    assert on_disk == sorted(SERVICE_PAGES)
+    index = (DOCS_DIR / "service.md").read_text().split("BEGIN:service")[0]
+    for name in SERVICE_PAGES:
+        text = _service_page(name)
+        assert text.startswith("# "), f"docs/service/{name} does not open with a heading"
+        for line in text.splitlines():
+            assert not line.startswith(("BEGIN:", "END:")), f"docs/service/{name} has a marker"
+        assert f"(service/{name})" in index, f"docs/service.md does not link service/{name}"
+
+
+def test_project_yaml_names_each_service_page():
+    """#996: .crew/project.yaml's docs list names docs/service.md and each of its
+    area pages, and names the page that documents SPRINT_METRICS_DB."""
+    import yaml
+
+    project = yaml.safe_load(PROJECT_YAML.read_text())
+    docs = project["design"]["docs"]
+    for path in ["docs/service.md"] + [f"docs/service/{name}" for name in SERVICE_PAGES]:
+        assert path in docs, f".crew/project.yaml's docs list does not name {path}"
+    assert "documented in docs/service/running.md" in project["design"]["release_how"]
+    assert "SPRINT_METRICS_DB" in _service_page("running.md")
+
+
 def test_service_md_names_all_event_types():
-    """AC5: the hand-written content before BEGIN:service in docs/service.md
+    """AC5: docs/service/events.md
     contains each of the five accepted event type names."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     for event_type in ("started", "blocked", "unblocked", "finished", "escalated"):
         assert event_type in before, (
             f"hand-written content does not mention event type {event_type!r}"
@@ -450,27 +498,21 @@ def test_service_md_names_all_event_types():
 
 
 def test_service_md_startup_failure_and_sprint_rule():
-    """AC6: the hand-written content before BEGIN:service in docs/service.md
-    contains 'non-zero' in the context of a startup failure, and contains
-    'where it finishes' stating the sprint-counting rule."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
-    assert "non-zero" in before, (
+    """AC6: docs/service/running.md contains 'non-zero' in the context of a startup
+    failure, and docs/service/events.md contains 'where it finishes' stating the sprint-counting rule."""
+    running = _service_page("running.md")
+    events = _service_page("events.md")
+    assert "non-zero" in running, (
         "hand-written content does not mention non-zero exit on startup failure"
     )
-    assert "where it finishes" in before, (
+    assert "where it finishes" in events, (
         "hand-written content does not state the sprint-counting rule"
     )
 
 
 def test_service_md_documents_otel_environment_variables():
-    """AC1: OTEL env vars are documented with descriptions and the default service name."""
-    path = Path("docs/service.md")
-    text = path.read_text()
-    begin = text.index("BEGIN:service")
-    end = text.index("END:service") + len("END:service")
-    handwritten = text[:begin] + text[end:]
+    """AC1: OTEL env vars are documented on docs/service/telemetry.md with descriptions and the default service name."""
+    handwritten = _service_page("telemetry.md")
     assert "OTEL_EXPORTER_OTLP_ENDPOINT" in handwritten
     assert "OTLP receiver URL" in handwritten
     assert "OTEL_SERVICE_NAME" in handwritten
@@ -478,12 +520,8 @@ def test_service_md_documents_otel_environment_variables():
 
 
 def test_service_md_shows_sample_span_and_log_record():
-    """AC2: A sample span and log record are shown in the hand-written Telemetry section."""
-    path = Path("docs/service.md")
-    text = path.read_text()
-    begin = text.index("BEGIN:service")
-    end = text.index("END:service") + len("END:service")
-    handwritten = text[:begin] + text[end:]
+    """AC2: A sample span and log record are shown in the Telemetry page, docs/service/telemetry.md."""
+    handwritten = _service_page("telemetry.md")
     # Sample span: name, service name, HTTP attribute
     assert "POST /events" in handwritten
     assert "sprint-metrics" in handwritten
@@ -494,18 +532,18 @@ def test_service_md_shows_sample_span_and_log_record():
 
 
 def test_service_md_telemetry_section_survives_docs_gen(tmp_path):
-    """AC3: The hand-written Telemetry section is not modified by the docs generator."""
+    """AC3: The hand-written Telemetry section is not modified by the docs generator:
+    it lives on docs/service/telemetry.md, which carries no generated section, and
+    regenerating docs/service.md leaves that page alone."""
     from sprint_metrics._docs_gen import generate_file
 
+    telemetry = _service_page("telemetry.md")
+    assert "BEGIN:" not in telemetry and "END:" not in telemetry
     src = Path("docs/service.md")
-    original = src.read_text()
     dest = tmp_path / "service.md"
-    dest.write_text(original)
+    dest.write_text(src.read_text())
     generate_file(dest)
-    regenerated = dest.read_text()
-    orig_telemetry = original[original.index("END:service") :]
-    new_telemetry = regenerated[regenerated.index("END:service") :]
-    assert orig_telemetry == new_telemetry
+    assert _service_page("telemetry.md") == telemetry
 
 
 def test_service_md_trend_row_describes_response_shape():
@@ -565,14 +603,12 @@ def test_service_md_trend_row_names_dora_measures_with_units():
 
 
 def test_service_md_documents_superseded_event():
-    """AC1: the hand-written content before BEGIN:service in docs/service.md names
+    """AC1: docs/service/events.md names
     'superseded' as an accepted event type, describes because accepting 'sponsor'
     and 'story_problem', describes replaced_by as an optional array of story
     identifiers absent when the crew does not know the replacements, and states
     that no prior event on the card is required."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     assert "superseded" in before, (
         "hand-written content does not name 'superseded' as an accepted event type"
     )
@@ -590,14 +626,14 @@ def test_service_md_documents_superseded_event():
 
 
 def test_service_md_documents_returned_event():
-    """AC6: the hand-written Event intake content in docs/service.md names 'returned'
+    """AC6: docs/service/events.md names 'returned'
     as an accepted event type, documents its three fields — failure_role (the step
     the story was sent back from), failure_class (the reason), and epic (the story's
     epic link) — as optional, and states re-sending one is as safe as re-sending any
     other; the generated endpoints table names 'returned' among the accepted types."""
     path = DOCS_DIR / "service.md"
     text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     assert "returned" in before, (
         "hand-written content does not name 'returned' as an accepted event type"
     )
@@ -619,12 +655,10 @@ def test_service_md_documents_returned_event():
 
 
 def test_service_md_documents_filed_event():
-    """AC1: the hand-written Event intake content in docs/service.md names 'filed'
+    """AC1: docs/service/events.md names 'filed'
     as an accepted event type, documents filer, opener, and project as the filing
     facts the crew sends (each a fact, not a count, and each optional)."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     assert "filed" in before, (
         "hand-written content does not name 'filed' as an accepted event type"
     )
@@ -644,9 +678,7 @@ def test_service_md_filed_event_documents_buckets():
     """AC2: the 'filed' documentation names the filer side values (crew, sponsor,
     operator, other) and the opener kinds (found, process, split) with their
     meanings, so the facts the crew sends bucket correctly."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     anchor = before.index("A `filed` event")
     filed_text = before[anchor : anchor + 1200]
     for value in ("crew", "sponsor", "operator", "other"):
@@ -672,9 +704,7 @@ def test_service_md_filed_event_documents_unknown():
     """AC3: the 'filed' documentation states that a card whose opener cannot be
     told apart is reported as unknown — the opener fact is left out rather than
     guessed — and that the service never infers a bucket from an absent fact."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     anchor = before.index("A `filed` event")
     filed_text = before[anchor : anchor + 1400]
     assert "unknown" in filed_text.lower(), (
@@ -695,9 +725,7 @@ def test_service_md_filed_event_documents_project_identity():
     """AC4: the 'filed' documentation states that card ids are unique within a
     project and that the project fact distinguishes a card "123" in one repository
     from card "123" in another — the two count as two distinct cards."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     anchor = before.index("A `filed` event")
     filed_text = before[anchor : anchor + 1600]
     assert "unique within a project" in filed_text, (
@@ -712,7 +740,7 @@ def test_service_md_filed_event_documents_project_identity():
 
 
 def test_service_md_filed_example_validates_against_schema():
-    """AC5: the 'filed' example event documented in docs/service.md validates
+    """AC5: the 'filed' example event documented in docs/service/events.md validates
     against the event-intake schema, so drift between the docs and the schema is
     provable on a pull request."""
     import json as json_mod
@@ -721,9 +749,7 @@ def test_service_md_filed_example_validates_against_schema():
 
     from sprint_metrics.schema import EVENT_INTAKE_SCHEMA
 
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     # Find the filed example JSON block
     example_idx = before.index("Example `filed` event")
     after_example = before[example_idx:]
@@ -739,9 +765,7 @@ def test_service_md_filed_event_states_api_version_stays_one():
     """AC6: the 'filed' documentation states the intake's api_version stays "1"
     (the 'filed' event is additive) and that events without the filing facts are
     accepted exactly as today."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     anchor = before.index("A `filed` event")
     section_end = before.index("A `session` event", anchor)
     filed_text = before[anchor:section_end]
@@ -824,13 +848,11 @@ def test_metrics_md_computation_details_describes_filed():
 
 
 def test_service_md_sprint_range_descriptions_state_per_return_semantics():
-    """AC5: the hand-written /range endpoint description in
-    docs/service.md states that failure_breakdown and top_failure_causes count
+    """AC5: the hand-written /range description in
+    docs/service/range.md states that failure_breakdown and top_failure_causes count
     returns — one entry per return, by (failure class, returning role) — not
     one entry per failed story."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("range.md")
 
     range_start = before.index("GET /range")
     range_section = before[range_start : range_start + 500]
@@ -850,13 +872,11 @@ def test_service_md_sprint_range_descriptions_state_per_return_semantics():
 
 
 def test_service_md_window_verdict_described_in_handwritten_range_section():
-    """AC8: the hand-written /range section in docs/service.md tells the reader
+    """AC8: the hand-written /range page, docs/service/range.md, tells the reader
     that the window verdicts compare the window's first and last data-bearing
     sprint, that a measure with a missing number gets no verdict, and what
     "flat" means."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("range.md")
     anchor = before.index("The window object also carries a `verdicts`")
     verdict_section = before[anchor : anchor + 700]
     assert "first and last data-bearing sprint" in verdict_section, (
@@ -896,9 +916,7 @@ def test_service_md_handwritten_section_survives_docs_gen(tmp_path):
 def test_service_md_documents_resend_fills_null_fields():
     """AC1: the re-send paragraph states the re-send is safe and that fields
     currently NULL in the stored row receive the value supplied by the re-sent event."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     lines = before.splitlines()
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     # The paragraph is a single non-blank line (or group); collect until blank.
@@ -919,9 +937,7 @@ def test_service_md_documents_resend_fills_null_fields():
 def test_service_md_documents_resend_preserves_existing_values():
     """AC2: the re-send paragraph states that a field which already holds a value
     is not changed by the re-sent event."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     lines = before.splitlines()
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     para_lines = [lines[resend_idx]]
@@ -942,9 +958,7 @@ def test_service_md_documents_resend_preserves_existing_values():
 def test_service_md_resend_paragraph_no_negation_terms():
     """AC3: none of 'discarded', 'ignored', 'skipped', 'DO NOTHING', 'no-op'
     appear in the re-send paragraph."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     lines = before.splitlines()
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     para_lines = [lines[resend_idx]]
@@ -962,9 +976,7 @@ def test_service_md_resend_paragraph_placement():
     """AC6: the re-send paragraph is preceded by a line beginning 'No prior event
     on the card is required' and followed by a line beginning 'The intake format
     carries'."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     lines = before.splitlines()
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     # Find the immediately preceding non-blank line.
@@ -989,9 +1001,7 @@ def test_service_md_resend_paragraph_placement():
 def test_service_md_resend_paragraph_names_identity_fields():
     """AC7: 'card_id', 'type', and 'timestamp' all appear in the re-send paragraph,
     each enclosed in backticks."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     lines = before.splitlines()
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     para_lines = [lines[resend_idx]]
@@ -1010,9 +1020,7 @@ def test_service_md_resend_paragraph_names_identity_fields():
 def test_service_md_resend_paragraph_no_implementation_terms():
     """AC8: none of 'COALESCE', 'upsert', 'ON CONFLICT', 'SQL' appear in the
     re-send paragraph."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     lines = before.splitlines()
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     para_lines = [lines[resend_idx]]
@@ -1031,9 +1039,7 @@ def test_service_md_resend_paragraph_no_implementation_terms():
 def test_service_md_resend_paragraph_starts_at_column_zero():
     """AC9: the re-send paragraph's first line begins at column 0 with the
     character 'R' (the start of 'Re-sending')."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     lines = before.splitlines()
     resend_idx = next(i for i, line in enumerate(lines) if line.startswith("Re-sending"))
     line = lines[resend_idx]
@@ -1221,8 +1227,7 @@ def test_metrics_md_explains_cost_aggregation_semantics():
 def test_service_md_documents_cost_payload_fields():
     """AC3: the event-intake section documents the finished event's cost payload
     with all five fields, each a non-negative integer, sent together or not at all."""
-    text = (DOCS_DIR / "service.md").read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     # All five fields are named
     for field in (
         "model_seconds",
@@ -1551,8 +1556,7 @@ def test_service_md_cost_example_is_complete():
     five fields and non-negative integer values, in a copy-ready JSON block."""
     import json as json_mod
 
-    text = (DOCS_DIR / "service.md").read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     # Find the JSON block after the cost payload documentation
     cost_doc_idx = before.index("A `finished` event may carry a cost payload")
     after_cost_doc = before[cost_doc_idx:]
@@ -1612,10 +1616,10 @@ def test_service_md_range_row_describes_roster_answer():
 
 
 def test_service_md_api_version_paragraph_describes_version_12():
-    """AC: docs/service.md's api_version paragraph states the response
+    """AC: docs/service/api-version.md's api_version paragraph states the response
     api_version is '12', version '11' is retired, and intake keeps '1'."""
-    text = (DOCS_DIR / "service.md").read_text()
-    # The /range and /trend api_version paragraph is outside the generated section
+    # The /range and /trend api_version paragraph is the page's own
+    text = _service_page("api-version.md")
     paragraph = text.split("The /range and /trend responses carry their own")[1]
     # Find the end of the paragraph (next blank line or next heading)
     end = paragraph.find("\n\n")
@@ -1713,11 +1717,9 @@ def test_metrics_md_idle_time_section_states_span_minus_session_time():
 
 
 def test_service_md_documents_session_event_type():
-    """AC1: the hand-written Event intake content in docs/service.md names 'session'
+    """AC1: docs/service/events.md names 'session'
     as an accepted event type, alongside the nine existing types."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     assert "session" in before, (
         "hand-written content does not name 'session' as an accepted event type"
     )
@@ -1742,13 +1744,11 @@ def test_service_md_documents_session_event_type():
 
 
 def test_service_md_documents_session_event_fields():
-    """AC2: the hand-written Event intake content in docs/service.md documents
+    """AC2: docs/service/events.md documents
     the session event's fields with their units — model time in seconds, tokens
     as counts — using the same field names the crew's contract publishes, and
     states that card_id and card are optional when the session has no card."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     anchor = before.index("A `session` event")
     session_text = before[anchor : anchor + 1500]
     for field in ("role", "start", "end", "model_seconds", "tokens"):
@@ -1773,12 +1773,10 @@ def test_service_md_documents_session_event_fields():
 
 
 def test_service_md_session_event_is_additive():
-    """AC3: the hand-written Event intake content in docs/service.md states that
+    """AC3: docs/service/events.md states that
     the session event is additive: events without a session are accepted exactly
     as today, so nothing already sent stops working."""
-    path = DOCS_DIR / "service.md"
-    text = path.read_text()
-    before = text.split("BEGIN:service")[0]
+    before = _service_page("events.md")
     anchor = before.index("A `session` event")
     # The additive note comes after the session example
     session_text = before[anchor : anchor + 2000]
