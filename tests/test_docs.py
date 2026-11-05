@@ -1091,12 +1091,15 @@ def test_readme_versioning_states_newest_first_and_date_bound():
     assert "later than the day the check runs" in section
 
 
-def test_readme_versioning_states_unreleased_first_with_subheadings():
-    """AC3: the Versioning section states ## [Unreleased] is the first section,
-    with the subheadings Added, Changed, Fixed, Removed in that order."""
+def test_readme_versioning_states_fragments_and_start_line():
+    """AC3, as mqucifer/crew#1010 changed it: the Versioning section states what waits
+    is towncrier fragments in changes/, named by Keep a Changelog's sections, and that
+    CHANGELOG.md has towncrier's start line above every released section."""
     section = _versioning_section()
-    assert "## [Unreleased]" in section
-    assert "Added, Changed, Fixed" in section
+    assert "`changes/`" in section
+    assert "towncrier" in section
+    assert "added, changed, deprecated, removed, fixed, security" in section
+    assert "<!-- towncrier release notes start -->" in section
 
 
 def test_readme_versioning_states_released_heading_date_format():
@@ -1129,8 +1132,8 @@ def test_adr_0011_decision_states_same_rules_in_order():
     r2_adr = adr_decision.index("newest first")
 
     # Rule 3 marker
-    r3_readme = readme_section.index("## [Unreleased]")
-    r3_adr = adr_decision.index("## [Unreleased]")
+    r3_readme = readme_section.index("`changes/`")
+    r3_adr = adr_decision.index("`changes/`")
 
     # Rule 4 marker
     r4_readme = readme_section.index("YYYY-MM-DD")

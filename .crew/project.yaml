@@ -77,9 +77,10 @@ design:
   release_how: 'Package versions follow SemVer, separate from the JSON api_version:
     removing an old API version is MAJOR, additions (including a new API version)
     are MINOR, fixes and docs are PATCH. The first release is 1.0.0. CHANGELOG.md
-    follows Keep a Changelog; every user-visible PR adds an entry to [Unreleased].
-    A release is a PR that bumps the version in pyproject.toml and dates the [Unreleased]
-    section. When it merges, the release workflow (triggered on push to main) reads
+    follows Keep a Changelog; every user-visible PR adds a towncrier fragment,
+    changes/<issue>.<kind>.md, and never edits CHANGELOG.md. A release is a PR that
+    bumps the version in pyproject.toml and builds its dated section from the fragments,
+    deleting them. When it merges, the release workflow (triggered on push to main) reads
     the version from pyproject.toml and then checks each published artifact independently,
     creating only what is missing: (1) the git tag vX.Y.Z is created and pushed if
     it does not already exist; (2) the GitHub Release for that tag is created with

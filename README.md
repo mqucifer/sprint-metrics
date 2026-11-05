@@ -86,7 +86,7 @@ CI checks `CHANGELOG.md` for four invariants on every pull request:
 
 1. The version in `pyproject.toml` equals the newest released section's version in `CHANGELOG.md`.
 2. Released sections run newest first by version, and no released section's date is later than the date of the section above it or later than the day the check runs.
-3. `## [Unreleased]` is the first section, with the subheadings Added, Changed, Fixed, and Removed in that order.
+3. What's merged and not yet released waits as towncrier fragments in `changes/`, one file per change named `<issue>.<kind>.md`, `<kind>` one of Keep a Changelog's sections in lower case (added, changed, deprecated, removed, fixed, security); `CHANGELOG.md` has towncrier's start line `<!-- towncrier release notes start -->` above every released section, and a release writes its section there from the fragments and deletes them.
 4. Every released section's heading is dated `YYYY-MM-DD`.
 
 A section's content — the entries under its subheadings — is not checked by tests; entries are checked by review, not by CI.
@@ -99,4 +99,4 @@ See [CHANGELOG.md](CHANGELOG.md) for the version-to-version change history.
 
 ## Documentation maintenance
 
-User-visible changes update `docs/` and `CHANGELOG.md` in the same pull request.
+User-visible changes update `docs/` and add their `CHANGELOG.md` entry, as a fragment in `changes/`, in the same pull request.
