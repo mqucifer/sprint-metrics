@@ -93,7 +93,7 @@ design:
     pinned to the tag (e.g. uv pip install git+https://github.com/mqucifer/sprint-metrics.git@v1.0.0)
     or runs the image by its tag (ghcr.io/mqucifer/sprint-metrics:1.0.0). The service
     mode reads its database connection string from the SPRINT_METRICS_DB environment
-    variable; the Dockerfile sets no default, and the variable is documented in docs/service.md.'
+    variable; the Dockerfile sets no default, and the variable is documented in docs/service/running.md.'
   built:
   - A sprint-metrics CLI that reads sprint cards and optional WIP limits from JSON.
   - Computes cycle time, lead time, throughput, WIP-limit violations, blocked-card
@@ -144,6 +144,14 @@ design:
   docs:
   - README.md
   - docs/service.md
+  - docs/service/running.md
+  - docs/service/sprints.md
+  - docs/service/events.md
+  - docs/service/range.md
+  - docs/service/trend.md
+  - docs/service/api-version.md
+  - docs/service/errors.md
+  - docs/service/telemetry.md
   - docs/metrics.md
   - docs/thresholds.md
   - docs/architecture.md
