@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     # The same postgres service as the workspace's compose file
     # (.devcontainer/compose.yaml), image by the same digest, so the DB-backed
-    # tests (tests/test_store.py, @requires_db in tests/test_service.py) run
+    # tests (tests/test_store.py, @requires_db in tests/test_service_*.py) run
     # here instead of skipping, as they run in the workspace.
     services:
       postgres:
