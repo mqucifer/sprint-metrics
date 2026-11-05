@@ -1618,7 +1618,8 @@ def test_service_md_range_row_describes_roster_answer():
 def test_service_md_api_version_paragraph_matches_current_version():
     """AC: docs/service/api-version.md's api_version paragraph names the current
     api_version, matching sprint_metrics.version.API_VERSION, so it fails when
-    the paragraph falls behind."""
+    the paragraph falls behind. It also cites no package release number that
+    lacks a dated section in CHANGELOG.md."""
     from sprint_metrics.version import API_VERSION
     text = _service_page("api-version.md")
     paragraph = text.split("The /range and /trend responses carry their own")[1]
@@ -1629,6 +1630,14 @@ def test_service_md_api_version_paragraph_matches_current_version():
     paragraph = paragraph[:end]
     # The paragraph's "Up to "X"" clause names the current api_version
     assert f'Up to "{API_VERSION}"' in paragraph
+    # No fictional package-release number may appear: each api_version was
+    # never a package release of that name.
+    for fictional in (
+        "16.0.0", "15.0.0", "14.0.0", "13.0.0", "12.0.0",
+        "11.0.0", "10.0.0", "9.0.0", "8.0.0", "7.0.0",
+        "6.0.0", "5.0.0",
+    ):
+        assert fictional not in paragraph, f"paragraph cites fictional release {fictional}"
 
 
 def test_metrics_md_names_dora_measures():
