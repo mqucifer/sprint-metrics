@@ -1615,10 +1615,11 @@ def test_service_md_range_row_describes_roster_answer():
         assert phrase in row, f"GET /range roster row missing {phrase!r}: {row}"
 
 
-def test_service_md_api_version_paragraph_describes_version_12():
-    """AC: docs/service/api-version.md's api_version paragraph states the response
-    api_version is '12', version '11' is retired, and intake keeps '1'."""
-    # The /range and /trend api_version paragraph is the page's own
+def test_service_md_api_version_paragraph_matches_current_version():
+    """AC: docs/service/api-version.md's api_version paragraph names the current
+    api_version, matching sprint_metrics.version.API_VERSION, so it fails when
+    the paragraph falls behind."""
+    from sprint_metrics.version import API_VERSION
     text = _service_page("api-version.md")
     paragraph = text.split("The /range and /trend responses carry their own")[1]
     # Find the end of the paragraph (next blank line or next heading)
@@ -1626,12 +1627,8 @@ def test_service_md_api_version_paragraph_describes_version_12():
     if end == -1:
         end = len(paragraph)
     paragraph = paragraph[:end]
-    assert '"12"' in paragraph
-    assert '"11"' in paragraph
-    assert "retired" in paragraph
-    assert "12.0.0" in paragraph
-    assert "Event intake" in paragraph
-    assert '"1"' in paragraph
+    # The paragraph's "Up to "X"" clause names the current api_version
+    assert f'Up to "{API_VERSION}"' in paragraph
 
 
 def test_metrics_md_names_dora_measures():
