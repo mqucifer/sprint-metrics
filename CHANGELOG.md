@@ -5,6 +5,12 @@ builds its section here from them (towncrier, Keep a Changelog).
 
 <!-- towncrier release notes start -->
 
+## [4.5.2] - 2026-11-06
+
+### Changed
+
+- The /range working-time attachment no longer takes the `has_events` argument its body never used: its signature is now (result, conn, labels), and its sole caller — the /range handler — passes just those three. No answer changes: every /range response reads exactly as before. (mqucifer/sprint-metrics#1000)
+
 ## [4.5.1] - 2026-11-03
 
 ### Added
