@@ -565,7 +565,7 @@ def _start_service(conn, port: int, db_url: str = "") -> int:
                         _attach_range_filed(result, labels, filed)
                         _attach_range_roster(result, conn_holder[0], labels, has_events)
                         _attach_range_dora(result, conn_holder[0], labels, has_events)
-                        _attach_range_working_time(result, conn_holder[0], labels, has_events)
+                        _attach_range_working_time(result, conn_holder[0], labels)
                         _attach_range_cost_by_kind(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time_split(result, conn_holder[0], labels, has_events)
                         _attach_range_model_time(result, conn_holder[0], labels, has_events)
