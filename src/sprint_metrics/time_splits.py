@@ -452,7 +452,7 @@ def calculate_sprint_model_time(
 
 
 def _attach_range_working_time(
-    result: dict, conn, labels: list[str], has_events: set[str]
+    result: dict, conn, labels: list[str]
 ) -> None:
     """Attach the working-time answer to each range entry, and its flat name to prior/delta.
 
